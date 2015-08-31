@@ -1,0 +1,4 @@
+S .
+B _build
+PKG core llvm intlib
+EXT ounit
