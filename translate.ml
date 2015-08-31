@@ -22,10 +22,9 @@ let fresh_label : Basetype.t -> Ssa.label =
 let translate (t: Cbvterm.t) : fragment =
   match t.t_desc with
   | Var x -> failwith "TODO"
+  | Contr _ -> failwith "TODO"
   | Const _ -> failwith "TODO"
-  | Fun(xs, s) -> failwith "TODO"
+  | Fun(x, s) -> failwith "TODO"
+  | Fix((f, x, alpha), s) -> failwith "TODO"
   | App(t1, t2) -> failwith "TODO"
   | Ifz(tc, t1, t2) -> failwith "TODO"
-  | Pair(_,_) -> failwith "TODO"
-  | Fst _ -> failwith "TODO"
-  | Snd _ -> failwith "TODO"

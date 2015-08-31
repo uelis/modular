@@ -67,14 +67,12 @@ identifier:
 term:
     | LAMBDA identifier TO term
         { mkAst (Fun($2, $4)) }
+    | FIX identifier identifier TO term
+        { mkAst (Fix($2, $3, $5)) }
     | IF term THEN term ELSE term
         { mkAst (Ifz($2, $4, $6)) }
     | LET identifier EQUALS term IN term
         { mkAst (App(mkAst (Fun($2, $6)), $4)) }
-    | FST term_atom
-       { mkAst (Fst($2))}
-    | SND term_atom
-       { mkAst (Snd($2))}
     | term_app
        { $1 }
 
@@ -88,19 +86,15 @@ term_app:
 term_atom:
     | identifier
        { mkAst (Ast.Var($1)) }
-    | LPAREN term COMMA term RPAREN
-       { mkAst (Pair($2, $4)) }
     | LPAREN term RPAREN
        { $2 }
     | MINUS NUM
-       { mkAst (Num(-$2)) }
+       { mkAst (Const(Cintconst(-$2), [])) }
     | NUM
-       { mkAst (Num($1)) }
+       { mkAst (Const(Cintconst($1), [])) }
     | PRINT term_atom
-       { mkAst (App(mkAst (Const(Cintprint)), $2)) }
-    | INTADD
-       { mkAst (Const(Cintadd))}
-    | FIX
-       { mkAst (Const(Cfix))}
+       { mkAst (Const(Cintprint, [$2])) }
+    | INTADD LPAREN term COMMA term RPAREN
+       { mkAst (Const(Cintadd, [$3; $5]))}
 
 %%

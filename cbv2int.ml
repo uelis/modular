@@ -62,27 +62,12 @@ let compile (d: Decl.t) : unit =
     let f_name = Ident.to_string f in
     try
       let t = Typing.check_term [] ast in
-      if !Opts.verbose then
-        Printf.printf "Before translation: %s : %s\n"
-          (Ident.to_string f)
-          (Cbvtype.to_string ~concise:(not !Opts.print_type_details)
-             t.Cbvterm.t_type);
-      let ast0 = Translate.translate t in
-      let ast = expand_prelude ast0 in
-      if !Opts.verbose then
-        Intlib.Printing.print_ast ast0;
-      let ti = Intlib.Typing.check_term [] [] ast in
-      let circuit = Intlib.Circuit.of_typedterm ti in
-      if !Opts.verbose then
-        Printf.printf "Type of translation: %s : %s\n"
-          (Ident.to_string f)
-          (Intlib.Printing.string_of_type ~concise:(not !Opts.print_type_details)
-             ti.Intlib.Typedterm.t_type);
+      (*      let _ = Translate.translate t in*)
       Printf.printf "%s : %s%!\n"
         (Ident.to_string f)
         (Cbvtype.to_string ~concise:(not !Opts.print_type_details)
            t.Cbvterm.t_type);
-      (*      print_string (Intlib.Circuit.dot_of_circuit circuit); *)
+      (*
       if Ident.to_string f = "main" then
         begin
           let ssa_func = Intlib.Ssa.of_circuit f_name circuit in
@@ -95,6 +80,7 @@ let compile (d: Decl.t) : unit =
           let target = Printf.sprintf "%s.bc" f_name in
           ignore (Llvm_bitwriter.write_bitcode_file llvm_module target)
         end
+       *)
     with Typing.Typing_error(s, err) ->
       let msg = err ^ "\nIn declaration of '" ^ f_name ^ "'." in
       raise (Failure (error_msg (term_loc s) msg)) 

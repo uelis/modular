@@ -64,7 +64,7 @@ let rec pt (phi: Cbvtype.t context) (t: Ast.t)
   : Cbvterm.t * (Ident.t * Ident.t) list =
   let open Cbvterm in
   (* Join all instances of x to a single instance of x that appears directly in the term. *)
-  let contract x (t1, tinstances) =
+  let contract_instances x (t1, tinstances) =
     let xs = List.filter_map
                tinstances
                ~f:(fun (y, y') -> if x = y then Some y' else None) in
@@ -141,7 +141,7 @@ let rec pt (phi: Cbvtype.t context) (t: Ast.t)
      sinstances @ tinstances
   | Ast.Fun(x, t) ->
      let alpha = Cbvtype.newvar() in
-     let t1, tinstances = contract x (pt ((x, alpha)::phi) t) in
+     let t1, tinstances = contract_instances x (pt ((x, alpha)::phi) t) in
      let instances = List.filter tinstances ~f:(fun (y, _) -> y <> x) in
      let gamma = List.filter t1.t_context ~f:(fun (y, _) -> y <> x) in
      { t_desc = Fun((x, alpha), t1);
@@ -153,7 +153,7 @@ let rec pt (phi: Cbvtype.t context) (t: Ast.t)
   | Ast.Fix(f, x, s) ->
      let alpha = Cbvtype.newvar() in
      let beta = Cbvtype.newvar() in
-     let t1, tinstances = contract x (pt ((f, alpha) :: (x, beta) :: phi) s) in
+     let t1, tinstances = contract_instances x (pt ((f, alpha) :: (x, beta) :: phi) s) in
      let instances = List.filter tinstances ~f:(fun (y, _) -> y <> x && y <> f) in
      let gamma = List.filter t1.t_context ~f:(fun (y, _) -> y <> x && y <> f) in
      let a = funty beta t1.t_type in
