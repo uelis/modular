@@ -54,6 +54,9 @@ let freshen_multiplicity (a : Cbvtype.t) : Cbvtype.t =
      | Cbvtype.Nat _ -> Cbvtype.newty (Cbvtype.Nat(m))
      | Cbvtype.Fun(_, s) -> Cbvtype.newty (Cbvtype.Fun(m, s))
 
+                                          
+(* BUG: nicht alle Typannotate sind verschieden.
+ *)
 let rec pt (phi: Cbvtype.t context) (t: Ast.t)
   : Cbvterm.t * (Ident.t * Ident.t) list =
   let open Cbvterm in
@@ -301,7 +304,7 @@ let multiplicity_of_type (a : Cbvtype.t) : Basetype.t =
   | Cbvtype.Var -> Basetype.newvar()
   | Cbvtype.Sgn s ->
      match s with
-     | Cbvtype.Nat(_) -> Basetype.newvar()
+     | Cbvtype.Nat(c) -> c
      | Cbvtype.Fun(c, _) -> c
 
 let multiplicities_of_context  (gamma: Cbvtype.t context) : Basetype.t list =
