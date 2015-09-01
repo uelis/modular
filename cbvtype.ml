@@ -90,7 +90,7 @@ let to_string ?concise:(concise=true) (ty: t): string =
             | Fun(c1, (t1, a1, b1, t2)) ->
               if not concise then
                 let cyan = "\027[36m" in
-                let black = "\027[30m" in
+                let black = "\027[39m" in
                 Printf.sprintf "%s[%s]%s(%s -%s{%s, %s}%s-> %s)"
                   cyan
                   (Intlib.Printing.string_of_basetype c1)
