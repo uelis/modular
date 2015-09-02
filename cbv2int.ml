@@ -61,7 +61,7 @@ let compile (d: Decl.t) : unit =
   | Decl.TermDecl(f, ast) ->
     let f_name = Ident.to_string f in
     try
-      let t = Typing.check_term [] ast in
+      let t = Typing.check_term ast in
       (*      let _ = Translate.translate t in*)
       Printf.printf "%s : %s%!\n"
         (Ident.to_string f)

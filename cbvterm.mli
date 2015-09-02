@@ -5,18 +5,20 @@ module Basetype = Intlib.Basetype
 
 type const = Ast.const
                
-type t = {
-    t_desc: t_desc;
+type 'a term = {
+    t_desc: 'a t_desc;
     t_ann: Basetype.t;
-    t_type: Cbvtype.t;
-    t_context: (Ident.t * Cbvtype.t) list;
+    t_type: 'a;
+    t_context: (Ident.t * 'a) list;
     t_loc: Ast.Location.t
   }
- and t_desc =
+ and 'a t_desc =
    | Var of Ident.t
-   | Const of const * (t list)
-   | Contr of (Ident.t * Ident.t list) * t
-   | Fun of (Ident.t * Cbvtype.t) * t
-   | App of t * t
-   | Ifz of t * t * t
-   | Fix of (Ident.t * Ident.t * Cbvtype.t) * t
+   | Const of const * ('a term list)
+   | Contr of (Ident.t * Ident.t list) * 'a term
+   | Fun of (Ident.t * 'a) * 'a term
+   | App of 'a term * 'a term
+   | Ifz of 'a term * 'a term * 'a term
+   | Fix of (Ident.t * Ident.t * 'a) * 'a term
+
+type t = Cbvtype.t term
