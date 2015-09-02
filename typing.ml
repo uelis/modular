@@ -485,6 +485,7 @@ let rec fresh_annotations_term (t: STtype.t Cbvterm.term) : Cbvterm.t =
          t_context = fresh_annotations_context t.t_context;
          t_loc = t.t_loc}
 
+(* TODO: just construct contexts here? *)
 let infer_annotations (t: Cbvterm.t) : unit =
   let rec constraints (t: Cbvterm.t) : lhd_constraint list =
     let unify_contexts gamma1 gamma2 =
