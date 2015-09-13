@@ -11,9 +11,6 @@ type 'a context = (Ident.t * 'a) list
 
 exception Typing_error of Ast.t option * string
 
-let unitty =
-  Basetype.newty Basetype.UnitB
-
 module STSig = struct
 
     type 'a t =
