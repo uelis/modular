@@ -51,6 +51,21 @@ end
 module Cbvtype = Uftype.Make(Sig)
 include Cbvtype
 
+let code (a : Cbvtype.t) : Basetype.t =
+  match Cbvtype.case a with
+  | Cbvtype.Var -> Basetype.newty Basetype.UnitB
+  | Cbvtype.Sgn s ->
+     match s with
+     | Nat _ -> Basetype.newty Basetype.IntB
+     | Fun(_, (_, _, d, _)) -> d
+
+let multiplicity (a : Cbvtype.t) : Basetype.t =
+  match Cbvtype.case a with
+  | Cbvtype.Var -> Basetype.newvar()
+  | Cbvtype.Sgn s ->
+     match s with
+     | Nat(c) -> c
+     | Fun(c, _) -> c
 
 let name_counter = ref 0
 
