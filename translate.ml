@@ -103,7 +103,8 @@ let end_block_jump (dst: Ssa.label) (v: value) : Ssa.block =
   match !builder_state with
   | None -> assert false
   | Some s ->
-     Ssa.Direct(s.cur_label, s.cur_arg, s.cur_lets, vv, dst)
+    builder_state := None;
+    Ssa.Direct(s.cur_label, s.cur_arg, s.cur_lets, vv, dst)
            
 (* TODO: add assertions to check types *)
 (* TODO: the functions in [targets] must not create new let-definitions *)
@@ -122,6 +123,7 @@ let end_block_case (v: value) (targets: (value -> Ssa.label * value) list) : Ssa
                     let dst, (arg, _) = t vx in
                     x, arg, dst
                 ) in
+     builder_state := None;
      Ssa.Branch(s.cur_label, s.cur_arg, s.cur_lets,
                 (id, params, vv, branches))
                
@@ -130,11 +132,11 @@ let end_block_case (v: value) (targets: (value -> Ssa.label * value) list) : Ssa
            
 let rec access_entry_type (a: Cbvtype.t): Basetype.t =
   match Cbvtype.case a with
-  | Cbvtype.Var -> voidB
+  | Cbvtype.Var -> pair voidB voidB
   | Cbvtype.Sgn s ->
      match s with
-     | Cbvtype.Nat(m) -> voidB
-     | Cbvtype.Fun(m, (x, s, c, y)) ->
+      | Cbvtype.Nat(m) -> pair m voidB
+      | Cbvtype.Fun(m, (x, s, c, y)) ->
         let xc = Cbvtype.code x in
         let yentry = access_entry_type y in
         let xexit = access_exit_type x in
@@ -144,10 +146,10 @@ let rec access_entry_type (a: Cbvtype.t): Basetype.t =
         pair m sum
 and access_exit_type (a: Cbvtype.t): Basetype.t =
   match Cbvtype.case a with
-  | Cbvtype.Var -> voidB
+  | Cbvtype.Var -> pair voidB voidB
   | Cbvtype.Sgn s ->
      match s with
-     | Cbvtype.Nat(m) -> voidB
+     | Cbvtype.Nat(m) -> pair m voidB
      | Cbvtype.Fun(m, (x, _, _, y)) ->
         let yc = Cbvtype.code y in
         let yexit = access_entry_type y in
@@ -268,8 +270,8 @@ let rec translate (t: Cbvterm.t) : fragment =
   match t.t_desc with
   | Var x ->
     let eval = {
-      entry = fresh_label (code_context t.t_context);
-      exit  = fresh_label (Cbvtype.code t.t_type) } in
+      entry = fresh_label (pair t.t_ann (code_context t.t_context));
+      exit  = fresh_label (pair t.t_ann (Cbvtype.code t.t_type)) } in
     let access = access_of_cbvtype (Ident.fresh "var") t.t_type in
     let x_access = access_of_cbvtype x t.t_type in
     let block1 =
@@ -474,3 +476,6 @@ let rec translate (t: Cbvterm.t) : fragment =
       blocks = [block1; block2; block3; block5; block7; case_block]
     }
   | Ifz(tc, t1, t2) -> failwith "TODO"
+
+let print_fragment f =
+  List.iter f.blocks ~f:(fun block -> Ssa.fprint_block stdout block)

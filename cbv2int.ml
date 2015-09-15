@@ -67,6 +67,8 @@ let compile (d: Decl.t) : unit =
         (Ident.to_string f)
         (Cbvtype.to_string ~concise:(not !Opts.print_type_details)
            t.Cbvterm.t_type);
+      let f = Translate.translate t in
+      Translate.print_fragment f
       (*
       if Ident.to_string f = "main" then
         begin
