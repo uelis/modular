@@ -15,15 +15,10 @@ type fragment = {
     access: int_interface;
     blocks: Ssa.block list;
   }
-
-let fresh_label : Basetype.t -> Ssa.label =
-  let next_label = ref 0 in
-  fun a ->
-  let i = !next_label in
-  incr next_label;
-  { Ssa.name = i;
-    Ssa.message_type = a }
     
+let voidB : Basetype.t =
+  Basetype.newty (Basetype.DataB(Basetype.Data.sumid 0, []))
+                  
 let pair (a1: Basetype.t) (a2: Basetype.t): Basetype.t =
   Basetype.newty (Basetype.PairB(a1, a2))
            
@@ -38,7 +33,19 @@ let unDataB a =
      id, params
   | _ -> assert false
 
-(* Simple SSA builder interface *)
+(** Simple SSA builder interface *)
+
+let fresh_ssa_name =
+  let next_name = ref 0 in
+  fun () ->
+  let i = !next_name in
+  incr next_name;
+  i
+                
+let fresh_label (a : Basetype.t): Ssa.label =
+  let i = fresh_ssa_name () in
+  { Ssa.name = i;
+    Ssa.message_type = a }
     
 type value = Ssa.value * Basetype.t
 
@@ -117,30 +124,65 @@ let end_block_case (v: value) (targets: (value -> Ssa.label * value) list) : Ssa
                 ) in
      Ssa.Branch(s.cur_label, s.cur_arg, s.cur_lets,
                 (id, params, vv, branches))
-
                
+
+(** Functions for working with cbv types *)
            
-let access_entry_type : Cbvtype.t -> Basetype.t =
-  failwith "TODO"
-           
-let access_exit_type : Cbvtype.t -> Basetype.t =
-  failwith "TODO"
+let rec access_entry_type (a: Cbvtype.t): Basetype.t =
+  match Cbvtype.case a with
+  | Cbvtype.Var -> voidB
+  | Cbvtype.Sgn s ->
+     match s with
+     | Cbvtype.Nat(m) -> voidB
+     | Cbvtype.Fun(m, (x, s, c, y)) ->
+        let xc = Cbvtype.code x in
+        let yentry = access_entry_type y in
+        let xexit = access_exit_type x in
+        let sumid = Basetype.Data.sumid 3 in
+        let params = [pair c xc; yentry; xexit] in
+        let sum = Basetype.newty (Basetype.DataB(sumid, params)) in
+        pair m sum
+and access_exit_type (a: Cbvtype.t): Basetype.t =
+  match Cbvtype.case a with
+  | Cbvtype.Var -> voidB
+  | Cbvtype.Sgn s ->
+     match s with
+     | Cbvtype.Nat(m) -> voidB
+     | Cbvtype.Fun(m, (x, _, _, y)) ->
+        let yc = Cbvtype.code y in
+        let yexit = access_entry_type y in
+        let xentry = access_exit_type x in
+        let sumid = Basetype.Data.sumid 3 in
+        let params = [yc; yexit; xentry] in
+        let sum = Basetype.newty (Basetype.DataB(sumid, params)) in
+        pair m sum
 
+let ssa_names = Ident.Table.create ()
 
-let access_of_cbvtype : Ident.t -> Cbvtype.t -> int_interface =
-  failwith "TODO"
+let ssa_name_of_ident (l: Ident.t) =
+  match Ident.Table.find ssa_names l with
+  | None ->
+     let ientry = fresh_ssa_name () in
+     let iexit = fresh_ssa_name () in
+     let p = ientry, iexit in
+     Ident.Table.add_exn ssa_names l p;
+     p
+  | Some p -> p
+     
+let access_of_cbvtype (l: Ident.t) (a: Cbvtype.t) : int_interface =
+  let ientry, iexit = ssa_name_of_ident l in
+  { entry =
+      { Ssa.name = ientry;
+        Ssa.message_type = access_entry_type a };
+    exit =
+      { Ssa.name = iexit;
+        Ssa.message_type = access_exit_type a }}
     
-let value_type_of_cbvtype : Cbvtype.t -> Basetype.t =
-  failwith "TODO"
-
-let code_context : Cbvtype.t Typing.context -> Basetype.t =
-  failwith "TODO"
-    
-let embed: Ssa.value -> Basetype.t -> Basetype.t -> Ssa.let_bindings * Ssa.value =
-  failwith "TODO"
-
-let project: Ssa.value -> Basetype.t -> Basetype.t -> Ssa.let_bindings * Ssa.value =
-  failwith "TODO"
+let rec code_context (gamma : Cbvtype.t Typing.context) : Basetype.t =
+  match gamma with
+  | [] -> Basetype.newty Basetype.UnitB
+  | (_, a) :: delta ->
+     pair (code_context delta) (Cbvtype.code a )
 
 let lift: Basetype.t -> fragment -> fragment =
   failwith "TODO"
@@ -390,6 +432,4 @@ let rec translate (t: Cbvterm.t) : fragment =
       access = access;
       blocks = [block1; block2; block3; block5; block7; case_block]
     }
-      
-    
   | Ifz(tc, t1, t2) -> failwith "TODO"
