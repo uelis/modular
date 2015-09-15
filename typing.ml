@@ -512,7 +512,7 @@ let infer_annotations (t: Cbvterm.t) : unit =
          (* Note: this condition gives more slack!
               Example: \f -> intadd(f 1, f 3)
           *)              
-         { lower = t.t_ann;
+         { lower = Basetype.newty (Basetype.PairB(t.t_ann, Basetype.newty Basetype.IntB));
            upper = s2.t_ann;
            reason = "add: stack second"
          }
@@ -582,6 +582,8 @@ let infer_annotations (t: Cbvterm.t) : unit =
        unify_contexts t.t_context sf.t_context;
        Cbvtype.unify_exn t.t_type st.t_type;
        Cbvtype.unify_exn t.t_type sf.t_type;
+       Basetype.unify_exn st.t_ann t.t_ann;
+       Basetype.unify_exn sf.t_ann t.t_ann;
        [ { lower = Basetype.newty
                      (Basetype.PairB(t.t_ann,
                                      Basetype.newty
@@ -589,7 +591,7 @@ let infer_annotations (t: Cbvterm.t) : unit =
                                                        code_of_context sf.t_context))));
            upper = sc.t_ann;
            reason = "if: condition stack"
-         };
+         }(* ;
          { lower = t.t_ann;
            upper = st.t_ann;
            reason = "if: stack true"
@@ -597,7 +599,7 @@ let infer_annotations (t: Cbvterm.t) : unit =
          { lower = t.t_ann;
            upper = sf.t_ann;
            reason = "if: stack false"
-         }
+         } *)
        ]
        @ csc @ cst @ csf
     | Fix((f, v, va), s) ->
