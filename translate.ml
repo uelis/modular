@@ -184,8 +184,49 @@ let rec code_context (gamma : Cbvtype.t Typing.context) : Basetype.t =
   | (_, a) :: delta ->
      pair (code_context delta) (Cbvtype.code a )
 
-let lift: Basetype.t -> fragment -> fragment =
-  failwith "TODO"
+let lift (a: Basetype.t) (f: fragment) : fragment =
+  let lift_label l =
+    { Ssa.name = l.Ssa.name;
+      Ssa.message_type = pair a (l.Ssa.message_type) } in
+  let lift_int_interface i = {
+      entry = lift_label i.entry;
+      exit = lift_label i.exit
+    } in
+  let lift_block (b: Ssa.block) : Ssa.block =
+    match b with
+    | Ssa.Direct(l, arg, lets, v, dst) ->
+       let l' = lift_label l in
+       let arg' = Ident.variant arg in
+       let x = Ident.fresh "x" in
+       let lets' =
+         [Ssa.Let((x, a),
+                  Ssa.Val(Ssa.Fst(Ssa.Var(arg'), a, l.Ssa.message_type)));
+          Ssa.Let((arg, l.Ssa.message_type),
+                  Ssa.Val(Ssa.Snd(Ssa.Var(arg'), a, l.Ssa.message_type)))
+         ] @ lets in
+       let v' = Ssa.Pair(Ssa.Var(x), v) in
+       let dst' = lift_label dst in
+       Ssa.Direct(l', arg', lets', v', dst')
+    | Ssa.Branch(l, arg, lets, (id, params, v, dsts)) ->
+       let l' = lift_label l in
+       let arg' = Ident.variant arg in
+       let x = Ident.fresh "x" in
+       let lets' =
+         [Ssa.Let((x, a),
+                  Ssa.Val(Ssa.Fst(Ssa.Var(arg'), a, l.Ssa.message_type)));
+          Ssa.Let((arg, l.Ssa.message_type),
+                  Ssa.Val(Ssa.Snd(Ssa.Var(arg'), a, l.Ssa.message_type)))
+         ] @ lets in
+       let dsts' = List.map dsts
+                           ~f:(fun (y, w, d) ->
+                               (y, Ssa.Pair(Ssa.Var(x), w), lift_label d)) in
+       Ssa.Branch(l', arg', lets', (id, params, v, dsts'))
+    | Ssa.Return _ -> assert false
+    | Ssa.Unreachable _ -> assert false in
+  { eval = lift_int_interface f.eval;
+    blocks = List.map ~f: lift_block f.blocks;
+    access = lift_int_interface f.access
+  }
 
 let rec build_context_lookup
           (gamma: Cbvtype.t Typing.context)
