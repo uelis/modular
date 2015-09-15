@@ -90,24 +90,42 @@ let build_project (v: value) (a: Basetype.t) : value =
 let build_embed (v: value) (a: Basetype.t) : value =
   failwith "TODO"
 
+(* TODO: add assertions to check types *)
 let end_block_jump (dst: Ssa.label) (v: value) : Ssa.block =
   let vv, va = v in
   match !builder_state with
   | None -> assert false
   | Some s ->
-     (* TODO: check types *)
      Ssa.Direct(s.cur_label, s.cur_arg, s.cur_lets, vv, dst)
            
-let end_block_switch (v: value) (targets: (value -> Ssa.label * value) list) : Ssa.block =
+(* TODO: add assertions to check types *)
+(* TODO: the functions in [targets] must not create new let-definitions *)
+let end_block_case (v: value) (targets: (value -> Ssa.label * value) list) : Ssa.block =
+  let vv, va = v in
+  match !builder_state with
+  | None -> assert false
+  | Some s ->
+     let id, params = unDataB va in
+     let cs = Basetype.Data.constructor_types id params in
+     let branches =
+       List.map (List.zip_exn targets cs)
+                ~f:(fun (t, a) ->
+                    let x = Ident.fresh "x" in
+                    let vx = Ssa.Var x, a in
+                    let dst, (arg, _) = t vx in
+                    x, arg, dst
+                ) in
+     Ssa.Branch(s.cur_label, s.cur_arg, s.cur_lets,
+                (id, params, vv, branches))
+
+               
+           
+let access_entry_type : Cbvtype.t -> Basetype.t =
   failwith "TODO"
-(*
-type interface = {
-  access_entry: Ssa.label;
-  access_exit: Ssa.label;
-  eval_entry: Ssa.label;
-  eval_exit: Ssa.label
-}
-*)
+           
+let access_exit_type : Cbvtype.t -> Basetype.t =
+  failwith "TODO"
+
 
 let access_of_cbvtype : Ident.t -> Cbvtype.t -> int_interface =
   failwith "TODO"
@@ -127,19 +145,19 @@ let project: Ssa.value -> Basetype.t -> Basetype.t -> Ssa.let_bindings * Ssa.val
 let lift: Basetype.t -> fragment -> fragment =
   failwith "TODO"
 
-let rec context_lookup
+let rec build_context_lookup
           (gamma: Cbvtype.t Typing.context)
           (x: Ident.t)
-          (v: Ssa.value)
-  : Ssa.value =
+          (v: value)
+  : value =
   match gamma with
   | [] -> assert false
   | (y, a) :: delta ->
-    if x = y then
-      Ssa.Snd(v, code_context delta, Cbvtype.code a)
+     if x = y then
+       build_snd v
     else
-      let v' = Ssa.Fst(v, code_context delta, Cbvtype.code a) in
-      context_lookup delta x v' 
+      let v' = build_fst v in
+      build_context_lookup delta x v' 
 
 let build_context_map
       (gamma: Cbvtype.t Typing.context)
@@ -172,27 +190,18 @@ let rec translate (t: Cbvterm.t) : fragment =
     let access = access_of_cbvtype (Ident.fresh "var") t.t_type in
     let x_access = access_of_cbvtype x t.t_type in
     let block1 =
-      (*
       let arg = begin_block eval.entry in
       let va = build_fst arg in
       let vgamma = build_snd arg in
-       *)
-      let arg = Ident.fresh "arg" in
-      let ta = t.t_ann in
-      let tgamma = code_context t.t_context in
-      let va = Ssa.Fst(Ssa.Var(arg), ta, tgamma) in
-      let vgamma = Ssa.Snd(Ssa.Var(arg), ta, tgamma) in
-      let vx = context_lookup t.t_context x vgamma in
-      Ssa.Direct(eval.entry, arg, [],
-                 Ssa.Pair(va, vx), eval.exit) in
+      let vx = build_context_lookup t.t_context x vgamma in
+      let v = build_pair va vx in
+      end_block_jump eval.exit v in
     let block2 =
-      let arg = Ident.fresh "arg" in
-      Ssa.Direct(access.entry, arg, [],
-                 Ssa.Var arg, x_access.entry) in
+      let arg = begin_block access.entry in
+      end_block_jump x_access.entry arg in
     let block3 =
-      let arg = Ident.fresh "arg" in
-      Ssa.Direct(x_access.exit, arg, [],
-                 Ssa.Var arg, x_access.exit) in
+      let arg = begin_block x_access.exit in
+      end_block_jump access.exit arg in
     { eval = eval;
       access = access;
       blocks = [block1; block2; block3]
@@ -215,24 +224,7 @@ let rec translate (t: Cbvterm.t) : fragment =
                   let y_access = access_of_cbvtype y yty in
                   let v = build_pair c vxexit in
                   y_access.exit, v in
-       end_block_switch vcopy (List.map xs ~f:target) in
-(*       
-       let _, tx = unPairB x_access.entry.Ssa.message_type in
-       let l = fresh_label (pair tsum tx) in
-       let arg = Ident.fresh "arg" in
-       let vcopy = Ssa.Fst(Ssa.Var(arg), tsum, tx) in
-       let vxexit = Ssa.Snd(Ssa.Var(arg), tsum, tx) in
-       let sumid, summands = unDataB tsum in
-       Ssa.Branch(l, arg, [],
-                  (sumid, summands,
-                   vcopy,
-                   List.map xs
-                     ~f:(fun x' ->
-                         let c = Ident.fresh "c" in
-                         let x'ty = List.Assoc.find_exn s.t_context x' in
-                         let x'_access = access_of_cbvtype x x'ty in
-                         c, Ssa.Pair(Ssa.Var(c), vxexit), x'_access.exit)
-                  )) in*)
+       end_block_case vcopy (List.map xs ~f:target) in
      let proj_block =
        let arg = begin_block x_access.entry in
        let vd = build_fst arg in
@@ -240,14 +232,6 @@ let rec translate (t: Cbvterm.t) : fragment =
        let vsum = build_project vd tsum in
        let v = build_pair vsum vx in
        end_block_jump (Ssa.label_of_block case_block) v in
-(*         
-       let arg = Ident.fresh "arg" in
-       let td, tx = unPairB x_access.entry.Ssa.message_type in
-       let vd = Ssa.Fst(Ssa.Var(arg), td, tx) in
-       let vx = Ssa.Snd(Ssa.Var(arg), td, tx) in
-       let proj_lets, vsum = project vd tsum td in
-       Ssa.Direct(x_access.entry, arg, proj_lets,
-                  Ssa.Pair(vsum, vx), Ssa.label_of_block case_block) in *)
      let in_blocks =
        List.mapi
          xs
@@ -262,22 +246,6 @@ let rec translate (t: Cbvterm.t) : fragment =
              let vd = build_embed vin_c td in
              let v = build_pair vd vx in
              end_block_jump x_access.exit v) in
-             (*
-     let in_blocks =
-       List.mapi
-         xs
-         ~f:(fun i x' ->
-             let x'ty = List.Assoc.find_exn s.t_context x' in
-             let x'_access = access_of_cbvtype x x'ty in
-             let arg = Ident.fresh "arg" in
-             let tc, tx = unPairB x'_access.exit.Ssa.message_type in
-             let vc = Ssa.Fst(Ssa.Var(arg), tc, tx) in
-             let vx = Ssa.Snd(Ssa.Var(arg), tc, tx) in
-             let td, _ = unPairB x_access.exit.Ssa.message_type in
-             let vin_c = Ssa.In((sumid, i, vc), tsum) in
-             let embed_lets, vd = embed vin_c tsum td in
-             Ssa.Direct(x'_access.exit, arg, embed_lets,
-                        Ssa.Pair(vd, vx), x_access.exit)) in*)
      { eval = s_fragment.eval;
        access = s_fragment.access;
        blocks = proj_block :: case_block :: in_blocks @ s_fragment.blocks}
@@ -285,81 +253,70 @@ let rec translate (t: Cbvterm.t) : fragment =
   | Fun((x, xty), s) ->
     let s_fragment =
       lift (Cbvtype.multiplicity t.t_type) (translate s) in
-    let y_access = access_of_cbvtype (Ident.fresh "var") s.t_type in
     let x_access = access_of_cbvtype x xty in
     let eval = {
       entry = fresh_label (pair t.t_ann (code_context t.t_context));
       exit  = fresh_label (pair t.t_ann (Cbvtype.code t.t_type)) } in
     let access = access_of_cbvtype (Ident.fresh "fun") t.t_type in
-    let eval_block = 
-      let arg = Ident.fresh "arg" in
-      let tf, tgamma = unPairB eval.entry.Ssa.message_type in
-      let stack = Ssa.Fst(Ssa.Var(arg), tf, tgamma) in
-      let gamma = Ssa.Snd(Ssa.Var(arg), tf, tgamma) in
-      let embed_lets, embed_val =
-        embed gamma
-          (code_context t.t_context)
-          (Cbvtype.code t.t_type) in
-      Ssa.Direct(eval.entry, arg,
-                 embed_lets,
-                 Ssa.Pair(stack, embed_val), eval.exit) in
+    let eval_block =
+      let arg = begin_block eval.entry in
+      let vstack = build_fst arg in
+      let vgamma = build_snd arg in
+      let vclosure = build_embed vgamma (Cbvtype.code t.t_type) in
+      let v = build_pair vstack vclosure in
+      end_block_jump eval.exit v in
     let block_decode =
       let te = Cbvtype.multiplicity t.t_type in
       let ta = s.t_ann in
       let td = code_context s.t_context in
       let tcx = Cbvtype.code xty in
       let entry = fresh_label (pair te (pair ta (pair td tcx))) in
-      let arg = Ident.fresh "arg" in
-      let ve = Ssa.Fst(Ssa.Var(arg), te, pair ta (pair td tcx)) in
-      let vadx = Ssa.Snd(Ssa.Var(arg), te, pair ta (pair td tcx)) in
-      let va = Ssa.Fst(vadx, ta, pair td tcx) in
-      let vdx = Ssa.Snd(vadx, ta, pair td tcx) in
-      let vd = Ssa.Fst(vdx, td, tcx) in
-      let vx = Ssa.Snd(vdx, td, tcx) in
-      let project_lets, project_val =
-        project vd (code_context t.t_context) td in
-      Ssa.Direct(entry, arg,
-                 project_lets,
-                 Ssa.Pair(ve, Ssa.Pair(va, Ssa.Pair(project_val, vx))),
-                 s_fragment.eval.entry) in
+      let arg = begin_block entry in
+      let vadx = build_snd arg in
+      let vdx = build_snd vadx in
+      let ve = build_fst arg in
+      let va = build_fst vadx in
+      let vd = build_fst vdx in
+      let vx = build_snd vdx in
+      let vclosure = build_project vd (code_context t.t_context) in
+      let v = build_pair ve (build_pair va (build_pair vclosure vx)) in
+      end_block_jump s_fragment.eval.entry v in
     let case_block =
-      let arg = Ident.fresh "arg" in
-      let te, tq = unPairB access.entry.Ssa.message_type in
-      let td = Cbvtype.code t.t_type in
-      let ve = Ssa.Fst(Ssa.Var(arg), te, tq) in
-      let req = Ssa.Snd(Ssa.Var(arg), te, tq) in
-      let fun_apply = Ident.fresh "apply" in
-      let y_entry = Ident.fresh "res_query" in
-      let x_exit = Ident.fresh "arg_answer" in
-      Ssa.Branch(access.entry, arg, [],
-                 (Basetype.Data.sumid 3,
-                  [pair td (Cbvtype.code xty);
-                   y_access.entry.Ssa.message_type;
-                   x_access.exit.Ssa.message_type
-                  ],
-                  req,
-                  [ fun_apply, Ssa.Pair(ve, Ssa.Var fun_apply), Ssa.label_of_block block_decode;
-                    y_entry, Ssa.Pair(ve, Ssa.Var y_entry), s_fragment.access.entry;
-                    x_exit, Ssa.Pair(ve, Ssa.Var x_exit), x_access.exit
-                  ])) in
+      let arg = begin_block access.entry in
+      let ve = build_fst arg in
+      let vreq = build_snd arg in
+      end_block_case
+        vreq
+        [(fun c -> let v = build_pair ve c in
+                  Ssa.label_of_block block_decode, v);
+         (fun c -> let v = build_pair ve c in
+                   s_fragment.access.entry, v);
+         (fun c -> let v = build_pair ve c in
+                   x_access.exit, v)] in
     let block_in0 =
-      let arg = Ident.fresh "arg" in
-      Ssa.Direct(s_fragment.eval.exit, arg, [],
-                 Ssa.In((Basetype.Data.sumid 3, 0, Ssa.Var arg),
-                        access.exit.Ssa.message_type),
-                 access.exit) in
+      let te, tf = unPairB access.exit.Ssa.message_type in      
+      let arg = begin_block s_fragment.eval.exit in
+      let ve = build_fst arg in
+      let vv = build_snd arg in
+      let vv0 = build_in 0 vv tf in
+      let v = build_pair ve vv0 in
+      end_block_jump access.exit v in
     let block_in1 =
-      let arg = Ident.fresh "arg" in
-      Ssa.Direct(s_fragment.access.exit, arg, [],
-                 Ssa.In((Basetype.Data.sumid 3, 1, Ssa.Var arg),
-                        access.exit.Ssa.message_type),
-                 access.exit) in
+      let te, tf = unPairB access.exit.Ssa.message_type in      
+      let arg = begin_block s_fragment.eval.exit in
+      let ve = build_fst arg in
+      let vy = build_snd arg in
+      let vy1 = build_in 1 vy tf in
+      let v = build_pair ve vy1 in
+      end_block_jump access.exit v in
     let block_in2 =
-      let arg = Ident.fresh "arg" in
-      Ssa.Direct(x_access.entry, arg, [],
-                 Ssa.In((Basetype.Data.sumid 3, 2, Ssa.Var arg),
-                        access.exit.Ssa.message_type),
-                 access.exit) in
+      let te, tf = unPairB access.exit.Ssa.message_type in      
+      let arg = begin_block s_fragment.eval.exit in
+      let ve = build_fst arg in
+      let vy = build_snd arg in
+      let vx2 = build_in 2 vy tf in
+      let v = build_pair ve vx2 in
+      end_block_jump access.exit v in
     { eval = eval;
       access = access;
       blocks = [eval_block; block_decode; case_block; block_in0; block_in1; block_in2]
@@ -382,101 +339,53 @@ let rec translate (t: Cbvterm.t) : fragment =
       let embed_val = build_embed (build_pair vu vdelta) t1.t_ann in
       let v = build_pair embed_val vgamma in
       end_block_jump t1_fragment.eval.entry v in
-
-                     (*
-      let tu = t.t_ann in
-      let tgammadelta = code_context t.t_context in
-      let tdelta = code_context t2.t_context in
-      let tudelta = pair tu tdelta in
-      let arg = Ident.fresh "arg" in
-      let vu = Ssa.Fst(Ssa.Var(arg), tu, tgammadelta) in
-      let vgammadelta = Ssa.Snd(Ssa.Var(arg), tu, tgammadelta) in
-      let vgamma = map_context t.t_context t1.t_context vgammadelta in
-      let vdelta = map_context t.t_context t2.t_context vgammadelta in
-      let embed_lets, embed_val =
-        embed (Ssa.Pair(vu, vdelta)) tudelta t1.t_ann in
-      Ssa.Direct(eval.entry, arg,
-                 embed_lets,
-                 Ssa.Pair(embed_val, vgamma), t1_fragment.eval.entry) in
-                      *)
     let block2 =
-      let tu = t.t_ann in      
-      let teudelta = t1.t_ann in      
-      let tdelta = code_context t2.t_context in
-      let tudelta = pair tu tdelta in
-      let tf = Cbvtype.code t1.t_type in
-      let tuf = pair tu tf in
-      let teuf = t2.t_ann in
-      let arg = Ident.fresh "arg" in
-      let veudelta = Ssa.Fst(Ssa.Var(arg), teudelta, tf) in
-      let vf = Ssa.Snd(Ssa.Var(arg), teudelta, tf) in
-      let project_lets, vudelta = project veudelta tudelta teudelta in
-      let vu = Ssa.Fst(vudelta, tu, tdelta) in
-      let vdelta = Ssa.Snd(vudelta, tu, tdelta) in
-      let vuf = Ssa.Pair(vu, vf) in
-      let embed_lets, veuf = embed vuf tuf teuf in
-      Ssa.Direct(eval.entry, arg,
-                 embed_lets @ project_lets,
-                 Ssa.Pair(veuf, vdelta), t2_fragment.eval.entry) in
+      let arg = begin_block t1_fragment.eval.exit in
+      let ve = build_fst arg in
+      let vf = build_snd arg in
+      let vu_delta = build_project ve (pair t.t_ann (code_context t2.t_context)) in
+      let vu = build_fst vu_delta in
+      let vdelta = build_snd vu_delta in
+      let vu_f = build_pair vu vf in
+      let ve' = build_embed vu_f t2.t_ann in
+      let v = build_pair ve' vdelta in
+      end_block_jump t2_fragment.eval.entry v in
     let block3 =
-      let tu = t.t_ann in      
-      let tf = Cbvtype.code t1.t_type in
-      let teuf = t2.t_ann in      
-      let tx = Cbvtype.code t2.t_type in
-      let tuf = pair tu tf in
-      let arg = Ident.fresh "arg" in
-      let veuf = Ssa.Fst(Ssa.Var(arg), teuf, tx) in
-      let vx = Ssa.Snd(Ssa.Var(arg), teuf, tx) in
-      let project_lets, vuf = project veuf tuf teuf in
-      let vu = Ssa.Fst(vuf, tu, tf) in
-      let vf = Ssa.Snd(vuf, tu, tf) in
-      Ssa.Direct(eval.entry, arg,
-                 project_lets,
-                 Ssa.In(
-                   (Basetype.Data.sumid 3, 0, Ssa.Pair(vu, Ssa.Pair(vf, vx))),
-                   t1_fragment.access.entry.Ssa.message_type),
-                 t1_fragment.access.entry) in
+      let arg = begin_block t2_fragment.eval.exit in
+      let ve = build_fst arg in
+      let vx = build_snd arg in
+      let vu_f = build_project ve (pair t.t_ann (Cbvtype.code t2.t_type)) in
+      let vu = build_fst vu_f in
+      let vf = build_snd vu_f in
+      let vufx = build_pair vu (build_pair vf vx) in
+      let td, tfunacc = unPairB t1_fragment.access.entry.Ssa.message_type in
+      let vfunacc = build_in 0 vufx tfunacc in
+      let vd = build_embed build_unit td in
+      let v = build_pair vd vfunacc in
+      end_block_jump t1_fragment.access.entry v in
     let block5 =
-      let tunit = Basetype.newty Basetype.UnitB in
-      let td = Cbvtype.multiplicity t1.t_type in
-      let embed_lets, veunit = embed Ssa.Unit tunit td in
-      let yminus = Ident.fresh "yminus" in
-      Ssa.Direct(access.entry, yminus,
-                 embed_lets,
-                 Ssa.In(
-                   (Basetype.Data.sumid 3, 1, Ssa.Pair(veunit, Ssa.Var yminus)),
-                   t1_fragment.access.entry.Ssa.message_type),
-                 t1_fragment.access.entry) in
+      let arg = begin_block access.entry in
+      let td, tfunacc = unPairB t1_fragment.access.entry.Ssa.message_type in
+      let vd = build_embed build_unit td in      
+      let v = build_in 1 (build_pair vd arg) tfunacc in
+      end_block_jump t1_fragment.access.entry v in
     let block7 =
-      let tunit = Basetype.newty Basetype.UnitB in
-      let td = Cbvtype.multiplicity t1.t_type in
-      let embed_lets, veunit = embed Ssa.Unit tunit td in
-      let xplus = Ident.fresh "xplus" in
-      Ssa.Direct(t2_fragment.access.exit, xplus,
-                 embed_lets,
-                 Ssa.In(
-                   (Basetype.Data.sumid 3, 2, Ssa.Pair(veunit, Ssa.Var xplus)),
-                   t1_fragment.access.entry.Ssa.message_type),
-                 t1_fragment.access.entry) in
+      let arg = begin_block access.entry in
+      let td, tfunacc = unPairB t1_fragment.access.entry.Ssa.message_type in
+      let vd = build_embed build_unit td in      
+      let v = build_in 2 (build_pair vd arg) tfunacc in
+      end_block_jump t1_fragment.access.entry v in
     let case_block =
-      let df = Ident.fresh "df" in
-      let td = Cbvtype.multiplicity t1.t_type in
-      let tf = t1_fragment.access.exit.Ssa.message_type in
-      let vf = Ssa.Snd(Ssa.Var(df), td, tf) in
-      let res = Ident.fresh "res" in
-      let y_exit = Ident.fresh "y_exit" in
-      let x_entry = Ident.fresh "x_entry" in
-      Ssa.Branch(access.entry, df, [],
-                 (Basetype.Data.sumid 3,
-                  [ eval.exit.Ssa.message_type;
-                    access.exit.Ssa.message_type;
-                    t2_fragment.access.entry.Ssa.message_type
-                  ],
-                  vf,
-                  [ res, Ssa.Var res, eval.exit;
-                    y_exit, Ssa.Var y_exit, access.exit;
-                    x_entry, Ssa.Var x_entry, t1_fragment.access.entry
-                  ])) in
+      let arg = begin_block t1_fragment.access.exit in
+      let vfun = build_snd arg in
+      end_block_case
+        vfun
+        [ (fun c -> let v = build_snd c in
+                    eval.exit, v);
+          (fun c -> let v = build_snd c in
+                    access.exit, v);
+          (fun c -> let v = build_snd c in
+                    t2_fragment.access.entry, v) ] in
     { eval = eval;
       access = access;
       blocks = [block1; block2; block3; block5; block7; case_block]
