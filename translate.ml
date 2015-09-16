@@ -173,10 +173,10 @@ let build_snd (v: value) : value =
 let build_pair (v1: value) (v2: value) : value =
   let vv1, va1 = v1 in
   let vv2, va2 = v2 in
-(*  match vv1, vv2 with
+  match vv1, vv2 with
   | Ssa.Fst(x, _, _), Ssa.Snd(y, _, _) when x = y ->
      x, pair va1 va2
-  | _ ->*)
+  | _ ->
      Ssa.Pair(vv1, vv2), pair va1 va2
            
 let build_in (i: int) (v: value) (data: Basetype.t) : value =
@@ -198,7 +198,7 @@ let build_select (v: value) (i: int) : value =
 let build_box (v: value) : value =
   let _, va = v in
   let vbox = build_primop (Intast.Calloc(va)) build_unit in
-  ignore (build_primop (Intast.Cstore(va)) v);
+  ignore (build_primop (Intast.Cstore(va)) (build_pair vbox v));
   vbox
            
 let build_unbox (v: value) : value =
@@ -374,7 +374,8 @@ let access_of_cbvtype (l: Ident.t) (a: Cbvtype.t) : int_interface =
         Ssa.message_type = access_entry_type a };
     exit =
       { Ssa.name = iexit;
-        Ssa.message_type = access_exit_type a }}
+        Ssa.message_type = access_exit_type a }
+  }
     
 let rec code_context (gamma : Cbvtype.t Typing.context) : Basetype.t =
   match gamma with
@@ -452,18 +453,18 @@ let build_context_map
   let rec values gamma code_gamma =
     match gamma with
     | [] -> []
-    | (x, a) :: delta ->
+    | (x, a) :: gamma' ->
        let code_x = build_snd code_gamma in
-       let code_delta = build_fst code_gamma in
-       (x, code_x) :: (values delta code_delta) in
+       let code_gamma' = build_fst code_gamma in
+       (x, code_x) :: (values gamma' code_gamma') in
   let gamma_values = values gamma code_gamma in
   let delta_values =
     List.map
       ~f:(fun (x, _) -> (x, List.Assoc.find_exn gamma_values x))
       delta in
-  let v = List.fold delta_values
-                        ~init:build_unit
-                        ~f:(fun v (x, vx) -> build_pair v vx) in
+  let v = List.fold_right delta_values
+                          ~init:build_unit
+                          ~f:(fun (x, vx) v -> build_pair v vx) in
   v
 
 let rec translate (t: Cbvterm.t) : fragment =
@@ -579,8 +580,8 @@ let rec translate (t: Cbvterm.t) : fragment =
          entry = fresh_label s_fragment.eval.entry.Ssa.message_type;
          exit  = fresh_label s_fragment.eval.exit.Ssa.message_type } in
      let access = {
-         entry = fresh_label s_fragment.access.entry.Ssa.message_type;
-         exit  = fresh_label s_fragment.access.exit.Ssa.message_type } in
+         entry = fresh_label (pair (Cbvtype.multiplicity t.t_type) voidB);
+         exit  = fresh_label (pair (Cbvtype.multiplicity t.t_type) voidB) } in
      let eval_block =
        let arg = begin_block eval.entry in
        end_block_jump s_fragment.eval.entry arg in
@@ -622,7 +623,7 @@ let rec translate (t: Cbvterm.t) : fragment =
     let block_decode =
       let te = Cbvtype.multiplicity t.t_type in
       let ta = s.t_ann in
-      let td = code_context t.t_context in
+      let td = Cbvtype.code t.t_type in
       let tcx = Cbvtype.code xty in
       let entry = fresh_label (pair te (pair ta (pair td tcx))) in
       let arg = begin_block entry in
@@ -678,20 +679,21 @@ let rec translate (t: Cbvterm.t) : fragment =
       let te = Cbvtype.multiplicity t.t_type in
       let yty_outer = List.Assoc.find_exn t.t_context y in
       let yty_inner = List.Assoc.find_exn s.t_context y in
+      (* TODO: Namen!!!*)
       let y_outer_access = access_of_cbvtype y yty_outer in
       let y_inner_access = access_of_cbvtype y yty_inner in
       let tstack_outer, _ = unPairB y_outer_access.entry.Ssa.message_type in
       let tstack_inner, _ = unPairB y_inner_access.entry.Ssa.message_type in
-      let entry_block =
-        let arg = begin_block y_outer_access.entry in
+      let exit_block =
+        let arg = begin_block y_outer_access.exit in
         let vstack_outer = build_fst arg in
         let vm = build_snd arg in
         let vstack_pair = build_project vstack_outer (pair te tstack_inner) in
         let ve = build_fst vstack_pair in
         let vstack_inner = build_snd vstack_pair in
         let v = build_pair ve (build_pair vstack_inner vm) in
-        end_block_jump y_inner_access.entry v in
-      let exit_block =
+        end_block_jump y_inner_access.exit v in
+      let entry_block =
         (* inner program gets lifted! *)
         let lifted_entry = {
             y_inner_access.entry with
@@ -704,7 +706,7 @@ let rec translate (t: Cbvterm.t) : fragment =
         let vm = build_snd vpair in 
         let vstack_outer = build_embed (build_pair ve vstack_inner) tstack_outer in
         let v = build_pair vstack_outer vm in
-        end_block_jump y_outer_access.exit v in
+        end_block_jump y_outer_access.entry v in
       [entry_block; exit_block] in
     let context_blocks =
       t.t_context
