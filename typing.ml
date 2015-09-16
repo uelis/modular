@@ -213,7 +213,7 @@ let rec pt (phi: STtype.t context) (t: Ast.t)
      { t_desc = Const(c, [s1]);
        t_ann = s1.t_ann;
        t_type = STtype.newty STSig.Nat;
-       t_context = [];
+       t_context = s1.t_context;
        t_loc = t.Ast.loc},
      sinstances
   | Ast.Const(Ast.Cintadd as c, [s; t]) ->
@@ -518,6 +518,7 @@ let infer_annotations (t: Cbvterm.t) : unit =
     | Const(Ast.Cintprint, [s1]) ->
        let cs1 = constraints s1 in
        unify_contexts t.t_context s1.t_context;
+       Cbvtype.unify_exn t.t_type s1.t_type;
        Basetype.unify_exn t.t_ann s1.t_ann;
        cs1
     | Const _ ->

@@ -53,7 +53,7 @@ include Cbvtype
 
 let code (a : Cbvtype.t) : Basetype.t =
   match Cbvtype.case a with
-  | Cbvtype.Var -> Basetype.newty Basetype.UnitB
+  | Cbvtype.Var -> failwith "code"
   | Cbvtype.Sgn s ->
      match s with
      | Nat _ -> Basetype.newty Basetype.IntB
@@ -61,7 +61,7 @@ let code (a : Cbvtype.t) : Basetype.t =
 
 let multiplicity (a : Cbvtype.t) : Basetype.t =
   match Cbvtype.case a with
-  | Cbvtype.Var -> Basetype.newvar()
+  | Cbvtype.Var -> failwith "multiplicity"
   | Cbvtype.Sgn s ->
      match s with
      | Nat(c) -> c
