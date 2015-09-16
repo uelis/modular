@@ -316,6 +316,13 @@ let end_block_case (v: value) (targets: (value -> Ssa.label * value) list) : Ssa
      Ssa.Branch(s.cur_label, s.cur_arg, s.cur_lets,
                 (id, params, vv, branches))
                
+let end_block_return (v: value) : Ssa.block =
+  let vv, va = v in
+  match !builder_state with
+  | None -> assert false
+  | Some s ->
+    builder_state := None;
+    Ssa.Return(s.cur_label, s.cur_arg, s.cur_lets, vv, va)
 
 (** Functions for working with cbv types *)
            
@@ -524,7 +531,8 @@ let rec translate (t: Cbvterm.t) : fragment =
              end_block_jump x_access.entry v) in
      { eval = s_fragment.eval;
        access = s_fragment.access;
-       blocks = proj_block :: case_block :: in_blocks @ s_fragment.blocks}
+       blocks = proj_block :: case_block :: in_blocks @ s_fragment.blocks
+     }
   | Const(Ast.Cintconst i, []) ->
     let eval = {
       entry = fresh_label (pair t.t_ann unitB);
@@ -617,7 +625,7 @@ let rec translate (t: Cbvterm.t) : fragment =
          (fun c -> let v = build_pair ve c in
                    x_access.exit, v)] in
     let block_in0 =
-      let te, tf = unPairB access.exit.Ssa.message_type in      
+      let te, tf = unPairB access.exit.Ssa.message_type in
       let arg = begin_block s_fragment.eval.exit in
       let ve = build_fst arg in
       let vv = build_snd arg in
@@ -626,7 +634,7 @@ let rec translate (t: Cbvterm.t) : fragment =
       end_block_jump access.exit v in
     let block_in1 =
       let te, tf = unPairB access.exit.Ssa.message_type in      
-      let arg = begin_block s_fragment.eval.exit in
+      let arg = begin_block s_fragment.access.exit in
       let ve = build_fst arg in
       let vy = build_snd arg in
       let vy1 = build_in 1 vy tf in
@@ -634,15 +642,41 @@ let rec translate (t: Cbvterm.t) : fragment =
       end_block_jump access.exit v in
     let block_in2 =
       let te, tf = unPairB access.exit.Ssa.message_type in      
-      let arg = begin_block s_fragment.eval.exit in
+      let arg = begin_block x_access.entry in
       let ve = build_fst arg in
       let vy = build_snd arg in
       let vx2 = build_in 2 vy tf in
       let v = build_pair ve vx2 in
       end_block_jump access.exit v in
+    let convert_var y =
+      let yty_outer = List.Assoc.find_exn t.t_context y in
+      let yty_inner = List.Assoc.find_exn s.t_context y in
+      let y_outer_access = access_of_cbvtype y yty_outer in
+      let y_inner_access = access_of_cbvtype y yty_inner in
+      let tstack_outer, _ = unPairB y_outer_access.entry.Ssa.message_type in
+      let tstack_inner, _ = unPairB y_inner_access.entry.Ssa.message_type in
+      let entry_block =
+        let arg = begin_block y_outer_access.entry in
+        let vstack_outer = build_fst arg in
+        let vm = build_snd arg in
+        let vstack_inner = build_project vstack_outer tstack_inner in
+        let v = build_pair vstack_inner vm in
+        end_block_jump y_inner_access.entry v in
+      let exit_block =
+        let arg = begin_block y_inner_access.exit in
+        let vstack_inner = build_fst arg in
+        let vm = build_snd arg in
+        let vstack_outer = build_embed vstack_inner tstack_outer in
+        let v = build_pair vstack_outer vm in
+        end_block_jump y_outer_access.exit v in
+      [entry_block; exit_block] in
+    let context_blocks =
+      t.t_context
+      |> List.concat_map ~f:(fun (y, _) -> convert_var y) in
     { eval = eval;
       access = access;
       blocks = [eval_block; block_decode; case_block; block_in0; block_in1; block_in2]
+               @ context_blocks
                @ s_fragment.blocks
     }
   (* TODO: embed/project blocks for context *)
@@ -716,4 +750,37 @@ let rec translate (t: Cbvterm.t) : fragment =
   | Ifz(tc, t1, t2) -> failwith "TODO"
 
 let print_fragment f =
-  List.iter f.blocks ~f:(fun block -> Ssa.fprint_block stdout block)
+  List.iter f.blocks ~f:(fun block -> Ssa.fprint_block stdout block);
+  Printf.printf "\n\n"
+
+let to_ssa t =
+  let f = translate t in
+  let ret_ty = f.eval.exit.Ssa.message_type in
+  let return_block =
+    let arg = begin_block f.eval.exit in
+    end_block_return arg in
+  let blocks = Int.Table.create () in
+  List.iter (return_block :: f.blocks)
+    ~f:(fun b ->
+      let i = (Ssa.label_of_block b).Ssa.name in
+      Int.Table.replace blocks ~key:i ~data:b
+    );
+  let visited = Int.Table.create () in
+  let rev_sorted_blocks = ref [] in
+  let rec sort_blocks i =
+    if not (Int.Table.mem visited i) then
+      begin
+        Int.Table.replace visited ~key:i ~data:();
+
+        let b = Int.Table.find_exn blocks i in
+        (*Ssa.fprint_block stdout b; *)
+        rev_sorted_blocks := b :: !rev_sorted_blocks;
+        List.iter (Ssa.targets_of_block b)
+          ~f:(fun l -> sort_blocks l.Ssa.name)
+      end in
+  sort_blocks f.eval.entry.Ssa.name;
+  Ssa.make
+    ~func_name:"main"
+    ~entry_label:f.eval.entry
+    ~blocks: (List.rev !rev_sorted_blocks)
+    ~return_type: ret_ty

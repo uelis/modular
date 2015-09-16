@@ -68,7 +68,16 @@ let compile (d: Decl.t) : unit =
         (Cbvtype.to_string ~concise:(not !Opts.print_type_details)
            t.Cbvterm.t_type);
       let f = Translate.translate t in
-      Translate.print_fragment f
+      Translate.print_fragment f;
+      let ssa = Translate.to_ssa t in
+      Intlib.Ssa.fprint_func stdout ssa;
+      let ssa_traced = Intlib.Trace.trace ssa in
+      let ssa_shortcut = Intlib.Trace.shortcut_jumps ssa_traced in
+      if !Opts.verbose then
+        Intlib.Ssa.fprint_func stdout ssa_shortcut;
+      let llvm_module = Intlib.Llvmcodegen.llvm_compile ssa_shortcut in
+      let target = Printf.sprintf "%s.bc" f_name in
+      ignore (Llvm_bitwriter.write_bitcode_file llvm_module target)
       (*
       if Ident.to_string f = "main" then
         begin
