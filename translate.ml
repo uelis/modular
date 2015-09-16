@@ -501,6 +501,22 @@ let rec translate (t: Cbvterm.t) : fragment =
      let x_access = access_of_cbvtype x xty in
      Printf.printf "X+: %s\n"
                    (Intlib.Printing.string_of_basetype x_access.exit.Ssa.message_type);
+     let eval = {
+         entry = fresh_label (pair t.t_ann (code_context t.t_context));
+         exit = s_fragment.eval.exit
+       } in
+     let eval_block =
+       let arg = begin_block eval.entry in
+       let vstack = build_fst arg in
+       let vgamma = build_snd arg in
+       let vdelta = build_context_map
+                      t.t_context
+                      (List.map s.t_context
+                                ~f:(fun (y, a) ->
+                                    if List.mem xs y then (x, a) else (y, a)))
+                      vgamma in
+       let v = build_pair vstack vdelta in
+       end_block_jump s_fragment.eval.entry v in
      let case_block =
        let _, tx = unPairB x_access.exit.Ssa.message_type in
        let arg = begin_block (fresh_label (pair tsum tx)) in
@@ -533,9 +549,9 @@ let rec translate (t: Cbvterm.t) : fragment =
              let vd = build_embed vin_c td in
              let v = build_pair vd vx in
              end_block_jump x_access.entry v) in
-     { eval = s_fragment.eval;
+     { eval = eval;
        access = s_fragment.access;
-       blocks = proj_block :: case_block :: in_blocks @ s_fragment.blocks
+       blocks = eval_block :: proj_block :: case_block :: in_blocks @ s_fragment.blocks
      }
   | Const(Ast.Cintconst i, []) ->
     let eval = {
@@ -617,7 +633,7 @@ let rec translate (t: Cbvterm.t) : fragment =
       let vd = build_fst vdx in
       let vx = build_snd vdx in
       let vclosure = build_project vd (code_context t.t_context) in
-      (* TODO: Kontexte angleichen *)
+      (* TODO: Dokumentieren! *)
       let v = build_pair ve (build_pair va (build_pair vclosure vx)) in
       end_block_jump s_fragment.eval.entry v in
     let case_block =
