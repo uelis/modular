@@ -647,8 +647,8 @@ let infer_annotations (t: Cbvterm.t) : unit =
        let n = List.length ms in
        let sum =
          match ms with
-         | [] -> Basetype.newty Basetype.UnitB
-         (*         | [m'] -> m' *)
+(*         | [] -> Basetype.newty Basetype.UnitB
+           | [m'] -> m' *)
          | _ -> 
             Basetype.newty
               (Basetype.DataB(Basetype.Data.sumid n, ms)) in

@@ -17,8 +17,14 @@ type fragment = {
     blocks: Ssa.block list;
   }
     
+let unitB : Basetype.t =
+  Basetype.newty (Basetype.UnitB)
+                 
 let voidB : Basetype.t =
   Basetype.newty (Basetype.DataB(Basetype.Data.sumid 0, []))
+                 
+let intB : Basetype.t =
+  Basetype.newty (Basetype.IntB)
                   
 let pair (a1: Basetype.t) (a2: Basetype.t): Basetype.t =
   Basetype.newty (Basetype.PairB(a1, a2))
@@ -76,7 +82,10 @@ let begin_block (l: Ssa.label) : value =
      assert false
             
 let build_unit : value =
-  Ssa.Unit, Basetype.newty Basetype.UnitB
+  Ssa.Unit, unitB
+
+let build_intconst (i: int) =
+  Ssa.IntConst(i), intB
                            
 let build_primop (c: Intlib.Ast.op_const) (v: value) : value =
   let vv, va = v in
@@ -312,7 +321,7 @@ let end_block_case (v: value) (targets: (value -> Ssa.label * value) list) : Ssa
            
 let rec access_entry_type (a: Cbvtype.t): Basetype.t =
   match Cbvtype.case a with
-  | Cbvtype.Var -> pair voidB voidB
+  | Cbvtype.Var -> failwith "var"
   | Cbvtype.Sgn s ->
      match s with
       | Cbvtype.Nat(m) -> pair m voidB
@@ -326,7 +335,7 @@ let rec access_entry_type (a: Cbvtype.t): Basetype.t =
         pair m sum
 and access_exit_type (a: Cbvtype.t): Basetype.t =
   match Cbvtype.case a with
-  | Cbvtype.Var -> pair voidB voidB
+  | Cbvtype.Var -> failwith "var"
   | Cbvtype.Sgn s ->
      match s with
      | Cbvtype.Nat(m) -> pair m voidB
@@ -516,6 +525,53 @@ let rec translate (t: Cbvterm.t) : fragment =
      { eval = s_fragment.eval;
        access = s_fragment.access;
        blocks = proj_block :: case_block :: in_blocks @ s_fragment.blocks}
+  | Const(Ast.Cintconst i, []) ->
+    let eval = {
+      entry = fresh_label (pair t.t_ann unitB);
+      exit  = fresh_label (pair t.t_ann intB) } in
+    let access = {
+      entry = fresh_label (pair (Cbvtype.multiplicity t.t_type) voidB);
+      exit  = fresh_label (pair (Cbvtype.multiplicity t.t_type) voidB) } in
+    let eval_block =
+      let arg = begin_block eval.entry in
+      let vstack = build_fst arg in
+      let vi = build_intconst i in
+      let v = build_pair vstack vi in
+      end_block_jump eval.exit v in
+    let access_block =
+      let arg = begin_block access.entry in
+      end_block_jump access.exit arg in
+    { eval = eval;
+      access = access;
+      blocks = [eval_block; access_block]
+    }
+  | Const(Ast.Cintprint, [s]) ->
+     let s_fragment = translate s in
+     let eval = {
+         entry = fresh_label (pair t.t_ann unitB);
+         exit  = fresh_label (pair t.t_ann intB) } in
+     let access = {
+         entry = fresh_label (pair (Cbvtype.multiplicity t.t_type) voidB);
+         exit  = fresh_label (pair (Cbvtype.multiplicity t.t_type) voidB) } in
+     let eval_block =
+       let arg = begin_block eval.entry in
+       end_block_jump s_fragment.eval.entry arg in
+     let print_block =
+       let arg = begin_block s_fragment.eval.exit in
+       let vi = build_snd arg in
+       ignore (build_primop (Intast.Cintprint) vi);
+       end_block_jump eval.exit arg in
+    let access_block1 =
+       let arg = begin_block access.entry in
+       end_block_jump s_fragment.access.entry arg in
+    let access_block2 =
+       let arg = begin_block s_fragment.access.exit in
+       end_block_jump access.exit arg in
+    { eval = eval;
+      access = access;
+      blocks = [eval_block; print_block; access_block1; access_block2]
+               @ s_fragment.blocks
+    }
   | Const _ -> failwith "TODO"
   | Fun((x, xty), s) ->
     let s_fragment =
@@ -587,6 +643,7 @@ let rec translate (t: Cbvterm.t) : fragment =
     { eval = eval;
       access = access;
       blocks = [eval_block; block_decode; case_block; block_in0; block_in1; block_in2]
+               @ s_fragment.blocks
     }
   (* TODO: embed/project blocks for context *)
   | Fix((f, x, alpha), s) -> failwith "TODO"
@@ -653,6 +710,8 @@ let rec translate (t: Cbvterm.t) : fragment =
     { eval = eval;
       access = access;
       blocks = [block1; block2; block3; block5; block7; case_block]
+               @ t1_fragment.blocks
+               @ t2_fragment.blocks
     }
   | Ifz(tc, t1, t2) -> failwith "TODO"
 
