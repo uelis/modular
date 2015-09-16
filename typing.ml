@@ -164,8 +164,6 @@ let freshen_multiplicity (a : Cbvtype.t) : Cbvtype.t =
      | Cbvtype.Nat _ -> Cbvtype.newty (Cbvtype.Nat(m))
      | Cbvtype.Fun(_, s) -> Cbvtype.newty (Cbvtype.Fun(m, s))
                                           
-(* BUG: nicht alle Typannotate sind verschieden.
- *)
 let rec pt (phi: STtype.t context) (t: Ast.t)
   : STtype.t Cbvterm.term * (Ident.t * Ident.t) list =
   let open Cbvterm in
@@ -418,7 +416,7 @@ let multiplicities_of_context  (gamma: Cbvtype.t context) : Basetype.t list =
 
 let rec fresh_annotations_type (a: STtype.t) : Cbvtype.t =
   match STtype.case a with
-  | STtype.Var -> Cbvtype.newvar()
+  | STtype.Var -> natty()
   | STtype.Sgn s ->
      match s with
      | STSig.Nat -> natty()
@@ -567,7 +565,7 @@ let infer_annotations (t: Cbvterm.t) : unit =
                  reason =
                    Printf.sprintf "fun: context (%s)" (Ident.to_string v)
                }) in
-       [ { lower = code_of_context s.t_context;
+       [ { lower = code_of_context t.t_context;
            upper = d;
            reason = "fun: closure"
          }
@@ -650,7 +648,7 @@ let infer_annotations (t: Cbvterm.t) : unit =
        let sum =
          match ms with
          | [] -> Basetype.newty Basetype.UnitB
-         | [m'] -> m'
+         (*         | [m'] -> m' *)
          | _ -> 
             Basetype.newty
               (Basetype.DataB(Basetype.Data.sumid n, ms)) in

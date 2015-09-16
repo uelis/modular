@@ -4,6 +4,7 @@ open Cbvterm
 module Ident = Intlib.Ident
 module Basetype = Intlib.Basetype
 module Ssa = Intlib.Ssa               
+module Intast = Intlib.Ast
                
 type int_interface = {
   entry: Ssa.label;
@@ -58,6 +59,12 @@ type builder_state_type = {
 let builder_state =
   ref (None : builder_state_type option)
 
+let emit (l : Ssa.let_binding) : unit =
+  match !builder_state with
+  | None -> failwith "emit"
+  | Some s ->
+     builder_state := Some { s with cur_lets = l :: s.cur_lets }
+
 let begin_block (l: Ssa.label) : value =
   match !builder_state with
   | None ->
@@ -70,6 +77,79 @@ let begin_block (l: Ssa.label) : value =
             
 let build_unit : value =
   Ssa.Unit, Basetype.newty Basetype.UnitB
+                           
+let build_primop (c: Intlib.Ast.op_const) (v: value) : value =
+  let vv, va = v in
+  let prim = Ident.fresh "prim" in
+  let vb =
+    let open Basetype in
+    let equals_exn a b =
+      if equals a b then () else
+        failwith "internal translate.ml: type mismatch" in
+    match c with
+    | Intlib.Ast.Cprint(_) ->
+       newty UnitB
+    | Intlib.Ast.Cintadd
+    | Intlib.Ast.Cintsub
+    | Intlib.Ast.Cintmul
+    | Intlib.Ast.Cintdiv
+    | Intlib.Ast.Cintshl
+    | Intlib.Ast.Cintshr
+    | Intlib.Ast.Cintsar
+    | Intlib.Ast.Cintand
+    | Intlib.Ast.Cintor
+    | Intlib.Ast.Cintxor ->
+       let intty = newty IntB in
+       equals_exn va (newty (PairB(intty, intty)));
+       intty
+    | Intlib.Ast.Cinteq
+    | Intlib.Ast.Cintlt
+    | Intlib.Ast.Cintslt ->
+       let intty = newty IntB in
+       let boolty = newty (DataB(Data.boolid, [])) in
+       equals_exn va (newty (PairB(intty, intty)));
+       boolty
+    | Intlib.Ast.Cintprint ->
+       let intty = newty IntB in
+       equals_exn va intty;
+       newty UnitB
+    | Intlib.Ast.Calloc(b) ->
+       equals_exn va (newty UnitB);
+       newty (BoxB b)
+    | Intlib.Ast.Cfree(b) ->
+       equals_exn va (newty (BoxB b));
+       newty UnitB
+    | Intlib.Ast.Cload(b) ->
+       equals_exn va (newty (BoxB b));
+       b
+    | Intlib.Ast.Cstore(b) ->
+       equals_exn va (newty (PairB(newty (BoxB b), b)));
+       (newty UnitB)
+    | Intlib.Ast.Carrayalloc(b) ->
+       equals_exn va (newty IntB);
+       (newty (ArrayB b))
+    | Intlib.Ast.Carrayfree(b) ->
+       equals_exn va (newty (ArrayB b));
+       (newty UnitB)
+    | Intlib.Ast.Carrayget(b) ->
+       equals_exn va (newty (PairB(newty (ArrayB b), newty IntB)));
+       (newty (BoxB(b)))
+    | Intlib.Ast.Cpush(b) ->
+       equals_exn va b;
+       (newty UnitB)
+    | Intlib.Ast.Cpop(b) ->
+       equals_exn va (newty UnitB);
+       b
+    | Intlib.Ast.Ccall(_, b1, b2) ->
+       equals_exn va b1;
+       b2
+    | Intlib.Ast.Cencode b ->
+       equals_exn b va;
+       b
+    | Intlib.Ast.Cdecode b ->
+       b in
+  emit (Ssa.Let((prim, vb), Ssa.Const(c, vv)));
+  Ssa.Var prim, vb
 
 let build_fst (v: value) : value =
   let vv, va = v in
@@ -84,18 +164,118 @@ let build_snd (v: value) : value =
 let build_pair (v1: value) (v2: value) : value =
   let vv1, va1 = v1 in
   let vv2, va2 = v2 in
-  Ssa.Pair(vv1, vv2), pair va1 va2
+  match vv1, vv2 with
+  | Ssa.Fst(x, _, _), Ssa.Snd(y, _, _) when x = y ->
+     x, pair va1 va2
+  | _ ->
+     Ssa.Pair(vv1, vv2), pair va1 va2
            
 let build_in (i: int) (v: value) (data: Basetype.t) : value =
   let vv, va = v in
   let id, _ = unDataB data in
   Ssa.In((id, i, vv), data), data
+                               
+let build_select (v: value) (i: int) : value =
+  let vv, va = v in
+  let id, params = unDataB va in
+  let constructor_types = Basetype.Data.constructor_types id params in
+  let b =
+    match List.nth constructor_types i with
+    | Some b -> b
+    | None ->
+       failwith "internal translate.ml: unknown constructor" in
+  Ssa.Select(vv, (id, params), i), b
+
+let build_box (v: value) : value =
+  let _, va = v in
+  let vbox = build_primop (Intast.Calloc(va)) build_unit in
+  ignore (build_primop (Intast.Cstore(va)) v);
+  vbox
+           
+let build_unbox (v: value) : value =
+  let _, va = v in
+  let b = 
+    match Basetype.case va with
+    | Basetype.Sgn (Basetype.BoxB(b)) -> b
+    | _ -> failwith "build_unbox" in
+  let w = build_primop (Intast.Cload(b)) v in
+  ignore (build_primop (Intast.Cfree(b)) v);
+  w
            
 let build_project (v: value) (a: Basetype.t) : value =
-  failwith "TODO"
-           
+  let vv, va = v in
+  Printf.printf "project: %s <= %s\n"
+                 (Intlib.Printing.string_of_basetype a)
+                 (Intlib.Printing.string_of_basetype va);
+  let select id params x =
+    let cs = Basetype.Data.constructor_types id params in
+    let rec sel cs n =
+      match cs with
+      | [] ->
+         failwith "project_sel"
+      | c1 :: rest ->
+         if Basetype.equals a c1 then
+           build_select x n
+         else
+           sel rest (n + 1) in
+    sel cs 0 in
+  if Basetype.equals a va then
+    v
+  else
+    match Basetype.case va with
+    | Basetype.Sgn (Basetype.BoxB(c)) ->
+       begin
+         match Basetype.case c with
+         | Basetype.Sgn (Basetype.DataB(id, params)) ->
+            let x = build_unbox v in
+            select id params x 
+         | _ -> failwith "project2"
+       end
+    | Basetype.Sgn (Basetype.DataB(id, params)) ->
+       select id params v 
+    | _ -> failwith "project3"
+                    
 let build_embed (v: value) (a: Basetype.t) : value =
-  failwith "TODO"
+  let vv, va = v in
+  Printf.printf "embed: %s <= %s\n"
+                 (Intlib.Printing.string_of_basetype va)
+                 (Intlib.Printing.string_of_basetype a);
+  if Basetype.equals va a then
+    v
+  else
+    match Basetype.case a with
+    | Basetype.Sgn (Basetype.BoxB(c)) ->
+      begin
+        match Basetype.case c with
+        | Basetype.Sgn (Basetype.DataB(id, l)) ->
+          let cs = Basetype.Data.constructor_types id l in
+          let rec inject l n =
+            match l with
+            | [] -> failwith "not_leq"
+            | b1 :: bs ->
+               if Basetype.equals va b1 then
+                 let inv = build_in n v c in
+                 let boxinv = build_box inv in
+                 boxinv
+              else
+                inject bs (n + 1) in
+          inject cs 0
+        | _ -> failwith "not_leq"
+      end
+    | Basetype.Sgn (Basetype.DataB(id, l)) ->
+      let cs = Basetype.Data.constructor_types id l in
+      let rec inject l n =
+        match l with
+        | [] -> failwith "not_leq"
+        | b1 :: bs ->
+          if Basetype.equals va b1 then
+            let inv = build_in n v a in
+            inv
+          else
+            inject bs (n + 1) in
+      inject cs 0
+    | _ ->
+      failwith "not_leq"
 
 (* TODO: add assertions to check types *)
 let end_block_jump (dst: Ssa.label) (v: value) : Ssa.block =
@@ -299,8 +479,10 @@ let rec translate (t: Cbvterm.t) : fragment =
      let sumid = Basetype.Data.sumid (List.length summands) in
      let tsum = Basetype.newty (Basetype.DataB(sumid, summands)) in
      let x_access = access_of_cbvtype x xty in
+     Printf.printf "X+: %s\n"
+                   (Intlib.Printing.string_of_basetype x_access.exit.Ssa.message_type);
      let case_block =
-       let _, tx = unPairB x_access.entry.Ssa.message_type in
+       let _, tx = unPairB x_access.exit.Ssa.message_type in
        let arg = begin_block (fresh_label (pair tsum tx)) in
        let vcopy = build_fst arg in
        let vxexit = build_snd arg in       
@@ -311,7 +493,7 @@ let rec translate (t: Cbvterm.t) : fragment =
                   y_access.exit, v in
        end_block_case vcopy (List.map xs ~f:target) in
      let proj_block =
-       let arg = begin_block x_access.entry in
+       let arg = begin_block x_access.exit in
        let vd = build_fst arg in
        let vx = build_snd arg in
        let vsum = build_project vd tsum in
@@ -323,14 +505,14 @@ let rec translate (t: Cbvterm.t) : fragment =
          ~f:(fun i y ->
              let yty = List.Assoc.find_exn s.t_context y in
              let y_access = access_of_cbvtype y yty in
-             let arg = begin_block y_access.exit in
+             let arg = begin_block y_access.entry in
              let vc = build_fst arg in
              let vx = build_snd arg in
              let vin_c = build_in i vc tsum in
-             let td, _ = unPairB x_access.exit.Ssa.message_type in
+             let td, _ = unPairB x_access.entry.Ssa.message_type in
              let vd = build_embed vin_c td in
              let v = build_pair vd vx in
-             end_block_jump x_access.exit v) in
+             end_block_jump x_access.entry v) in
      { eval = s_fragment.eval;
        access = s_fragment.access;
        blocks = proj_block :: case_block :: in_blocks @ s_fragment.blocks}
@@ -353,7 +535,7 @@ let rec translate (t: Cbvterm.t) : fragment =
     let block_decode =
       let te = Cbvtype.multiplicity t.t_type in
       let ta = s.t_ann in
-      let td = code_context s.t_context in
+      let td = code_context t.t_context in
       let tcx = Cbvtype.code xty in
       let entry = fresh_label (pair te (pair ta (pair td tcx))) in
       let arg = begin_block entry in
