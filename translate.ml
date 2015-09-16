@@ -621,7 +621,7 @@ let rec translate (t: Cbvterm.t) : fragment =
       let arg = begin_block t2_fragment.eval.exit in
       let ve = build_fst arg in
       let vx = build_snd arg in
-      let vu_f = build_project ve (pair t.t_ann (Cbvtype.code t2.t_type)) in
+      let vu_f = build_project ve (pair t.t_ann (Cbvtype.code t1.t_type)) in
       let vu = build_fst vu_f in
       let vf = build_snd vu_f in
       let vufx = build_pair vu (build_pair vf vx) in
@@ -647,12 +647,9 @@ let rec translate (t: Cbvterm.t) : fragment =
       let vfun = build_snd arg in
       end_block_case
         vfun
-        [ (fun c -> let v = build_snd c in
-                    eval.exit, v);
-          (fun c -> let v = build_snd c in
-                    access.exit, v);
-          (fun c -> let v = build_snd c in
-                    t2_fragment.access.entry, v) ] in
+        [ (fun c -> eval.exit, c);
+          (fun c -> access.exit, c);
+          (fun c -> t2_fragment.access.entry, c) ] in
     { eval = eval;
       access = access;
       blocks = [block1; block2; block3; block5; block7; case_block]
