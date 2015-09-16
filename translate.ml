@@ -348,8 +348,8 @@ and access_exit_type (a: Cbvtype.t): Basetype.t =
      | Cbvtype.Nat(m) -> pair m voidB
      | Cbvtype.Fun(m, (x, s, _, y)) ->
         let yc = Cbvtype.code y in
-        let yexit = access_entry_type y in
-        let xentry = access_exit_type x in
+        let yexit = access_exit_type y in
+        let xentry = access_entry_type x in
         let sumid = Basetype.Data.sumid 3 in
         let params = [pair s yc; yexit; xentry] in
         let sum = Basetype.newty (Basetype.DataB(sumid, params)) in
@@ -555,7 +555,7 @@ let rec translate (t: Cbvterm.t) : fragment =
      }
   | Const(Ast.Cintconst i, []) ->
     let eval = {
-      entry = fresh_label (pair t.t_ann unitB);
+      entry = fresh_label (pair t.t_ann (code_context t.t_context));
       exit  = fresh_label (pair t.t_ann intB) } in
     let access = {
       entry = fresh_label (pair (Cbvtype.multiplicity t.t_type) voidB);
@@ -632,9 +632,11 @@ let rec translate (t: Cbvterm.t) : fragment =
       let va = build_fst vadx in
       let vd = build_fst vdx in
       let vx = build_snd vdx in
-      let vclosure = build_project vd (code_context t.t_context) in
+      let vgamma = build_project vd (code_context t.t_context) in
+      let vgammax = build_pair vgamma vx in
+      let vdelta = build_context_map ((x, xty)::t.t_context) s.t_context vgammax in
       (* TODO: Dokumentieren! *)
-      let v = build_pair ve (build_pair va (build_pair vclosure vx)) in
+      let v = build_pair ve (build_pair va vdelta) in
       end_block_jump s_fragment.eval.entry v in
     let case_block =
       let arg = begin_block access.entry in
@@ -713,7 +715,6 @@ let rec translate (t: Cbvterm.t) : fragment =
                @ context_blocks
                @ s_fragment.blocks
     }
-  (* TODO: embed/project blocks for context *)
   | Fix((f, x, alpha), s) -> failwith "TODO"
   | App(t1, t2) ->
     let t1_fragment = translate t1 in

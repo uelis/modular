@@ -248,6 +248,7 @@ let rec pt (phi: STtype.t context) (t: Ast.t)
      let t1, tinstances = contract_instances x (pt ((x, alpha)::phi) t) in
      let instances = List.filter tinstances ~f:(fun (y, _) -> y <> x) in
      let gamma = List.filter t1.t_context ~f:(fun (y, _) -> y <> x) in
+     eq_constraint t ~expected:alpha ~actual:(List.Assoc.find_exn t1.t_context x); (*nicht automatisch!*)
      { t_desc = Fun((x, alpha), t1);
        t_ann = Basetype.newvar ();
        t_type = STtype.newty (STSig.Fun(alpha, t1.t_type));
