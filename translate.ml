@@ -592,6 +592,8 @@ let rec translate (t: Cbvterm.t) : fragment =
       blocks = [eval_block; access_block];
       context = []
     }
+  | Const(Ast.Cintconst i, _) ->
+     assert false
   | Const(Ast.Cintprint, [s]) ->
      Printf.printf "Print %s\n%!"
                    (Cbvtype.to_string ~concise:false t.t_type);
@@ -620,6 +622,8 @@ let rec translate (t: Cbvterm.t) : fragment =
                @ s_fragment.blocks;
       context = s_fragment.context
     }
+  | Const(Ast.Cintprint, _) ->
+     assert false
   | Const(Ast.Cintadd, [s1; s2]) ->
      let s1_fragment = translate s1 in
      let s2_fragment = translate s2 in
@@ -673,7 +677,8 @@ let rec translate (t: Cbvterm.t) : fragment =
                @ s2_fragment.blocks;
       context = s1_fragment.context @ s2_fragment.context
     }
-  | Const _ -> failwith "TODO"
+  | Const(Ast.Cintadd, _) ->
+     assert false
   | Fun((x, xty), s) ->
     let s_fragment =
       lift (Cbvtype.multiplicity t.t_type) (translate s) in
@@ -869,7 +874,93 @@ let rec translate (t: Cbvterm.t) : fragment =
                @ t2_fragment.blocks;
       context = t1_fragment.context @ t2_fragment.context
     }
-  | Ifz(tc, t1, t2) -> failwith "TODO"
+  | Ifz(tc, t1, t2) -> 
+     let tc_fragment = translate tc in
+     let t1_fragment = translate t1 in
+     let t2_fragment = translate t2 in
+     let eval = {
+         entry = fresh_label (pair t.t_ann (code_context t.t_context));
+         exit  = fresh_label (pair t.t_ann (Cbvtype.code t.t_type)) } in
+     let access = fresh_access "if" t.t_type in
+     let eval_block1 =
+       let arg = begin_block eval.entry in
+       let vstack = build_fst arg in
+       let vgamma = build_snd arg in
+       let vgammac = build_context_map t.t_context tc.t_context vgamma in
+       let vgamma1 = build_context_map t.t_context t1.t_context vgamma in
+       let vgamma2 = build_context_map t.t_context t2.t_context vgamma in
+       let vstack1 = build_embed (build_pair vstack (build_pair vgamma1 vgamma2)) tc.t_ann in
+       let v = build_pair vstack1 vgammac in
+       end_block_jump tc_fragment.eval.entry v in
+     (*
+     let eval_blockt =
+       let arg = begin_block (fresh_label (pair t.t_ann (code_context t1.t_context))) in
+       let vstack = build_fst arg in
+       let vgamma1 = build_snd arg in
+       let vstacke = build_embed vstack t1.t_ann in
+       let v = build_pair vstacke vgamma1 in
+       end_block_jump t1_fragment.eval.entry v in
+     let eval_blockf =
+       let arg = begin_block (fresh_label (pair t.t_ann (code_context t2.t_context))) in
+       let vstack = build_fst arg in
+       let vgamma2 = build_snd arg in
+       let vstacke = build_embed vstack t2.t_ann in
+       let v = build_pair vstacke vgamma2 in
+       end_block_jump t2_fragment.eval.entry v in
+      *)
+     let eval_blockc =
+       let arg = begin_block tc_fragment.eval.exit in
+       let vstack1 = build_fst arg in
+       let vn = build_snd arg in
+       let vp = build_project vstack1 (pair t.t_ann
+                                            (pair
+                                               (code_context t1.t_context)
+                                               (code_context t2.t_context)
+                                            )) in
+       let vstack = build_fst vp in
+       let vgamma12 = build_snd vp in
+       let vgamma1 = build_fst vgamma12 in
+       let vgamma2 = build_snd vgamma12 in
+       let vz = build_primop (Intast.Cinteq) (build_pair vn (build_intconst 0)) in
+       end_block_case
+         vz
+         [ (fun _ -> t1_fragment.eval.entry, build_pair vstack vgamma1);
+           (fun _ -> t2_fragment.eval.entry, build_pair vstack vgamma2) ] in
+     let eval_blockrt =
+       let arg = begin_block t1_fragment.eval.exit in
+       let vstack = build_fst arg in
+       let vn = build_snd arg in
+       let v = build_pair vstack vn in
+       end_block_jump eval.exit v in
+     let eval_blockrf =
+       let arg = begin_block t2_fragment.eval.exit in
+       let vstack = build_fst arg in
+       let vn = build_snd arg in
+       let v = build_pair vstack vn in
+       end_block_jump eval.exit v in
+    let access_block =
+      let arg = begin_block access.entry in
+      end_block_jump access.entry arg in
+    (* dummy blocks *)
+    let access_blockc =
+      let arg = begin_block tc_fragment.access.exit in
+      end_block_jump tc_fragment.access.exit arg in
+    let access_block1 =
+      let arg = begin_block t1_fragment.access.exit in
+      end_block_jump t1_fragment.access.exit arg in
+    let access_block2 =
+      let arg = begin_block t2_fragment.access.exit in
+      end_block_jump t2_fragment.access.exit arg in
+    { eval = eval;
+      access = access;
+      blocks = [eval_block1; eval_blockt; eval_blockf; eval_blockc;
+                eval_blockrf; eval_blockrt;
+                access_block; access_blockc; access_block1; access_block2]
+               @ tc_fragment.blocks
+               @ t1_fragment.blocks
+               @ t2_fragment.blocks;
+      context = tc_fragment.context @ t1_fragment.context @ t2_fragment.context
+    }
 
 let print_fragment f =
   List.iter f.blocks ~f:(fun block -> Ssa.fprint_block stdout block);
