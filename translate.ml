@@ -15,6 +15,7 @@ type fragment = {
     eval: int_interface;
     access: int_interface;
     blocks: Ssa.block list;
+    context: (Ident.t * int_interface) list
   }
     
 let unitB : Basetype.t =
@@ -427,8 +428,10 @@ let lift (a: Basetype.t) (f: fragment) : fragment =
     | Ssa.Return _ -> assert false
     | Ssa.Unreachable _ -> assert false in
   { eval = lift_int_interface a f.eval;
-    blocks = List.map ~f: lift_block f.blocks;
-    access = lift_int_interface a f.access
+    blocks = List.map ~f:lift_block f.blocks;
+    access = lift_int_interface a f.access;
+    context = List.map ~f:(fun (x, i) -> (x, lift_int_interface a i))
+                f.context
   }
 
 let rec build_context_lookup
@@ -490,7 +493,8 @@ let rec translate (t: Cbvterm.t) : fragment =
       end_block_jump access.exit arg in
     { eval = eval;
       access = access;
-      blocks = [block1; block2; block3]
+      blocks = [block1; block2; block3];
+      context = [(x, x_access)]
     }
   | Contr((x, xs), s) ->
      let s_fragment = translate s in
@@ -552,7 +556,10 @@ let rec translate (t: Cbvterm.t) : fragment =
              end_block_jump x_access.entry v) in
      { eval = eval;
        access = s_fragment.access;
-       blocks = eval_block :: proj_block :: case_block :: in_blocks @ s_fragment.blocks
+       blocks = eval_block :: proj_block :: case_block :: in_blocks @ s_fragment.blocks;
+       context = (x, x_access) ::
+                 (List.filter s_fragment.context
+                    ~f:(fun (x, a) -> not (List.mem xs x)))
      }
   | Const(Ast.Cintconst i, []) ->
     let eval = {
@@ -572,7 +579,8 @@ let rec translate (t: Cbvterm.t) : fragment =
       end_block_jump access.exit arg in
     { eval = eval;
       access = access;
-      blocks = [eval_block; access_block]
+      blocks = [eval_block; access_block];
+      context = []
     }
   | Const(Ast.Cintprint, [s]) ->
      let s_fragment = translate s in
@@ -599,7 +607,8 @@ let rec translate (t: Cbvterm.t) : fragment =
     { eval = eval;
       access = access;
       blocks = [eval_block; print_block; access_block1; access_block2]
-               @ s_fragment.blocks
+               @ s_fragment.blocks;
+      context = s_fragment.context
     }
   | Const _ -> failwith "TODO"
   | Fun((x, xty), s) ->

@@ -532,11 +532,17 @@ let infer_annotations (t: Cbvterm.t) : unit =
        unify_contexts t.t_context s2.t_context;
        Cbvtype.unify_exn x s2.t_type;
        Cbvtype.unify_exn y t.t_type;
+       (* TODO *)
        Basetype.unify_exn a t.t_ann;
        [ { lower = Basetype.newty (Basetype.PairB(t.t_ann, code_of_context s2.t_context));
            upper = s1.t_ann;
            reason = "app: function stack"
          }
+         (* TODO
+       ; { lower = a;
+           upper = t.t_ann;
+           reason = "app: argument stack"
+            } *)
        ; { lower = Basetype.newty (Basetype.PairB(t.t_ann, d));
            upper = s2.t_ann;
            reason = "app: argument stack"
