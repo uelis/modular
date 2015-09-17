@@ -128,7 +128,16 @@ let to_string ?concise:(concise=true) (ty: t): string =
             "\'" ^ (name_of_typevar t)
           | Sgn st ->
             match st with
-            | Nat _ -> "Nat"
+            | Nat c ->
+              if not concise then
+                let cyan = "\027[36m" in
+                let black = "\027[39m" in
+                Printf.sprintf "Nat%s[%s]%s"
+                  cyan
+                  (Intlib.Printing.string_of_basetype c)
+                  black
+              else
+               "Nat"
             | Fun _ -> Printf.sprintf "(%s)" (s `Type)
         end in
     let tid = repr_id t in

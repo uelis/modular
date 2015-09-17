@@ -391,7 +391,7 @@ let solve_constraints (ineqs: lhd_constraint list) : unit =
           
 let code_of_type (a : Cbvtype.t) : Basetype.t =
   match Cbvtype.case a with
-  | Cbvtype.Var -> Basetype.newty Basetype.UnitB (* ??? *)
+  | Cbvtype.Var -> failwith "code_of_type"
   | Cbvtype.Sgn s ->
      match s with
      | Cbvtype.Nat _ -> Basetype.newty Basetype.IntB

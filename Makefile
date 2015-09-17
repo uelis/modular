@@ -6,6 +6,9 @@ all: native
 native:
 	${OCAMLBUILD} cbv2int.native
 
+byte:
+	${OCAMLBUILD} cbv2int.byte
+
 test:
 	corebuild -j 0 test.native
 	corebuild -j 0 test_inline.native

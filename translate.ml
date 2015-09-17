@@ -243,7 +243,9 @@ let build_project (v: value) (a: Basetype.t) : value =
        end
     | Basetype.Sgn (Basetype.DataB(id, params)) ->
        select id params v 
-    | _ -> failwith "project3"
+    | _ ->
+       ignore (List.Assoc.find_exn [(1,1)] 2);
+       failwith "project3"
                     
 let build_embed (v: value) (a: Basetype.t) : value =
   let vv, va = v in
@@ -356,20 +358,9 @@ and access_exit_type (a: Cbvtype.t): Basetype.t =
         let sum = Basetype.newty (Basetype.DataB(sumid, params)) in
         pair m sum
 
-let ssa_names = Ident.Table.create ()
-
-let ssa_name_of_ident (l: Ident.t) =
-  match Ident.Table.find ssa_names l with
-  | None ->
-     let ientry = fresh_ssa_name () in
-     let iexit = fresh_ssa_name () in
-     let p = ientry, iexit in
-     Ident.Table.add_exn ssa_names l p;
-     p
-  | Some p -> p
-     
-let access_of_cbvtype (l: Ident.t) (a: Cbvtype.t) : int_interface =
-  let ientry, iexit = ssa_name_of_ident l in
+let fresh_access (s: string) (a: Cbvtype.t) : int_interface =
+  let ientry = fresh_ssa_name () in
+  let iexit = fresh_ssa_name () in
   { entry =
       { Ssa.name = ientry;
         Ssa.message_type = access_entry_type a };
@@ -470,14 +461,35 @@ let build_context_map
                           ~f:(fun (x, vx) v -> build_pair v vx) in
   v
 
+let print_context c =
+  List.iter c
+    ~f:(fun (x, a) ->
+     Printf.printf "%s:%s, "
+                   (Ident.to_string x)
+                   (Cbvtype.to_string ~concise:false a));
+  Printf.printf "\n"
+                
+let print_fcontext c =
+  List.iter c
+    ~f:(fun (x, a) ->
+     Printf.printf "%s:(%s, %s), "
+                   (Ident.to_string x)
+                   (Intlib.Printing.string_of_basetype a.entry.Ssa.message_type)
+                   (Intlib.Printing.string_of_basetype a.exit.Ssa.message_type)
+       );
+  Printf.printf "\n"
+                   
+
 let rec translate (t: Cbvterm.t) : fragment =
   match t.t_desc with
   | Var x ->
+     Printf.printf "Var %s\n%!"
+                   (Cbvtype.to_string ~concise:false t.t_type);
     let eval = {
       entry = fresh_label (pair t.t_ann (code_context t.t_context));
       exit  = fresh_label (pair t.t_ann (Cbvtype.code t.t_type)) } in
-    let access = access_of_cbvtype (Ident.fresh "var") t.t_type in
-    let x_access = access_of_cbvtype x t.t_type in
+    let access = fresh_access "var" t.t_type in
+    let x_access = fresh_access "var" t.t_type in
     let block1 =
       let arg = begin_block eval.entry in
       let va = build_fst arg in
@@ -498,12 +510,14 @@ let rec translate (t: Cbvterm.t) : fragment =
     }
   | Contr((x, xs), s) ->
      let s_fragment = translate s in
+     print_context s.t_context;
+     print_fcontext s_fragment.context;
      let xty = List.Assoc.find_exn t.t_context x in
      let xsty = List.map ~f:(fun x' -> List.Assoc.find_exn s.t_context x') xs in
      let summands = List.map ~f:Cbvtype.multiplicity xsty in
      let sumid = Basetype.Data.sumid (List.length summands) in
      let tsum = Basetype.newty (Basetype.DataB(sumid, summands)) in
-     let x_access = access_of_cbvtype x xty in
+     let x_access = fresh_access "contract" xty in
      Printf.printf "X+: %s\n"
                    (Intlib.Printing.string_of_basetype x_access.exit.Ssa.message_type);
      let eval = {
@@ -528,8 +542,7 @@ let rec translate (t: Cbvterm.t) : fragment =
        let vcopy = build_fst arg in
        let vxexit = build_snd arg in       
        let target y =
-         fun c -> let yty = List.Assoc.find_exn s.t_context y in
-                  let y_access = access_of_cbvtype y yty in
+         fun c -> let y_access = List.Assoc.find_exn s_fragment.context y in
                   let v = build_pair c vxexit in
                   y_access.exit, v in
        end_block_case vcopy (List.map xs ~f:target) in
@@ -544,8 +557,7 @@ let rec translate (t: Cbvterm.t) : fragment =
        List.mapi
          xs
          ~f:(fun i y ->
-             let yty = List.Assoc.find_exn s.t_context y in
-             let y_access = access_of_cbvtype y yty in
+             let y_access = List.Assoc.find_exn s_fragment.context y in
              let arg = begin_block y_access.entry in
              let vc = build_fst arg in
              let vx = build_snd arg in
@@ -565,9 +577,7 @@ let rec translate (t: Cbvterm.t) : fragment =
     let eval = {
       entry = fresh_label (pair t.t_ann (code_context t.t_context));
       exit  = fresh_label (pair t.t_ann intB) } in
-    let access = {
-      entry = fresh_label (pair (Cbvtype.multiplicity t.t_type) voidB);
-      exit  = fresh_label (pair (Cbvtype.multiplicity t.t_type) voidB) } in
+    let access = fresh_access "intconst" t.t_type in
     let eval_block =
       let arg = begin_block eval.entry in
       let vstack = build_fst arg in
@@ -583,13 +593,13 @@ let rec translate (t: Cbvterm.t) : fragment =
       context = []
     }
   | Const(Ast.Cintprint, [s]) ->
+     Printf.printf "Print %s\n%!"
+                   (Cbvtype.to_string ~concise:false t.t_type);
      let s_fragment = translate s in
      let eval = {
          entry = fresh_label s_fragment.eval.entry.Ssa.message_type;
          exit  = fresh_label s_fragment.eval.exit.Ssa.message_type } in
-     let access = {
-         entry = fresh_label (pair (Cbvtype.multiplicity t.t_type) voidB);
-         exit  = fresh_label (pair (Cbvtype.multiplicity t.t_type) voidB) } in
+     let access = fresh_access "print" t.t_type in
      let eval_block =
        let arg = begin_block eval.entry in
        end_block_jump s_fragment.eval.entry arg in
@@ -614,14 +624,17 @@ let rec translate (t: Cbvterm.t) : fragment =
   | Fun((x, xty), s) ->
     let s_fragment =
       lift (Cbvtype.multiplicity t.t_type) (translate s) in
+     print_context s.t_context;
+     print_fcontext s_fragment.context;
+    (* TODO: nimmt an, dass x im context von s vorkommt. *)
     let x_access =
       lift_int_interface
         (Cbvtype.multiplicity t.t_type)
-        (access_of_cbvtype x xty) in
+        (List.Assoc.find_exn s_fragment.context x) in
     let eval = {
       entry = fresh_label (pair t.t_ann (code_context t.t_context));
       exit  = fresh_label (pair t.t_ann (Cbvtype.code t.t_type)) } in
-    let access = access_of_cbvtype (Ident.fresh "fun") t.t_type in
+    let access = fresh_access "fun" t.t_type in
     let eval_block =
       let arg = begin_block eval.entry in
       let vstack = build_fst arg in
@@ -684,47 +697,53 @@ let rec translate (t: Cbvterm.t) : fragment =
       let vx2 = build_in 2 vy tf in
       let v = build_pair ve vx2 in
       end_block_jump access.exit v in
-    let convert_var y =
-      let te = Cbvtype.multiplicity t.t_type in
-      let yty_outer = List.Assoc.find_exn t.t_context y in
-      let yty_inner = List.Assoc.find_exn s.t_context y in
-      (* TODO: Namen!!!*)
-      let y_outer_access = access_of_cbvtype y yty_outer in
-      let y_inner_access = access_of_cbvtype y yty_inner in
-      let tstack_outer, _ = unPairB y_outer_access.entry.Ssa.message_type in
-      let tstack_inner, _ = unPairB y_inner_access.entry.Ssa.message_type in
-      let exit_block =
-        let arg = begin_block y_outer_access.exit in
-        let vstack_outer = build_fst arg in
-        let vm = build_snd arg in
-        let vstack_pair = build_project vstack_outer (pair te tstack_inner) in
-        let ve = build_fst vstack_pair in
-        let vstack_inner = build_snd vstack_pair in
-        let v = build_pair ve (build_pair vstack_inner vm) in
-        end_block_jump y_inner_access.exit v in
-      let entry_block =
-        (* inner program gets lifted! *)
-        let lifted_entry = {
-            y_inner_access.entry with
-            Ssa.message_type = pair te y_inner_access.entry.Ssa.message_type 
-          } in
-        let arg = begin_block lifted_entry in
-        let ve = build_fst arg in
-        let vpair = build_snd arg in
-        let vstack_inner = build_fst vpair in
-        let vm = build_snd vpair in 
-        let vstack_outer = build_embed (build_pair ve vstack_inner) tstack_outer in
-        let v = build_pair vstack_outer vm in
-        end_block_jump y_outer_access.entry v in
-      [entry_block; exit_block] in
-    let context_blocks =
-      t.t_context
-      |> List.concat_map ~f:(fun (y, _) -> convert_var y) in
+    let rec embed_context gamma =
+      match gamma with
+      | [] -> [], []
+      | (y, y_access) :: gamma'  ->
+         let outer_gamma', blocks = embed_context gamma' in
+         if x = y then
+           outer_gamma', blocks
+         else
+           let te = Cbvtype.multiplicity t.t_type in
+           let yty_outer = List.Assoc.find_exn t.t_context y in
+           let yty_inner = List.Assoc.find_exn s.t_context y in
+           let y_outer_access = fresh_access "context_embed" yty_outer in
+           let tstack_outer, _ = unPairB y_outer_access.entry.Ssa.message_type in
+           let _, tminner = unPairB y_access.entry.Ssa.message_type in
+           let tstack_inner, _ = unPairB tminner in
+           Printf.printf "%s(%s), %s(%s)\n%!"
+                         (Cbvtype.to_string ~concise:false yty_outer)
+                         (Intlib.Printing.string_of_basetype tstack_outer)
+                         (Cbvtype.to_string ~concise:false yty_inner)
+                         (Intlib.Printing.string_of_basetype tstack_inner);
+           let exit_block =
+             let arg = begin_block y_outer_access.exit in
+             let vstack_outer = build_fst arg in
+             let vm = build_snd arg in
+             let vstack_pair = build_project vstack_outer (pair te tstack_inner) in
+             let ve = build_fst vstack_pair in
+             let vstack_inner = build_snd vstack_pair in
+             let v = build_pair ve (build_pair vstack_inner vm) in
+             end_block_jump y_access.exit v in
+           let entry_block =
+             let arg = begin_block y_access.entry in
+             let ve = build_fst arg in
+             let vpair = build_snd arg in
+             let vstack_inner = build_fst vpair in
+             let vm = build_snd vpair in 
+             let vstack_outer = build_embed (build_pair ve vstack_inner) tstack_outer in
+             let v = build_pair vstack_outer vm in
+             end_block_jump y_outer_access.entry v in
+           (y, y_outer_access) :: outer_gamma',
+           [entry_block; exit_block] @ blocks in
+    let context, context_blocks = embed_context s_fragment.context in
     { eval = eval;
       access = access;
       blocks = [eval_block; block_decode; case_block; block_in0; block_in1; block_in2]
                @ context_blocks
-               @ s_fragment.blocks
+               @ s_fragment.blocks;
+      context = context
     }
   | Fix((f, x, alpha), s) -> failwith "TODO"
   | App(t1, t2) ->
@@ -733,7 +752,7 @@ let rec translate (t: Cbvterm.t) : fragment =
     let eval = {
       entry = fresh_label (pair t.t_ann (code_context t.t_context));
       exit  = fresh_label (pair t.t_ann (Cbvtype.code t.t_type)) } in
-    let access = access_of_cbvtype (Ident.fresh "app") t.t_type in
+    let access = fresh_access "app" t.t_type in
     let block1 =
       let arg = begin_block eval.entry in
       let vu = build_fst arg in
@@ -791,7 +810,8 @@ let rec translate (t: Cbvterm.t) : fragment =
       access = access;
       blocks = [block1; block2; block3; block5; block7; case_block]
                @ t1_fragment.blocks
-               @ t2_fragment.blocks
+               @ t2_fragment.blocks;
+      context = t1_fragment.context @ t2_fragment.context
     }
   | Ifz(tc, t1, t2) -> failwith "TODO"
 
