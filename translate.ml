@@ -628,9 +628,7 @@ let rec translate (t: Cbvterm.t) : fragment =
      print_fcontext s_fragment.context;
     (* TODO: nimmt an, dass x im context von s vorkommt. *)
     let x_access =
-      lift_int_interface
-        (Cbvtype.multiplicity t.t_type)
-        (List.Assoc.find_exn s_fragment.context x) in
+        List.Assoc.find_exn s_fragment.context x in
     let eval = {
       entry = fresh_label (pair t.t_ann (code_context t.t_context));
       exit  = fresh_label (pair t.t_ann (Cbvtype.code t.t_type)) } in
@@ -645,6 +643,11 @@ let rec translate (t: Cbvterm.t) : fragment =
     let block_decode =
       let te = Cbvtype.multiplicity t.t_type in
       let ta = s.t_ann in
+      (*
+      Printf.printf "Ann: %s, %s\n"
+                    (Intlib.Printing.string_of_basetype ta)
+                    (Cbvtype.to_string ~concise:false t.t_type);
+       *)
       let td = Cbvtype.code t.t_type in
       let tcx = Cbvtype.code xty in
       let entry = fresh_label (pair te (pair ta (pair td tcx))) in

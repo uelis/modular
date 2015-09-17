@@ -1,0 +1,3 @@
+let step =
+   (\f -> let x = f 1 in
+          f 2) (let u = print 0 in \i -> print i)
