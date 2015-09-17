@@ -262,8 +262,9 @@ let rec pt (phi: STtype.t context) (t: Ast.t)
      let instances = List.filter tinstances ~f:(fun (y, _) -> y <> x && y <> f) in
      let gamma = List.filter t1.t_context ~f:(fun (y, _) -> y <> x && y <> f) in
      let a = STtype.newty (STSig.Fun(beta, t1.t_type)) in
+     let h = Basetype.newvar () in
      eq_constraint t ~actual:a ~expected:alpha;
-     { t_desc = Fix((f, x, beta), t1);
+     { t_desc = Fix((h, f, x, beta), t1);
        t_ann = Basetype.newvar ();
        t_type = a;
        t_context = gamma;
@@ -457,8 +458,8 @@ let rec fresh_annotations_term (t: STtype.t Cbvterm.term) : Cbvterm.t =
        t_type =  fresh_annotations_type t.t_type;
        t_context = fresh_annotations_context t.t_context;
        t_loc = t.t_loc}
-    | Fix((f, x, a), s) ->
-       { t_desc = Cbvterm.Fix((f, x, fresh_annotations_type a),
+    | Fix((_, f, x, a), s) ->
+       { t_desc = Cbvterm.Fix((Basetype.newvar (), f, x, fresh_annotations_type a),
                               fresh_annotations_term s);
          t_ann = t.t_ann;
          t_type =  fresh_annotations_type t.t_type;
@@ -599,7 +600,7 @@ let infer_annotations (t: Cbvterm.t) : unit =
          } *)
        ]
        @ csc @ cst @ csf
-    | Fix((f, v, va), s) ->
+    | Fix((h, f, v, va), s) ->
        let cs = constraints s in
        let g, (x, a, d, _) = selectfunty (List.Assoc.find_exn s.t_context f) in
        let e, (x', a', d', _) = selectfunty (List.Assoc.find_exn s.t_context f) in
@@ -608,7 +609,6 @@ let infer_annotations (t: Cbvterm.t) : unit =
        Basetype.unify_exn a s.t_ann;
        Cbvtype.unify_exn x x';
        Cbvtype.unify_exn x va;
-       let h = Basetype.newvar() in
        List.iter t.t_context
                  ~f:(fun (y, a) ->
                      let a' = List.Assoc.find_exn s.t_context y in

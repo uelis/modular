@@ -18,6 +18,6 @@ type 'a term = {
    | Fun of (Ident.t * 'a) * 'a term
    | App of 'a term * 'a term
    | Ifz of 'a term * 'a term * 'a term
-   | Fix of (Ident.t * Ident.t * 'a) * 'a term
+   | Fix of (Basetype.t * Ident.t * Ident.t * 'a) * 'a term
 
 type t = Cbvtype.t term

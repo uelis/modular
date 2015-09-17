@@ -685,8 +685,7 @@ let rec translate (t: Cbvterm.t) : fragment =
      print_context s.t_context;
      print_fcontext s_fragment.context;
     (* TODO: nimmt an, dass x im context von s vorkommt. *)
-    let x_access =
-        List.Assoc.find_exn s_fragment.context x in
+    let x_access = List.Assoc.find_exn s_fragment.context x in
     let eval = {
       entry = fresh_label (pair t.t_ann (code_context t.t_context));
       exit  = fresh_label (pair t.t_ann (Cbvtype.code t.t_type)) } in
@@ -806,7 +805,180 @@ let rec translate (t: Cbvterm.t) : fragment =
                @ s_fragment.blocks;
       context = context
     }
-  | Fix((f, x, alpha), s) -> failwith "TODO"
+  | Fix((th, f, x, xty), s) ->
+     let s_fragment = lift th (translate s) in
+     (* E + H *G *)
+     let te = Cbvtype.multiplicity t.t_type in
+     let tg = Cbvtype.multiplicity (List.Assoc.find_exn s.t_context f) in
+     let thg = pair th tg in
+     let tcons =
+       Basetype.newty (Basetype.DataB(Basetype.Data.sumid 2, [te; thg])) in
+     let build_singleton ve =
+       build_embed (build_in 0 ve tcons) th in
+     let build_push vh vg =
+       build_embed (build_in 1 (build_pair vh vg) tcons) th in
+     let x_access = List.Assoc.find_exn s_fragment.context x in
+     let f_access = List.Assoc.find_exn s_fragment.context f in
+     print_context s.t_context;
+     print_fcontext s_fragment.context;
+     let eval = {
+         entry = fresh_label (pair t.t_ann (code_context t.t_context));
+         exit = fresh_label (pair t.t_ann (Cbvtype.code t.t_type))
+       } in
+     let access = fresh_access "fix" t.t_type in
+     let block1 =
+       let arg = begin_block eval.entry in
+       let vstack = build_fst arg in
+       let vgamma = build_snd arg in
+       let vclosure = build_embed vgamma (Cbvtype.code t.t_type) in
+       let v = build_pair vstack vclosure in
+       end_block_jump eval.exit v in
+     let block2 =
+       let ta = s.t_ann in
+       let td = Cbvtype.code t.t_type in
+       let tx = Cbvtype.code xty in
+       let arg = begin_block (fresh_label (pair th (pair ta (pair td tx)))) in
+       let vh = build_fst arg in
+       let vadx = build_snd arg in
+       let va = build_fst vadx in
+       let vdx = build_snd vadx in
+       let vd = build_fst vdx in
+       let vx = build_snd vdx in
+       let vgamma = build_project vd (code_context t.t_context) in
+       let vgammadx = build_pair (build_pair vgamma vd) vx in
+       let vdelta = build_context_map
+                      ((x, xty)::(f, t.t_type)::t.t_context) s.t_context vgammadx in
+       let v = build_pair vh (build_pair va vdelta) in
+       end_block_jump s_fragment.eval.entry v in
+     let block_access =
+       let arg = begin_block access.entry in
+       let ve = build_fst arg in
+       let vh = build_singleton ve in
+       let vreq = build_snd arg in
+       end_block_case
+         vreq
+         [ (fun c -> Ssa.label_of_block block2, build_pair vh c);
+           (fun c -> s_fragment.access.entry, build_pair vh c);
+           (fun c -> x_access.exit, build_pair vh c) ] in
+     let block567_bottom =
+       let _(*th*), tans = unPairB f_access.exit.Ssa.message_type in
+       let arg = begin_block (fresh_label (pair thg tans)) in
+       let vgh = build_fst arg in
+       let vg = build_fst vgh in
+       let vh = build_snd vgh in
+       let vm = build_snd arg in
+       let v = build_pair vh (build_pair vg vm) in
+       end_block_jump f_access.exit v in
+     let block5 =
+       let arg = begin_block s_fragment.eval.exit in
+       let vh = build_fst arg in
+       let vm = build_snd arg in
+       let vcons = build_project vh tcons in
+       end_block_case
+         vcons
+         [ (fun ve ->
+            let _, ta = unPairB access.exit.Ssa.message_type in
+            let vm0 = build_in 0 vm ta in
+            access.exit, build_pair ve vm0);
+           (fun vgh ->
+            let _, ta = unPairB access.exit.Ssa.message_type in
+            let vm0 = build_in 0 vm ta in
+            Ssa.label_of_block block567_bottom, build_pair vgh vm0)
+         ] in
+     let block6 =
+       let arg = begin_block s_fragment.access.entry in
+       let vh = build_fst arg in
+       let vm = build_snd arg in
+       let vcons = build_project vh tcons in
+       end_block_case
+         vcons
+         [ (fun ve ->
+            let _, ta = unPairB access.exit.Ssa.message_type in
+            let vm1 = build_in 1 vm ta in
+            access.exit, build_pair ve vm1);
+           (fun vgh ->
+            let _, ta = unPairB access.exit.Ssa.message_type in
+            let vm1 = build_in 0 vm ta in
+            Ssa.label_of_block block567_bottom, build_pair vgh vm1)
+         ] in
+     let block7 =
+       let arg = begin_block x_access.entry in
+       let vh = build_fst arg in
+       let vm = build_snd arg in
+       let vcons = build_project vh tcons in
+       end_block_case
+         vcons
+         [ (fun ve ->
+            let _, ta = unPairB access.exit.Ssa.message_type in
+            let vm2 = build_in 2 vm ta in
+            access.exit, build_pair ve vm2);
+           (fun vgh ->
+            let _, ta = unPairB access.exit.Ssa.message_type in
+            let vm2 = build_in 0 vm ta in
+            Ssa.label_of_block block567_bottom, build_pair vgh vm2)
+         ] in
+     let block_case =
+       let arg = begin_block f_access.entry in
+       let vh = build_fst arg in
+       let vgm = build_snd arg in
+       let vg = build_fst vgm in
+       let vm = build_snd vgm in
+       let vpushed = build_push vh vg in
+       end_block_case
+         vm
+         [ (fun c -> Ssa.label_of_block block2, build_pair vpushed c);
+           (fun c -> s_fragment.access.entry, build_pair vpushed c);
+           (fun c -> x_access.exit, build_pair vpushed c)
+         ] in
+     let rec embed_context gamma =
+       match gamma with
+       | [] -> [], []
+       | (y, y_access) :: gamma'  ->
+          let outer_gamma', blocks = embed_context gamma' in
+          if x = y || f = y then
+            outer_gamma', blocks
+          else
+            let te = Cbvtype.multiplicity t.t_type in
+            let yty_outer = List.Assoc.find_exn t.t_context y in
+            let yty_inner = List.Assoc.find_exn s.t_context y in
+            let y_outer_access = fresh_access "context_embed" yty_outer in
+            let tstack_outer, _ = unPairB y_outer_access.entry.Ssa.message_type in
+            let _, tminner = unPairB y_access.entry.Ssa.message_type in
+            let tstack_inner, _ = unPairB tminner in
+            Printf.printf "%s(%s), %s(%s)\n%!"
+                          (Cbvtype.to_string ~concise:false yty_outer)
+                          (Intlib.Printing.string_of_basetype tstack_outer)
+                          (Cbvtype.to_string ~concise:false yty_inner)
+                          (Intlib.Printing.string_of_basetype tstack_inner);
+            let exit_block =
+              let arg = begin_block y_outer_access.exit in
+              let vstack_outer = build_fst arg in
+              let vm = build_snd arg in
+              let vstack_pair = build_project vstack_outer (pair te tstack_inner) in
+              let ve = build_fst vstack_pair in
+              let vstack_inner = build_snd vstack_pair in
+              let v = build_pair ve (build_pair vstack_inner vm) in
+              end_block_jump y_access.exit v in
+            let entry_block =
+              let arg = begin_block y_access.entry in
+              let ve = build_fst arg in
+              let vpair = build_snd arg in
+              let vstack_inner = build_fst vpair in
+              let vm = build_snd vpair in 
+              let vstack_outer = build_embed (build_pair ve vstack_inner) tstack_outer in
+              let v = build_pair vstack_outer vm in
+              end_block_jump y_outer_access.entry v in
+            (y, y_outer_access) :: outer_gamma',
+            [entry_block; exit_block] @ blocks in
+    let context, context_blocks = embed_context s_fragment.context in
+     { eval = eval;
+       access = access;
+       blocks = [block1; block_access; block2; block567_bottom;
+                 block5; block6; block7; block_case]
+                @ context_blocks
+                @ s_fragment.blocks;
+      context = context
+    }
   | App(t1, t2) ->
     let t1_fragment = translate t1 in
     let t2_fragment = translate t2 in
