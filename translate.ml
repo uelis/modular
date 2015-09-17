@@ -620,6 +620,59 @@ let rec translate (t: Cbvterm.t) : fragment =
                @ s_fragment.blocks;
       context = s_fragment.context
     }
+  | Const(Ast.Cintadd, [s1; s2]) ->
+     let s1_fragment = translate s1 in
+     let s2_fragment = translate s2 in
+     let eval = {
+         entry = fresh_label (pair t.t_ann (code_context t.t_context));
+         exit  = fresh_label (pair t.t_ann (Cbvtype.code t.t_type)) } in
+     let access = fresh_access "intadd" t.t_type in
+     let eval_block1 =
+       let arg = begin_block eval.entry in
+       let vstack = build_fst arg in
+       let vgamma = build_snd arg in
+       let vgamma1 = build_context_map t.t_context s1.t_context vgamma in
+       let vgamma2 = build_context_map t.t_context s2.t_context vgamma in
+       let vstack1 = build_embed (build_pair vstack vgamma2) s1.t_ann in
+       let v = build_pair vstack1 vgamma1 in
+       end_block_jump s1_fragment.eval.entry v in
+     let eval_block2 =
+       let arg = begin_block s1_fragment.eval.exit in
+       let vstack1 = build_fst arg in
+       let vn1 = build_snd arg in
+       let vp = build_project vstack1 (pair t.t_ann (code_context s2.t_context)) in
+       let vstack = build_fst vp in
+       let vgamma2 = build_snd vp in
+       let vstack2 = build_embed (build_pair vstack vn1) s2.t_ann in
+       let v = build_pair vstack2 vgamma2 in
+       end_block_jump s2_fragment.eval.entry v in
+     let eval_block3 =
+       let arg = begin_block s2_fragment.eval.exit in
+       let vstack2 = build_fst arg in
+       let vn2 = build_snd arg in
+       let vp = build_project vstack2 (pair t.t_ann intB) in
+       let vstack = build_fst vp in
+       let vn1 = build_snd vp in
+       let vsum = build_primop (Intast.Cintadd) (build_pair vn1 vn2) in
+       let v = build_pair vstack vsum in
+       end_block_jump eval.exit v in
+    let access_block =
+      let arg = begin_block access.entry in
+      end_block_jump access.entry arg in
+    (* dummy blocks *)
+    let access_block1 =
+      let arg = begin_block s1_fragment.access.exit in
+      end_block_jump s1_fragment.access.exit arg in
+    let access_block2 =
+      let arg = begin_block s2_fragment.access.exit in
+      end_block_jump s2_fragment.access.exit arg in
+    { eval = eval;
+      access = access;
+      blocks = [eval_block1; eval_block2; eval_block3; access_block; access_block1; access_block2]
+               @ s1_fragment.blocks
+               @ s2_fragment.blocks;
+      context = s1_fragment.context @ s2_fragment.context
+    }
   | Const _ -> failwith "TODO"
   | Fun((x, xty), s) ->
     let s_fragment =
