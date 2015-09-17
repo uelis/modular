@@ -953,7 +953,7 @@ let rec translate (t: Cbvterm.t) : fragment =
       end_block_jump t2_fragment.access.exit arg in
     { eval = eval;
       access = access;
-      blocks = [eval_block1; eval_blockt; eval_blockf; eval_blockc;
+      blocks = [eval_block1; (* eval_blockt; eval_blockf;*) eval_blockc;
                 eval_blockrf; eval_blockrt;
                 access_block; access_blockc; access_block1; access_block2]
                @ tc_fragment.blocks

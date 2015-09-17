@@ -389,20 +389,11 @@ let solve_constraints (ineqs: lhd_constraint list) : unit =
   in
   List.iter joined_lower_bounds ~f:solve_ineq
           
-let code_of_type (a : Cbvtype.t) : Basetype.t =
-  match Cbvtype.case a with
-  | Cbvtype.Var -> failwith "code_of_type"
-  | Cbvtype.Sgn s ->
-     match s with
-     | Cbvtype.Nat _ -> Basetype.newty Basetype.IntB
-     | Cbvtype.Fun(_, (_, _, d, _)) -> d
-
-let code_of_context (gamma: Cbvtype.t context) : Basetype.t =
-  List.fold gamma
-            ~f:(fun code_gamma (_, c) ->
-                let ac = code_of_type c in
-                Basetype.newty (Basetype.PairB(code_gamma, ac)))
-            ~init:(Basetype.newty Basetype.UnitB)
+let rec code_of_context (gamma : Cbvtype.t context) : Basetype.t =
+  match gamma with
+  | [] -> Basetype.newty Basetype.UnitB
+  | (_, a) :: delta ->
+     Basetype.newty (Basetype.PairB(code_of_context delta, Cbvtype.code a))
             
 let multiplicity_of_type (a : Cbvtype.t) : Basetype.t =
   match Cbvtype.case a with
