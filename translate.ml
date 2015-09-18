@@ -170,6 +170,11 @@ let build_snd (v: value) : value =
   let vv, va = v in
   let a1, a2 = unPairB va in
   Ssa.Snd(vv, a1, a2), a2
+
+let build_unpair (v: value) : value * value =
+  let v1 = build_fst v in
+  let v2 = build_snd v in
+  v1, v2
            
 let build_pair (v1: value) (v2: value) : value =
   let vv1, va1 = v1 in
@@ -692,8 +697,7 @@ let rec translate (t: Cbvterm.t) : fragment =
     let access = fresh_access "fun" t.t_type in
     let eval_block =
       let arg = begin_block eval.entry in
-      let vstack = build_fst arg in
-      let vgamma = build_snd arg in
+      let vstack, vgamma = build_unpair arg in
       let vclosure = build_embed vgamma (Cbvtype.code t.t_type) in
       let v = build_pair vstack vclosure in
       end_block_jump eval.exit v in
@@ -709,12 +713,9 @@ let rec translate (t: Cbvterm.t) : fragment =
       let tcx = Cbvtype.code xty in
       let entry = fresh_label (pair te (pair ta (pair td tcx))) in
       let arg = begin_block entry in
-      let vadx = build_snd arg in
-      let vdx = build_snd vadx in
-      let ve = build_fst arg in
-      let va = build_fst vadx in
-      let vd = build_fst vdx in
-      let vx = build_snd vdx in
+      let ve, vadx = build_unpair arg in
+      let va, vdx = build_unpair vadx in
+      let vd, vx = build_unpair vdx in
       let vgamma = build_project vd (code_context t.t_context) in
       let vgammax = build_pair vgamma vx in
       let vdelta = build_context_map ((x, xty)::t.t_context) s.t_context vgammax in
@@ -919,10 +920,8 @@ let rec translate (t: Cbvterm.t) : fragment =
          ] in
      let block_case =
        let arg = begin_block f_access.entry in
-       let vh = build_fst arg in
-       let vgm = build_snd arg in
-       let vg = build_fst vgm in
-       let vm = build_snd vgm in
+       let vh, vgm = build_unpair arg in
+       let vg, vm = build_unpair vgm in
        let vpushed = build_push vh vg in
        end_block_case
          vm
@@ -952,19 +951,15 @@ let rec translate (t: Cbvterm.t) : fragment =
                           (Intlib.Printing.string_of_basetype tstack_inner);
             let exit_block =
               let arg = begin_block y_outer_access.exit in
-              let vstack_outer = build_fst arg in
-              let vm = build_snd arg in
+              let vstack_outer, vm = build_unpair arg in
               let vstack_pair = build_project vstack_outer (pair te tstack_inner) in
-              let ve = build_fst vstack_pair in
-              let vstack_inner = build_snd vstack_pair in
+              let ve, vstack_inner = build_unpair vstack_pair in
               let v = build_pair ve (build_pair vstack_inner vm) in
               end_block_jump y_access.exit v in
             let entry_block =
               let arg = begin_block y_access.entry in
-              let ve = build_fst arg in
-              let vpair = build_snd arg in
-              let vstack_inner = build_fst vpair in
-              let vm = build_snd vpair in 
+              let ve, vpair = build_unpair arg in
+              let vstack_inner, vm = build_unpair vpair in
               let vstack_outer = build_embed (build_pair ve vstack_inner) tstack_outer in
               let v = build_pair vstack_outer vm in
               end_block_jump y_outer_access.entry v in
@@ -988,8 +983,7 @@ let rec translate (t: Cbvterm.t) : fragment =
     let access = fresh_access "app" t.t_type in
     let block1 =
       let arg = begin_block eval.entry in
-      let vu = build_fst arg in
-      let vgammadelta = build_snd arg in
+      let vu, vgammadelta = build_unpair arg in
       let vgamma = build_context_map t.t_context t1.t_context vgammadelta in
       let vdelta = build_context_map t.t_context t2.t_context vgammadelta in
       let embed_val = build_embed (build_pair vu vdelta) t1.t_ann in
@@ -997,22 +991,18 @@ let rec translate (t: Cbvterm.t) : fragment =
       end_block_jump t1_fragment.eval.entry v in
     let block2 =
       let arg = begin_block t1_fragment.eval.exit in
-      let ve = build_fst arg in
-      let vf = build_snd arg in
+      let ve, vf = build_unpair arg in
       let vu_delta = build_project ve (pair t.t_ann (code_context t2.t_context)) in
-      let vu = build_fst vu_delta in
-      let vdelta = build_snd vu_delta in
+      let vu, vdelta = build_unpair vu_delta in
       let vu_f = build_pair vu vf in
       let ve' = build_embed vu_f t2.t_ann in
       let v = build_pair ve' vdelta in
       end_block_jump t2_fragment.eval.entry v in
     let block3 =
       let arg = begin_block t2_fragment.eval.exit in
-      let ve = build_fst arg in
-      let vx = build_snd arg in
+      let ve, vx = build_unpair arg in
       let vu_f = build_project ve (pair t.t_ann (Cbvtype.code t1.t_type)) in
-      let vu = build_fst vu_f in
-      let vf = build_snd vu_f in
+      let vu, vf = build_unpair vu_f in
       let vufx = build_pair vu (build_pair vf vx) in
       let td, tfunacc = unPairB t1_fragment.access.entry.Ssa.message_type in
       let vfunacc = build_in 0 vufx tfunacc in
@@ -1056,8 +1046,7 @@ let rec translate (t: Cbvterm.t) : fragment =
      let access = fresh_access "if" t.t_type in
      let eval_block1 =
        let arg = begin_block eval.entry in
-       let vstack = build_fst arg in
-       let vgamma = build_snd arg in
+       let vstack, vgamma = build_unpair arg in
        let vgammac = build_context_map t.t_context tc.t_context vgamma in
        let vgamma1 = build_context_map t.t_context t1.t_context vgamma in
        let vgamma2 = build_context_map t.t_context t2.t_context vgamma in
@@ -1082,17 +1071,14 @@ let rec translate (t: Cbvterm.t) : fragment =
       *)
      let eval_blockc =
        let arg = begin_block tc_fragment.eval.exit in
-       let vstack1 = build_fst arg in
-       let vn = build_snd arg in
+       let vstack1, vn = build_unpair arg in
        let vp = build_project vstack1 (pair t.t_ann
                                             (pair
                                                (code_context t1.t_context)
                                                (code_context t2.t_context)
                                             )) in
-       let vstack = build_fst vp in
-       let vgamma12 = build_snd vp in
-       let vgamma1 = build_fst vgamma12 in
-       let vgamma2 = build_snd vgamma12 in
+       let vstack, vgamma12 = build_unpair vp in
+       let vgamma1, vgamma2 = build_unpair vgamma12 in
        let vz = build_primop (Intast.Cinteq) (build_pair vn (build_intconst 0)) in
        end_block_case
          vz
