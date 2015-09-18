@@ -608,6 +608,7 @@ let infer_annotations (t: Cbvterm.t) : unit =
        Basetype.unify_exn d d';
        Cbvtype.unify_exn x x';
        Cbvtype.unify_exn y y';
+       Cbvtype.unify_exn y s.t_type;
        Basetype.unify_exn a s.t_ann;
        Cbvtype.unify_exn x va;
        Cbvtype.unify_exn x (List.Assoc.find_exn s.t_context v);
