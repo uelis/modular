@@ -1,0 +1,2 @@
+let step =
+   (fix f x -> if0 x then print 0 else let u = print x in f (intadd(x,-1))) 10

@@ -602,13 +602,15 @@ let infer_annotations (t: Cbvterm.t) : unit =
        @ csc @ cst @ csf
     | Fix((h, f, v, va), s) ->
        let cs = constraints s in
-       let g, (x, a, d, _) = selectfunty (List.Assoc.find_exn s.t_context f) in
-       let e, (x', a', d', _) = selectfunty (List.Assoc.find_exn s.t_context f) in
+       let e, (x, a, d, y) = selectfunty t.t_type in
+       let g, (x', a', d', y') = selectfunty (List.Assoc.find_exn s.t_context f) in
        Basetype.unify_exn a a';
        Basetype.unify_exn d d';
        Basetype.unify_exn a s.t_ann;
        Cbvtype.unify_exn x x';
        Cbvtype.unify_exn x va;
+       Cbvtype.unify_exn x (List.Assoc.find_exn s.t_context v);
+       Cbvtype.unify_exn y y';
        List.iter t.t_context
                  ~f:(fun (y, a) ->
                      let a' = List.Assoc.find_exn s.t_context y in

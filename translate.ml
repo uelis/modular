@@ -807,6 +807,7 @@ let rec translate (t: Cbvterm.t) : fragment =
       context = context
     }
   | Fix((th, f, x, xty), s) ->
+     Printf.printf "Fix: %s\n" (Cbvtype.to_string ~concise:false t.t_type);
      let s_fragment = lift th (translate s) in
      (* E + H *G *)
      let te = Cbvtype.multiplicity t.t_type in
@@ -829,8 +830,7 @@ let rec translate (t: Cbvterm.t) : fragment =
      let access = fresh_access "fix" t.t_type in
      let block1 =
        let arg = begin_block eval.entry in
-       let vstack = build_fst arg in
-       let vgamma = build_snd arg in
+       let vstack, vgamma = build_unpair arg in
        let vclosure = build_embed vgamma (Cbvtype.code t.t_type) in
        let v = build_pair vstack vclosure in
        end_block_jump eval.exit v in
@@ -839,12 +839,9 @@ let rec translate (t: Cbvterm.t) : fragment =
        let td = Cbvtype.code t.t_type in
        let tx = Cbvtype.code xty in
        let arg = begin_block (fresh_label (pair th (pair ta (pair td tx)))) in
-       let vh = build_fst arg in
-       let vadx = build_snd arg in
-       let va = build_fst vadx in
-       let vdx = build_snd vadx in
-       let vd = build_fst vdx in
-       let vx = build_snd vdx in
+       let vh, vadx = build_unpair arg in
+       let va, vdx = build_unpair vadx in
+       let vd, vx = build_unpair vdx in
        let vgamma = build_project vd (code_context t.t_context) in
        let vgammadx = build_pair (build_pair vgamma vd) vx in
        let vdelta = build_context_map
@@ -853,70 +850,60 @@ let rec translate (t: Cbvterm.t) : fragment =
        end_block_jump s_fragment.eval.entry v in
      let block_access =
        let arg = begin_block access.entry in
-       let ve = build_fst arg in
+       let ve, vreq = build_unpair arg in
        let vh = build_singleton ve in
-       let vreq = build_snd arg in
        end_block_case
          vreq
          [ (fun c -> Ssa.label_of_block block2, build_pair vh c);
            (fun c -> s_fragment.access.entry, build_pair vh c);
            (fun c -> x_access.exit, build_pair vh c) ] in
      let block567_bottom =
-       let _(*th*), tans = unPairB f_access.exit.Ssa.message_type in
+       let _(*th*), t1 = unPairB f_access.exit.Ssa.message_type in
+       let _(*tg*), tans = unPairB t1 in
        let arg = begin_block (fresh_label (pair thg tans)) in
-       let vgh = build_fst arg in
-       let vg = build_fst vgh in
-       let vh = build_snd vgh in
-       let vm = build_snd arg in
+       let vhg, vm = build_unpair arg in
+       let vh, vg = build_unpair vhg in
        let v = build_pair vh (build_pair vg vm) in
        end_block_jump f_access.exit v in
      let block5 =
        let arg = begin_block s_fragment.eval.exit in
-       let vh = build_fst arg in
-       let vm = build_snd arg in
+       let vh, vm = build_unpair arg in
+       let _, ta = unPairB access.exit.Ssa.message_type in
+       let vm0 = build_in 0 vm ta in
        let vcons = build_project vh tcons in
        end_block_case
          vcons
          [ (fun ve ->
-            let _, ta = unPairB access.exit.Ssa.message_type in
-            let vm0 = build_in 0 vm ta in
             access.exit, build_pair ve vm0);
-           (fun vgh ->
-            let _, ta = unPairB access.exit.Ssa.message_type in
-            let vm0 = build_in 0 vm ta in
-            Ssa.label_of_block block567_bottom, build_pair vgh vm0)
+           (fun vhg ->
+            Ssa.label_of_block block567_bottom, build_pair vhg vm0)
          ] in
      let block6 =
        let arg = begin_block s_fragment.access.entry in
-       let vh = build_fst arg in
-       let vm = build_snd arg in
+       let vh, vm = build_unpair arg in
+       let _, ta = unPairB access.exit.Ssa.message_type in
+       let vm1 = build_in 1 vm ta in
        let vcons = build_project vh tcons in
        end_block_case
          vcons
          [ (fun ve ->
-            let _, ta = unPairB access.exit.Ssa.message_type in
-            let vm1 = build_in 1 vm ta in
             access.exit, build_pair ve vm1);
-           (fun vgh ->
-            let _, ta = unPairB access.exit.Ssa.message_type in
-            let vm1 = build_in 0 vm ta in
-            Ssa.label_of_block block567_bottom, build_pair vgh vm1)
+           (fun vhg ->
+            Ssa.label_of_block block567_bottom, build_pair vhg vm1)
          ] in
      let block7 =
        let arg = begin_block x_access.entry in
        let vh = build_fst arg in
        let vm = build_snd arg in
+       let _, ta = unPairB access.exit.Ssa.message_type in
+       let vm2 = build_in 2 vm ta in
        let vcons = build_project vh tcons in
        end_block_case
          vcons
          [ (fun ve ->
-            let _, ta = unPairB access.exit.Ssa.message_type in
-            let vm2 = build_in 2 vm ta in
             access.exit, build_pair ve vm2);
-           (fun vgh ->
-            let _, ta = unPairB access.exit.Ssa.message_type in
-            let vm2 = build_in 0 vm ta in
-            Ssa.label_of_block block567_bottom, build_pair vgh vm2)
+           (fun vhg ->
+            Ssa.label_of_block block567_bottom, build_pair vhg vm2)
          ] in
      let block_case =
        let arg = begin_block f_access.entry in
