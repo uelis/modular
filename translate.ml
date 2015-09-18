@@ -366,6 +366,7 @@ and access_exit_type (a: Cbvtype.t): Basetype.t =
 let fresh_access (s: string) (a: Cbvtype.t) : int_interface =
   let ientry = fresh_ssa_name () in
   let iexit = fresh_ssa_name () in
+  Printf.printf "access %s (%i, %i)\n" s ientry iexit;
   { entry =
       { Ssa.name = ientry;
         Ssa.message_type = access_entry_type a };
@@ -541,31 +542,22 @@ let rec translate (t: Cbvterm.t) : fragment =
                       vgamma in
        let v = build_pair vstack vdelta in
        end_block_jump s_fragment.eval.entry v in
-     let case_block =
-       let _, tx = unPairB x_access.exit.Ssa.message_type in
-       let arg = begin_block (fresh_label (pair tsum tx)) in
-       let vcopy = build_fst arg in
-       let vxexit = build_snd arg in       
-       let target y =
-         fun c -> let y_access = List.Assoc.find_exn s_fragment.context y in
-                  let v = build_pair c vxexit in
-                  y_access.exit, v in
-       end_block_case vcopy (List.map xs ~f:target) in
      let proj_block =
        let arg = begin_block x_access.exit in
-       let vd = build_fst arg in
-       let vx = build_snd arg in
+       let vd, vx = build_unpair arg in
        let vsum = build_project vd tsum in
-       let v = build_pair vsum vx in
-       end_block_jump (Ssa.label_of_block case_block) v in
+       let target y =
+         fun c -> let y_access = List.Assoc.find_exn s_fragment.context y in
+                  let v = build_pair c vx in
+                  y_access.exit, v in
+       end_block_case vsum (List.map xs ~f:target) in
      let in_blocks =
        List.mapi
          xs
          ~f:(fun i y ->
              let y_access = List.Assoc.find_exn s_fragment.context y in
              let arg = begin_block y_access.entry in
-             let vc = build_fst arg in
-             let vx = build_snd arg in
+             let vc, vx = build_unpair arg in
              let vin_c = build_in i vc tsum in
              let td, _ = unPairB x_access.entry.Ssa.message_type in
              let vd = build_embed vin_c td in
@@ -573,7 +565,7 @@ let rec translate (t: Cbvterm.t) : fragment =
              end_block_jump x_access.entry v) in
      { eval = eval;
        access = s_fragment.access;
-       blocks = eval_block :: proj_block :: case_block :: in_blocks @ s_fragment.blocks;
+       blocks = eval_block :: proj_block :: in_blocks @ s_fragment.blocks;
        context = (x, x_access) ::
                  (List.filter s_fragment.context
                     ~f:(fun (x, a) -> not (List.mem xs x)))
@@ -617,10 +609,10 @@ let rec translate (t: Cbvterm.t) : fragment =
        end_block_jump eval.exit arg in
     let access_block1 =
        let arg = begin_block access.entry in
-       end_block_jump s_fragment.access.entry arg in
+       end_block_jump access.exit arg in
     let access_block2 =
        let arg = begin_block s_fragment.access.exit in
-       end_block_jump access.exit arg in
+       end_block_jump s_fragment.access.exit arg in
     { eval = eval;
       access = access;
       blocks = [eval_block; print_block; access_block1; access_block2]
@@ -667,7 +659,7 @@ let rec translate (t: Cbvterm.t) : fragment =
        end_block_jump eval.exit v in
     let access_block =
       let arg = begin_block access.entry in
-      end_block_jump access.entry arg in
+      end_block_jump access.exit arg in
     (* dummy blocks *)
     let access_block1 =
       let arg = begin_block s1_fragment.access.exit in
@@ -879,7 +871,7 @@ let rec translate (t: Cbvterm.t) : fragment =
             Ssa.label_of_block block567_bottom, build_pair vhg vm0)
          ] in
      let block6 =
-       let arg = begin_block s_fragment.access.entry in
+       let arg = begin_block s_fragment.access.exit in
        let vh, vm = build_unpair arg in
        let _, ta = unPairB access.exit.Ssa.message_type in
        let vm1 = build_in 1 vm ta in
@@ -967,6 +959,7 @@ let rec translate (t: Cbvterm.t) : fragment =
     let eval = {
       entry = fresh_label (pair t.t_ann (code_context t.t_context));
       exit  = fresh_label (pair t.t_ann (Cbvtype.code t.t_type)) } in
+    Printf.printf "App: %s\n" (Cbvtype.to_string ~concise:false t1.t_type);
     let access = fresh_access "app" t.t_type in
     let block1 =
       let arg = begin_block eval.entry in
@@ -1117,6 +1110,7 @@ let to_ssa t =
   let return_block =
     let arg = begin_block f.eval.exit in
     end_block_return arg in
+  Printf.printf "ACCESS %i\n" (f.access.exit.Ssa.name);
   let access_exit_block =
     let arg = begin_block f.access.exit in
     end_block_jump f.access.exit arg in

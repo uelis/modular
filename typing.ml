@@ -606,20 +606,23 @@ let infer_annotations (t: Cbvterm.t) : unit =
        let g, (x', a', d', y') = selectfunty (List.Assoc.find_exn s.t_context f) in
        Basetype.unify_exn a a';
        Basetype.unify_exn d d';
-       Basetype.unify_exn a s.t_ann;
        Cbvtype.unify_exn x x';
+       Cbvtype.unify_exn y y';
+       Basetype.unify_exn a s.t_ann;
        Cbvtype.unify_exn x va;
        Cbvtype.unify_exn x (List.Assoc.find_exn s.t_context v);
-       Cbvtype.unify_exn y y';
-       List.iter t.t_context
-                 ~f:(fun (y, a) ->
-                     let a' = List.Assoc.find_exn s.t_context y in
-                     let m' =  multiplicity_of_type a' in
-                     Cbvtype.unify_exn a (freshen_multiplicity a');
-                     Basetype.unify_exn
-                       (multiplicity_of_type a)
-                       (Basetype.newty
-                          (Basetype.PairB(h, m'))));
+       let context_cs =
+         List.map
+           t.t_context
+           ~f:(fun (y, a) ->
+               let a' = List.Assoc.find_exn s.t_context y in
+               let m' =  multiplicity_of_type a' in
+               Cbvtype.unify_exn a (freshen_multiplicity a');
+               { lower = Basetype.newty (Basetype.PairB(e, m'));
+                 upper = multiplicity_of_type a;
+                 reason =
+                   Printf.sprintf "fix: context (%s)" (Ident.to_string v)
+               }) in
        [ { lower = code_of_context t.t_context;
            upper = d;
            reason = "fix: closure"
@@ -631,7 +634,7 @@ let infer_annotations (t: Cbvterm.t) : unit =
            reason = "fix: call stack"
          }
        ]
-       @ cs
+       @ cs @ context_cs
     | Contr((x, xs), s) ->
        let cs = constraints s in
        let m = multiplicity_of_type (List.Assoc.find_exn t.t_context x) in
