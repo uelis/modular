@@ -349,6 +349,12 @@ let end_block_return (v: value) : Ssa.block =
     Ssa.Return(s.cur_label, s.cur_arg, s.cur_lets, vv, va)
 
 (** Functions for working with cbv types *)
+      
+let rec code_context (gamma : Cbvtype.t Typing.context) : Basetype.t =
+  match gamma with
+  | [] -> Basetype.newty Basetype.UnitB
+  | (_, a) :: delta ->
+     pair (code_context delta) (Cbvtype.code a )
            
 let rec access_entry_type (a: Cbvtype.t): Basetype.t =
   match Cbvtype.case a with
@@ -378,17 +384,15 @@ and access_exit_type (a: Cbvtype.t): Basetype.t =
         let params = [pair s yc; yexit; xentry] in
         let sum = Basetype.newty (Basetype.DataB(sumid, params)) in
         pair m sum
+       
+let fresh_eval (s: string) (t: Cbvterm.t) : int_interface =
+  { entry = fresh_label (s ^ "_eval_entry") (pair t.t_ann (code_context t.t_context));
+    exit  = fresh_label (s ^ "_eval_exit") (pair t.t_ann (Cbvtype.code t.t_type)) }
 
 let fresh_access (s: string) (a: Cbvtype.t) : int_interface =
   { entry = fresh_label (s ^ "_access_entry") (access_entry_type a);
     exit = fresh_label (s ^ "_access_entry") (access_exit_type a)
   }
-    
-let rec code_context (gamma : Cbvtype.t Typing.context) : Basetype.t =
-  match gamma with
-  | [] -> Basetype.newty Basetype.UnitB
-  | (_, a) :: delta ->
-     pair (code_context delta) (Cbvtype.code a )
           
 let lift_label a l =
   { Ssa.name = l.Ssa.name;
@@ -500,9 +504,7 @@ let rec translate (t: Cbvterm.t) : fragment =
   | Var x ->
      Printf.printf "Var %s\n%!"
                    (Cbvtype.to_string ~concise:false t.t_type);
-    let eval = {
-      entry = fresh_label "var_eval_entry" (pair t.t_ann (code_context t.t_context));
-      exit  = fresh_label "var_eval_exit" (pair t.t_ann (Cbvtype.code t.t_type)) } in
+     let eval = fresh_eval "var" t in
     let access = fresh_access "var" t.t_type in
     let x_access = fresh_access "var" t.t_type in
     let block1 =
@@ -580,9 +582,7 @@ let rec translate (t: Cbvterm.t) : fragment =
                     ~f:(fun (x, a) -> not (List.mem xs x)))
      }
   | Const(Ast.Cintconst i, []) ->
-    let eval = {
-      entry = fresh_label "intconst_eval_entry" (pair t.t_ann (code_context t.t_context));
-      exit  = fresh_label "intconst_eval_exit" (pair t.t_ann intB) } in
+     let eval = fresh_eval "intconst" t in
     let access = fresh_access "intconst" t.t_type in
     let eval_block =
       let arg = begin_block eval.entry in
@@ -633,9 +633,7 @@ let rec translate (t: Cbvterm.t) : fragment =
   | Const(Ast.Cintadd, [s1; s2]) ->
      let s1_fragment = translate s1 in
      let s2_fragment = translate s2 in
-     let eval = {
-         entry = fresh_label "intadd_eval_entry" (pair t.t_ann (code_context t.t_context));
-         exit  = fresh_label "intadd_eval_exit" (pair t.t_ann (Cbvtype.code t.t_type)) } in
+     let eval = fresh_eval "intadd" t in
      let access = fresh_access "intadd" t.t_type in
      let eval_block1 =
        let arg = begin_block eval.entry in
@@ -692,9 +690,7 @@ let rec translate (t: Cbvterm.t) : fragment =
      print_fcontext s_fragment.context;
     (* TODO: nimmt an, dass x im context von s vorkommt. *)
     let x_access = List.Assoc.find_exn s_fragment.context x in
-    let eval = {
-      entry = fresh_label "fun_eval_entry" (pair t.t_ann (code_context t.t_context));
-      exit  = fresh_label "fun_eval_exit" (pair t.t_ann (Cbvtype.code t.t_type)) } in
+    let eval = fresh_eval "fun" t in
     let access = fresh_access "fun" t.t_type in
     let eval_block =
       let arg = begin_block eval.entry in
@@ -824,10 +820,7 @@ let rec translate (t: Cbvterm.t) : fragment =
      let f_access = List.Assoc.find_exn s_fragment.context f in
      print_context s.t_context;
      print_fcontext s_fragment.context;
-     let eval = {
-         entry = fresh_label "fix_eval_entry" (pair t.t_ann (code_context t.t_context));
-         exit = fresh_label "fix_eval_exit" (pair t.t_ann (Cbvtype.code t.t_type))
-       } in
+     let eval = fresh_eval "fix" t in
      let access = fresh_access "fix" t.t_type in
      let block1 =
        let arg = begin_block eval.entry in
@@ -965,9 +958,7 @@ let rec translate (t: Cbvterm.t) : fragment =
   | App(t1, t2) ->
     let t1_fragment = translate t1 in
     let t2_fragment = translate t2 in
-    let eval = {
-      entry = fresh_label "eval_app_entry" (pair t.t_ann (code_context t.t_context));
-      exit  = fresh_label "eval_app_exit" (pair t.t_ann (Cbvtype.code t.t_type)) } in
+    let eval = fresh_eval "app" t in
     Printf.printf "App: %s\n" (Cbvtype.to_string ~concise:false t1.t_type);
     let access = fresh_access "app" t.t_type in
     let block1 =
@@ -1029,9 +1020,7 @@ let rec translate (t: Cbvterm.t) : fragment =
      let tc_fragment = translate tc in
      let t1_fragment = translate t1 in
      let t2_fragment = translate t2 in
-     let eval = {
-         entry = fresh_label "if_eval_entry" (pair t.t_ann (code_context t.t_context));
-         exit  = fresh_label "if_eval_exit" (pair t.t_ann (Cbvtype.code t.t_type)) } in
+     let eval = fresh_eval "if" t in
      let access = fresh_access "if" t.t_type in
      let eval_block1 =
        let arg = begin_block eval.entry in
