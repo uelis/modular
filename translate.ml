@@ -28,7 +28,7 @@ let voidB : Basetype.t =
 let intB : Basetype.t =
   Basetype.newty (Basetype.IntB)
                   
-let pair (a1: Basetype.t) (a2: Basetype.t): Basetype.t =
+let pairB (a1: Basetype.t) (a2: Basetype.t): Basetype.t =
   Basetype.newty (Basetype.PairB(a1, a2))
            
 let unPairB a =
@@ -36,14 +36,6 @@ let unPairB a =
   | Basetype.Sgn (Basetype.PairB(a1, a2)) -> a1, a2
   | _ -> assert false
                 
-let unDataB a =
-  match Basetype.case a with
-  | Basetype.Sgn (Basetype.DataB(id, params)) ->
-     id, params
-  | _ -> assert false
-
-(** Simple SSA builder interface *)
-
 let fresh_ssa_name =
   let next_name = ref 0 in
   fun () ->
@@ -55,44 +47,44 @@ let rec code_context (gamma : Cbvtype.t Typing.context) : Basetype.t =
   match gamma with
   | [] -> Basetype.newty Basetype.UnitB
   | (_, a) :: delta ->
-     pair (code_context delta) (Cbvtype.code a )
+     pairB (code_context delta) (Cbvtype.code a )
            
 let rec access_entry_type (a: Cbvtype.t): Basetype.t =
   match Cbvtype.case a with
   | Cbvtype.Var -> failwith "var"
   | Cbvtype.Sgn s ->
      match s with
-      | Cbvtype.Nat(m) -> pair m voidB
+      | Cbvtype.Nat(m) -> pairB m voidB
       | Cbvtype.Fun(m, (x, s, c, y)) ->
         let xc = Cbvtype.code x in
         let yentry = access_entry_type y in
         let xexit = access_exit_type x in
         let sumid = Basetype.Data.sumid 3 in
-        let params = [pair s (pair c xc); yentry; xexit] in
+        let params = [pairB s (pairB c xc); yentry; xexit] in
         let sum = Basetype.newty (Basetype.DataB(sumid, params)) in
-        pair m sum
+        pairB m sum
 and access_exit_type (a: Cbvtype.t): Basetype.t =
   match Cbvtype.case a with
   | Cbvtype.Var -> failwith "var"
   | Cbvtype.Sgn s ->
      match s with
-     | Cbvtype.Nat(m) -> pair m voidB
+     | Cbvtype.Nat(m) -> pairB m voidB
      | Cbvtype.Fun(m, (x, s, _, y)) ->
         let yc = Cbvtype.code y in
         let yexit = access_exit_type y in
         let xentry = access_entry_type x in
         let sumid = Basetype.Data.sumid 3 in
-        let params = [pair s yc; yexit; xentry] in
+        let params = [pairB s yc; yexit; xentry] in
         let sum = Basetype.newty (Basetype.DataB(sumid, params)) in
-        pair m sum
+        pairB m sum
           
 let fresh_label (name: string) (a : Basetype.t): Ssa.label =
   { Ssa.name = Ident.fresh name;
     Ssa.message_type = a }
      
 let fresh_eval (s: string) (t: Cbvterm.t) : int_interface =
-  { entry = fresh_label (s ^ "_eval_entry") (pair t.t_ann (code_context t.t_context));
-    exit  = fresh_label (s ^ "_eval_exit") (pair t.t_ann (Cbvtype.code t.t_type)) }
+  { entry = fresh_label (s ^ "_eval_entry") (pairB t.t_ann (code_context t.t_context));
+    exit  = fresh_label (s ^ "_eval_exit") (pairB t.t_ann (Cbvtype.code t.t_type)) }
 
 let fresh_access (s: string) (a: Cbvtype.t) : int_interface =
   { entry = fresh_label (s ^ "_access_entry") (access_entry_type a);
@@ -101,7 +93,7 @@ let fresh_access (s: string) (a: Cbvtype.t) : int_interface =
           
 let lift_label a l =
   { Ssa.name = l.Ssa.name;
-    Ssa.message_type = pair a (l.Ssa.message_type) } 
+    Ssa.message_type = pairB a (l.Ssa.message_type) } 
     
 let lift_int_interface a i = {
     entry = lift_label a i.entry;
@@ -239,7 +231,7 @@ let rec embed_context
       let te, tt = unPairB y_access.exit.Ssa.message_type in
       let tstack_inner, _ = unPairB tt in
       let vstack_pair = Builder.project vstack_outer
-                          (pair te tstack_inner) in
+                          (pairB te tstack_inner) in
       let ve, vstack_inner = Builder.unpair vstack_pair in
       let v = Builder.pair ve (Builder.pair vstack_inner vm) in
       Builder.end_block_jump y_access.exit v in
@@ -287,7 +279,7 @@ let rec translate (t: Cbvterm.t) : fragment =
      let id = "contr" in
      let eval = {
        entry = fresh_label (id ^ "_eval_entry")
-                 (pair t.t_ann (code_context t.t_context));
+                 (pairB t.t_ann (code_context t.t_context));
        exit = s_fragment.eval.exit
      } in
      let x_access = fresh_access "contr"
@@ -404,7 +396,7 @@ let rec translate (t: Cbvterm.t) : fragment =
        let arg = Builder.begin_block s1_fragment.eval.exit in
        let vstack1, vn1 = Builder.unpair arg in
        let vp = Builder.project vstack1
-                  (pair t.t_ann (code_context s2.t_context)) in
+                  (pairB t.t_ann (code_context s2.t_context)) in
        let vstack, vgamma2 = Builder.unpair vp in
        let vstack2 = Builder.embed (Builder.pair vstack vn1) s2.t_ann in
        let v = Builder.pair vstack2 vgamma2 in
@@ -412,7 +404,7 @@ let rec translate (t: Cbvterm.t) : fragment =
      let eval_block3 =
        let arg = Builder.begin_block s2_fragment.eval.exit in
        let vstack2, vn2 = Builder.unpair arg in
-       let vp = Builder.project vstack2 (pair t.t_ann intB) in
+       let vp = Builder.project vstack2 (pairB t.t_ann intB) in
        let vstack, vn1 = Builder.unpair vp in
        let vsum = Builder.primop (Intast.Cintadd) (Builder.pair vn1 vn2) in
        let v = Builder.pair vstack vsum in
@@ -462,7 +454,7 @@ let rec translate (t: Cbvterm.t) : fragment =
        *)
       let td = Cbvtype.code t.t_type in
       let tcx = Cbvtype.code xty in
-      let entry = fresh_label "fun_decode" (pair te (pair ta (pair td tcx))) in
+      let entry = fresh_label "fun_decode" (pairB te (pairB ta (pairB td tcx))) in
       let arg = Builder.begin_block entry in
       let ve, vadx = Builder.unpair arg in
       let va, vdx = Builder.unpair vadx in
@@ -530,7 +522,7 @@ let rec translate (t: Cbvterm.t) : fragment =
      (* E + H *G *)
      let te = Cbvtype.multiplicity t.t_type in
      let tg = Cbvtype.multiplicity (List.Assoc.find_exn s.t_context f) in
-     let thg = pair th tg in
+     let thg = pairB th tg in
      let tcons =
        Basetype.newty (Basetype.DataB(Basetype.Data.sumid 2, [te; thg])) in
      let build_singleton ve =
@@ -549,7 +541,7 @@ let rec translate (t: Cbvterm.t) : fragment =
        let tx = Cbvtype.code xty in
        let arg = Builder.begin_block
                    (fresh_label (id ^ "eval_body")
-                      (pair th (pair ta (pair td tx)))) in
+                      (pairB th (pairB ta (pairB td tx)))) in
        let vh, vadx = Builder.unpair arg in
        let va, vdx = Builder.unpair vadx in
        let vd, vx = Builder.unpair vdx in
@@ -572,7 +564,7 @@ let rec translate (t: Cbvterm.t) : fragment =
        let _(*th*), t1 = unPairB f_access.exit.Ssa.message_type in
        let _(*tg*), tans = unPairB t1 in
        let arg = Builder.begin_block
-                   (fresh_label (id ^ "invoke_rec") (pair thg tans)) in
+                   (fresh_label (id ^ "invoke_rec") (pairB thg tans)) in
        let vhg, vm = Builder.unpair arg in
        let vh, vg = Builder.unpair vhg in
        let v = Builder.pair vh (Builder.pair vg vm) in
@@ -699,7 +691,7 @@ let rec translate (t: Cbvterm.t) : fragment =
       let arg = Builder.begin_block t1_fragment.eval.exit in
       let ve, vf = Builder.unpair arg in
       let vu_delta = Builder.project ve
-                       (pair t.t_ann (code_context t2.t_context)) in
+                       (pairB t.t_ann (code_context t2.t_context)) in
       let vu, vdelta = Builder.unpair vu_delta in
       let vu_f = Builder.pair vu vf in
       let ve' = Builder.embed vu_f t2.t_ann in
@@ -708,7 +700,7 @@ let rec translate (t: Cbvterm.t) : fragment =
     let block3 =
       let arg = Builder.begin_block t2_fragment.eval.exit in
       let ve, vx = Builder.unpair arg in
-      let vu_f = Builder.project ve (pair t.t_ann (Cbvtype.code t1.t_type)) in
+      let vu_f = Builder.project ve (pairB t.t_ann (Cbvtype.code t1.t_type)) in
       let vu, vf = Builder.unpair vu_f in
       let vufx = Builder.pair vu (Builder.pair vf vx) in
       let td, tfunacc = unPairB t1_fragment.access.entry.Ssa.message_type in
@@ -778,8 +770,8 @@ let rec translate (t: Cbvterm.t) : fragment =
      let eval_blockc =
        let arg = Builder.begin_block tc_fragment.eval.exit in
        let vstack1, vn = Builder.unpair arg in
-       let vp = Builder.project vstack1 (pair t.t_ann
-                                            (pair
+       let vp = Builder.project vstack1 (pairB t.t_ann
+                                            (pairB
                                                (code_context t1.t_context)
                                                (code_context t2.t_context)
                                             )) in
