@@ -202,17 +202,29 @@ let print_fcontext c =
        );
   Printf.printf "\n"
 
-(* TODO: spec *)
-let rec embed_context outer gamma =
-  match gamma with
+(** Embeds the multiplicities in the context of a fragment as
+specified by the context [outer].
+
+Inputs are a fagment context [inner] and a typing context [outer]
+that must define the same variables and for each defined variable x, 
+the declarations in [outer] and [inner] must have the forms 
+[ x: [D]X ] and [ x: (E * (F * X-), E * (F * X+)) ] respectively, where
+[ E*F <= D ].
+
+The result is an interface where [x] as above gets interface 
+[ x: (D * X-, D*  X+) ]. The returned blocks perform embedding and 
+projection.
+*)
+let rec embed_context
+          (outer : Cbvtype.t Typing.context)
+          (inner : int_interface Typing.context)
+  : int_interface Typing.context * Ssa.block list =
+  match inner with
   | [] -> [], []
-  | (y, y_access) :: gamma'  ->
-    let outer_gamma', blocks = embed_context outer gamma' in
+  | (y, y_access) :: inner'  ->
+    let outer_gamma', blocks = embed_context outer inner' in
     let y_outer_access = fresh_access "context_embed"
-                           (List.Assoc.find_exn outer.t_context y) in
-    let tstack_outer, _ = unPairB y_outer_access.entry.Ssa.message_type in
-    let _, tminner = unPairB y_access.entry.Ssa.message_type in
-    let tstack_inner, _ = unPairB tminner in
+                           (List.Assoc.find_exn outer y) in
            (*
        let yty_inner = List.Assoc.find_exn s.t_context y in
        Printf.printf "%s(%s), %s(%s)\n%!"
@@ -224,8 +236,10 @@ let rec embed_context outer gamma =
     let exit_block =
       let arg = Builder.begin_block y_outer_access.exit in
       let vstack_outer, vm = Builder.unpair arg in
+      let te, tt = unPairB y_access.exit.Ssa.message_type in
+      let tstack_inner, _ = unPairB tt in
       let vstack_pair = Builder.project vstack_outer
-                          (pair (Cbvtype.multiplicity outer.t_type) tstack_inner) in
+                          (pair te tstack_inner) in
       let ve, vstack_inner = Builder.unpair vstack_pair in
       let v = Builder.pair ve (Builder.pair vstack_inner vm) in
       Builder.end_block_jump y_access.exit v in
@@ -233,12 +247,12 @@ let rec embed_context outer gamma =
       let arg = Builder.begin_block y_access.entry in
       let ve, vpair = Builder.unpair arg in
       let vstack_inner, vm = Builder.unpair vpair in
+      let tstack_outer, _ = unPairB y_outer_access.entry.Ssa.message_type in
       let vstack_outer = Builder.embed (Builder.pair ve vstack_inner) tstack_outer in
       let v = Builder.pair vstack_outer vm in
       Builder.end_block_jump y_outer_access.entry v in
     (y, y_outer_access) :: outer_gamma',
     [entry_block; exit_block] @ blocks 
-
 
 let rec translate (t: Cbvterm.t) : fragment =
   match t.t_desc with
@@ -492,50 +506,9 @@ let rec translate (t: Cbvterm.t) : fragment =
       let vx2 = Builder.inj 2 vy tf in
       let v = Builder.pair ve vx2 in
       Builder.end_block_jump access.exit v in
-    (*
-    let rec embed_context gamma =
-      match gamma with
-      | [] -> [], []
-      | (y, y_access) :: gamma'  ->
-         let outer_gamma', blocks = embed_context gamma' in
-         if x = y then
-           outer_gamma', blocks
-         else
-           let y_outer_access = fresh_access "context_embed"
-                                  (List.Assoc.find_exn t.t_context y) in
-           let tstack_outer, _ = unPairB y_outer_access.entry.Ssa.message_type in
-           let _, tminner = unPairB y_access.entry.Ssa.message_type in
-           let tstack_inner, _ = unPairB tminner in
-           (*
-           let yty_inner = List.Assoc.find_exn s.t_context y in
-           Printf.printf "%s(%s), %s(%s)\n%!"
-                         (Cbvtype.to_string ~concise:false yty_outer)
-                         (Intlib.Printing.string_of_basetype tstack_outer)
-                         (Cbvtype.to_string ~concise:false yty_inner)
-                         (Intlib.Printing.string_of_basetype tstack_inner);
-           *)
-           let exit_block =
-             let arg = Builder.begin_block y_outer_access.exit in
-             let vstack_outer, vm = Builder.unpair arg in
-             let vstack_pair = Builder.project vstack_outer
-                                 (pair (Cbvtype.multiplicity t.t_type) tstack_inner) in
-             let ve, vstack_inner = Builder.unpair vstack_pair in
-             let v = Builder.pair ve (Builder.pair vstack_inner vm) in
-             Builder.end_block_jump y_access.exit v in
-           let entry_block =
-             let arg = Builder.begin_block y_access.entry in
-             let ve, vpair = Builder.unpair arg in
-             let vstack_inner, vm = Builder.unpair vpair in
-             let vstack_outer = Builder.embed (Builder.pair ve vstack_inner) tstack_outer in
-             let v = Builder.pair vstack_outer vm in
-             Builder.end_block_jump y_outer_access.entry v in
-           (y, y_outer_access) :: outer_gamma',
-           [entry_block; exit_block] @ blocks in
-    let context, context_blocks = embed_context s_fragment.context in
-    *)
     let context, context_blocks =
       let gamma = List.filter s_fragment.context ~f:(fun (y, _) -> x <> y) in
-      embed_context t gamma in
+      embed_context t.t_context gamma in
     { eval = eval;
       access = access;
       blocks = [eval_block; access_block; invoke_block;
@@ -697,7 +670,7 @@ let rec translate (t: Cbvterm.t) : fragment =
     let context, context_blocks =
       let gamma = List.filter s_fragment.context
                     ~f:(fun (y, _) -> y <> x && y <> f) in
-      embed_context t gamma in
+      embed_context t.t_context gamma in
      { eval = eval;
        access = access;
        blocks = [eval_block; access_block; eval_body_block; invoke_rec_block;
