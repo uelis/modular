@@ -15,7 +15,7 @@ type 'a term = {
  and 'a t_desc =
    | Var of Ident.t
    | Const of const * ('a term list)
-   | Contr of (Ident.t * Ident.t list) * 'a term
+   | Contr of ((Ident.t * 'a) * Ident.t list) * 'a term
    | Fun of (Ident.t * 'a) * 'a term
    | App of 'a term * 'a term
    | Ifz of 'a term * 'a term * 'a term

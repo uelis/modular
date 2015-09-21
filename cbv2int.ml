@@ -66,7 +66,8 @@ let compile (d: Decl.t) : unit =
       Printf.printf "%s : %s%!\n"
         (Ident.to_string f)
         (Cbvtype.to_string ~concise:(not !Opts.print_type_details)
-           t.Cbvterm.t_type);
+                           t.Cbvterm.t_type);
+      (*
       let f = Translate.translate t in
       Translate.print_fragment f;
       let ssa = Translate.to_ssa t in
@@ -78,21 +79,8 @@ let compile (d: Decl.t) : unit =
       let llvm_module = Intlib.Llvmcodegen.llvm_compile ssa_shortcut in
       let target = Printf.sprintf "%s.bc" f_name in
       ignore (Llvm_bitwriter.write_bitcode_file llvm_module target)
-      (*
-      if Ident.to_string f = "main" then
-        begin
-          let ssa_func = Intlib.Ssa.of_circuit f_name circuit in
-          (* Intlib.Ssa.fprint_func stdout ssa_func; *)
-          let ssa_traced = Intlib.Trace.trace ssa_func in
-          let ssa_shortcut = Intlib.Trace.shortcut_jumps ssa_traced in
-          if !Opts.verbose then
-            Intlib.Ssa.fprint_func stdout ssa_shortcut;
-          let llvm_module = Intlib.Llvmcodegen.llvm_compile ssa_shortcut in
-          let target = Printf.sprintf "%s.bc" f_name in
-          ignore (Llvm_bitwriter.write_bitcode_file llvm_module target)
-        end
-       *)
-    with Typing.Typing_error(s, err) ->
+      *)
+    with Simpletyping.Typing_error(s, err) ->
       let msg = err ^ "\nIn declaration of '" ^ f_name ^ "'." in
       raise (Failure (error_msg (term_loc s) msg)) 
 
@@ -123,5 +111,5 @@ let () =
   | Sys_error msg 
   | Failure msg ->
     exit_with_error "" msg
-  | Typing.Typing_error(t, msg)->
+  | Simpletyping.Typing_error(t, msg)->
     exit_with_error (term_loc t) msg

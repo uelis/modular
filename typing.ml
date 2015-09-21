@@ -8,287 +8,11 @@ module Uftype = Intlib.Uftype
                  
 (* Contexts *)
 type 'a context = (Ident.t * 'a) list
-
-exception Typing_error of Ast.t option * string
-
-module STSig = struct
-
-    type 'a t =
-      | Nat
-      | Fun of 'a * 'a
-      with sexp
-
-    let map (f : 'a -> 'b) (t : 'a t) : 'b t =
-      match t with
-      | Nat -> Nat
-      | Fun(x, y) -> Fun(f x, f y)
-
-    let children (t: 'a t) : 'a list =
-      match t with
-      | Nat -> []
-      | Fun(x, y) -> [x; y]
-
-    let equals (s: 'a t) (t: 'a t) ~equals:(eq: 'a -> 'a -> bool) : bool =
-      match s, t with
-      | Nat, Nat ->
-         true
-      | Fun(x1, y1), Fun(x2, y2) ->
-         eq x1 x2 &&
-           eq y1 y2
-      | Nat, _
-      | Fun _, _ -> false
-
-    let unify_exn (s: 'a t) (t: 'a t) ~unify:(unify: 'a -> 'a -> unit) : unit =
-      match s, t with
-      | Nat, Nat ->
-         ()
-      | Fun(x1, y1), Fun(x2, y2) ->
-         unify x1 x2;
-         unify y1 y2
-      | Nat, _
-      | Fun _, _ -> raise Uftype.Constructor_mismatch
-  end
-
-module STtype =
-  struct
-    include Uftype.Make(STSig)
-                       
-    let name_counter = ref 0
-
-    let new_name () =
-      let i = !name_counter in
-      incr(name_counter);
-      let c = Char.of_int_exn (Char.to_int 'a' + i mod 26) in
-      let n = i / 26 in
-      if (n = 0) then
-        Printf.sprintf "%c" c
-      else
-        Printf.sprintf "%c%i" c n;;
-
-    let name_table = Int.Table.create ()
-    let name_of_typevar t =
-      match Int.Table.find name_table (repr_id t) with
-      | Some name -> name
-      | None ->
-         let name = new_name() in
-         Int.Table.add_exn name_table ~key:(repr_id t) ~data:name;
-         name
-           
-    let to_string ?concise:(concise=true) (ty: t): string =
-      let cycle_nodes =
-        let cycles = dfs_cycles ty |> List.map ~f:repr_id in
-        List.fold cycles ~init:Int.Set.empty ~f:Int.Set.add in
-      let strs = Int.Table.create () in
-      let rec str (t: t) l =
-        let rec s l =
-          match l with
-          | `Type -> 
-             begin
-               match case t with
-               | Var -> s `Atom
-               | Sgn st ->
-                  match st with
-                  | STSig.Fun(t1, t2) ->
-                     if not concise then
-                       Printf.sprintf "%s -> %s)"
-                                      (str t1 `Atom)
-                                      (str t2 `Type)
-                     else
-                       Printf.sprintf "%s -> %s" (str t1 `Atom) (str t2 `Type)
-                  | STSig.Nat ->
-                     s `Atom
-             end
-          | `Atom ->
-             begin
-               match case t with
-               | Var ->
-                  "\'" ^ (name_of_typevar t)
-               | Sgn st ->
-                  match st with
-                  | STSig.Nat -> "Nat"
-                  | STSig.Fun _ -> Printf.sprintf "(%s)" (s `Type)
-             end in
-        let tid = repr_id t in
-        match Int.Table.find strs tid with
-        | Some s -> s
-        | None ->
-           if Int.Set.mem cycle_nodes tid then
-             let alpha = "''" ^ (name_of_typevar (newvar())) in
-             Int.Table.replace strs ~key:tid ~data:alpha;
-             let s = "(rec " ^ alpha ^ ". " ^ (s l) ^ ")" in
-             Int.Table.replace strs ~key:tid ~data:s;
-             s
-           else
-             s l in
-      str ty `Type
-  end
-
-let eq_constraint t ~expected:expected_ty ~actual:actual_ty =
-  try
-    STtype.unify_exn expected_ty actual_ty
-  with
-  | Uftype.Cyclic_type ->
-    let msg = "Unification leads to cyclic type." in
-    raise (Typing_error(None, msg)) 
-  | Uftype.Constructor_mismatch ->
-    let msg = Printf.sprintf
-                "Term has type %s, but a term of type %s is expected."
-                (STtype.to_string actual_ty)
-                (STtype.to_string expected_ty) in
-    raise (Typing_error(Some t, msg))
-                 
-  
-let natty () =
-  let a = Basetype.newvar() in
-  Cbvtype.newty
-    (Cbvtype.Nat(a))
-  
-let funty x y =
-  let a = Basetype.newvar() in
-  let b = Basetype.newvar() in
-  let c = Basetype.newvar() in
-  Cbvtype.newty
-    (Cbvtype.Fun(c, (x, a, b, y)))
-
-let selectfunty x =
-  match Cbvtype.case x with
-  | Cbvtype.Sgn (Cbvtype.Fun(c, x)) -> (c, x)
-  | _ -> failwith "unfunty"
-                  
-let freshen_multiplicity (a : Cbvtype.t) : Cbvtype.t =
+                                 
+let selectfunty a =
   match Cbvtype.case a with
-  | Cbvtype.Var -> a
-  | Cbvtype.Sgn s ->
-     let m = Basetype.newvar () in
-     match s with
-     | Cbvtype.Nat _ -> Cbvtype.newty (Cbvtype.Nat(m))
-     | Cbvtype.Fun(_, s) -> Cbvtype.newty (Cbvtype.Fun(m, s))
-                                          
-let rec pt (phi: STtype.t context) (t: Ast.t)
-  : STtype.t Cbvterm.term * (Ident.t * Ident.t) list =
-  let open Cbvterm in
-  (* Join all instances of x to a single instance of x that appears directly in the term. *)
-  let contract_instances x (t1, tinstances) =
-    let xs = List.filter_map
-               tinstances
-               ~f:(fun (y, y') -> if x = y then Some y' else None) in
-    let instances = List.filter tinstances ~f:(fun (y, _) -> y <> x) in
-    let gamma = List.filter t1.t_context ~f:(fun (y, _) -> not (List.mem xs y)) in
-    let a = STtype.newvar () in    
-    List.iter t1.t_context
-              ~f:(fun (y, b) -> if List.mem xs y then
-                                  eq_constraint t ~actual:b ~expected:a);
-    { t_desc = Contr((x, xs), t1);
-      t_ann = Basetype.newvar ();
-      t_type = t1.t_type;
-      t_context = (x, a) :: gamma;
-      t_loc = t.Ast.loc },
-    instances in
-  match t.Ast.desc with
-  | Ast.Var(v: Ident.t) ->
-    let a =
-      match List.Assoc.find phi v with
-      | Some a -> a
-      | None ->
-        let msg = "Variable '" ^ (Ident.to_string v) ^ "' not bound." in
-        raise (Typing_error (Some t, msg)) in
-    let v' = Ident.variant v in
-    { t_desc = Cbvterm.Var(v');
-      t_ann = Basetype.newvar ();
-      t_type = a;
-      t_context = [(v', a)];
-      t_loc = t.Ast.loc},
-    [(v, v')]
-  | Ast.Const(Ast.Cintconst _ as c, []) ->
-    let a = STtype.newty STSig.Nat in
-    { t_desc = Const(c, []);
-      t_ann = Basetype.newvar ();
-      t_type = a;
-      t_context = [];
-      t_loc = t.Ast.loc},
-    []
-  | Ast.Const(Ast.Cintprint as c, [s]) ->
-     let s1, sinstances = pt phi s in
-     eq_constraint s ~actual:s1.t_type ~expected:(STtype.newty STSig.Nat);
-     { t_desc = Const(c, [s1]);
-       t_ann = s1.t_ann;
-       t_type = STtype.newty STSig.Nat;
-       t_context = s1.t_context;
-       t_loc = t.Ast.loc},
-     sinstances
-  | Ast.Const(Ast.Cintadd as c, [s; t]) ->
-     let s1, sinstances = pt phi s in
-     let t1, tinstances = pt phi t in
-     eq_constraint s ~actual:s1.t_type ~expected:(STtype.newty STSig.Nat);
-     eq_constraint t ~actual:t1.t_type ~expected:(STtype.newty STSig.Nat);
-     { t_desc = Const(c, [s1; t1]);
-       t_ann = Basetype.newvar ();
-       t_type = STtype.newty STSig.Nat;
-       t_context = s1.t_context @ t1.t_context;
-       t_loc = t.Ast.loc },
-     sinstances @ tinstances
-  | Ast.Const(_) ->
-     let msg = "Wrong number of arguments to primitive operation." in
-     raise (Typing_error (Some t, msg))
-  | Ast.App(s, t) ->
-     let s1, sinstances = pt phi s in
-     let beta = STtype.newvar () in
-     let t1, tinstances = pt phi t in
-     eq_constraint s
-                   ~actual:s1.t_type
-                   ~expected:(STtype.newty (STSig.Fun(t1.t_type, beta)));
-     { t_desc = App(s1, t1);
-       t_ann = Basetype.newvar ();
-       t_type = beta;
-       t_context = s1.t_context @ t1.t_context;
-       t_loc = t.Ast.loc },
-     sinstances @ tinstances
-  | Ast.Fun(x, t) ->
-     let alpha = STtype.newvar() in
-     let t1, tinstances = contract_instances x (pt ((x, alpha)::phi) t) in
-     let instances = List.filter tinstances ~f:(fun (y, _) -> y <> x) in
-     let gamma = List.filter t1.t_context ~f:(fun (y, _) -> y <> x) in
-     eq_constraint t ~expected:alpha ~actual:(List.Assoc.find_exn t1.t_context x); (*nicht automatisch!*)
-     { t_desc = Fun((x, alpha), t1);
-       t_ann = Basetype.newvar ();
-       t_type = STtype.newty (STSig.Fun(alpha, t1.t_type));
-       t_context = gamma;
-       t_loc = t.Ast.loc },
-     instances
-  | Ast.Fix(f, x, s) ->
-     let alpha = STtype.newvar() in
-     let beta = STtype.newvar() in
-     let t1, tinstances = contract_instances f (contract_instances x (pt ((f, alpha) :: (x, beta) :: phi) s)) in
-     let instances = List.filter tinstances ~f:(fun (y, _) -> y <> x && y <> f) in
-     let gamma = List.filter t1.t_context ~f:(fun (y, _) -> y <> x && y <> f) in
-     let a = STtype.newty (STSig.Fun(beta, t1.t_type)) in
-     let h = Basetype.newvar () in
-     eq_constraint t ~actual:a ~expected:alpha;
-     { t_desc = Fix((h, f, x, beta), t1);
-       t_ann = Basetype.newvar ();
-       t_type = a;
-       t_context = gamma;
-       t_loc = t.Ast.loc },
-     instances
-  | Ast.Ifz(s, tt, tf) ->
-     let sa, sinstances = pt phi s in
-     let tta, ttinstances = pt phi tt in
-     let tfa, tfinstances = pt phi tf in
-     eq_constraint s
-                   ~actual:sa.t_type
-                   ~expected:(STtype.newty STSig.Nat);
-     eq_constraint tt
-                   ~actual:tta.t_type
-                   ~expected:(STtype.newty STSig.Nat);
-     eq_constraint tt
-                   ~actual:tfa.t_type
-                   ~expected:(STtype.newty STSig.Nat);
-     { t_desc = Ifz(sa, tta, tfa);
-       t_ann = Basetype.newvar ();
-       t_type = tta.t_type;
-       t_context = sa.t_context @ tta.t_context @ tfa.t_context;
-       t_loc = t.Ast.loc },
-     sinstances @ ttinstances @ tfinstances
+  | Cbvtype.Sgn (Cbvtype.Fun(m, x)) -> m, x
+  | _ -> assert false
 
 type lhd_constraint = {
     lower: Basetype.t;
@@ -406,23 +130,39 @@ let multiplicity_of_type (a : Cbvtype.t) : Basetype.t =
 
 let multiplicities_of_context  (gamma: Cbvtype.t context) : Basetype.t list =
   List.map ~f:(fun (_, a) -> multiplicity_of_type a) gamma 
+           
+let freshen_multiplicity (a : Cbvtype.t) : Cbvtype.t =
+  match Cbvtype.case a with
+    | Cbvtype.Var -> assert false
+    | Cbvtype.Sgn s ->
+       let m = Basetype.newvar () in
+       match s with
+       | Cbvtype.Nat _ -> Cbvtype.newty (Cbvtype.Nat(m))
+       | Cbvtype.Fun(_, s) -> Cbvtype.newty (Cbvtype.Fun(m, s))
 
-let rec fresh_annotations_type (a: STtype.t) : Cbvtype.t =
-  match STtype.case a with
-  | STtype.Var -> natty()
-  | STtype.Sgn s ->
+let rec fresh_annotations_type (a: Simpletype.t) : Cbvtype.t =
+  match Simpletype.case a with
+  | Simpletype.Var ->
+     let m = Basetype.newvar () in
+     Cbvtype.newty (Cbvtype.Nat m)
+  | Simpletype.Sgn s ->
      match s with
-     | STSig.Nat -> natty()
-     | STSig.Fun(x, y) ->
+     | Simpletype.Sig.Nat -> 
+        let m = Basetype.newvar () in
+        Cbvtype.newty (Cbvtype.Nat m)
+     | Simpletype.Sig.Fun(x, y) ->
         let xa = fresh_annotations_type x in
         let ya = fresh_annotations_type y in
-        funty xa ya
+        let m = Basetype.newvar () in
+        let d = Basetype.newvar () in
+        let a = Basetype.newvar () in
+        Cbvtype.newty (Cbvtype.Fun(m, (xa, d, a, ya)))
            
-let rec fresh_annotations_context (t: STtype.t context) :
-          Cbvtype.t context =
+let fresh_annotations_context (t: Simpletype.t context)
+    : Cbvtype.t context =
   List.map t ~f:(fun (x, a) -> (x, fresh_annotations_type a))
            
-let rec fresh_annotations_term (t: STtype.t Cbvterm.term) : Cbvterm.t =
+let rec fresh_annotations_term (t: Simpletype.t Cbvterm.term) : Cbvterm.t =
   let open Cbvterm in
   match t.t_desc with
   | Var v ->
@@ -465,17 +205,16 @@ let rec fresh_annotations_term (t: STtype.t Cbvterm.term) : Cbvterm.t =
          t_type =  fresh_annotations_type t.t_type;
          t_context = fresh_annotations_context t.t_context;
          t_loc = t.t_loc}
-    | Contr((x, xs), s) ->
-       { t_desc = Cbvterm.Contr((x, xs),
+    | Contr(((x, a), xs), s) ->
+       { t_desc = Cbvterm.Contr(((x, fresh_annotations_type a), xs),
                                 fresh_annotations_term s);
          t_ann = t.t_ann;
          t_type =  fresh_annotations_type t.t_type;
          t_context = fresh_annotations_context t.t_context;
          t_loc = t.t_loc}
 
-(* TODO: just construct contexts here? *)
-let infer_annotations (t: Cbvterm.t) : unit =
-  let rec constraints (t: Cbvterm.t) : lhd_constraint list =
+let infer_annotations (t: Cbvterm.t) : Cbvterm.t =
+  let rec constraints (t: Cbvterm.t) : Cbvterm.t * lhd_constraint list =
     let unify_contexts gamma1 gamma2 =
       List.iter gamma2
                 ~f:(fun (x, a) ->
@@ -485,18 +224,16 @@ let infer_annotations (t: Cbvterm.t) : unit =
     let open Cbvterm in
     match t.t_desc with
     | Var v ->
-       Cbvtype.unify_exn
-         t.t_type
-         (List.Assoc.find_exn t.t_context v);
+       { t with t_context = [(v, t.t_type)] },
        []
     | Const(Ast.Cintconst _, []) ->
+       t,
        []
     | Const(Ast.Cintadd, [s1; s2]) ->
-       let cs1 = constraints s1 in
-       let cs2 = constraints s2 in
-       unify_contexts t.t_context s1.t_context;
-       unify_contexts t.t_context s2.t_context;
-       [ { lower = Basetype.newty (Basetype.PairB(t.t_ann, code_of_context s2.t_context));
+       let as1, cs1 = constraints s1 in
+       let as2, cs2 = constraints s2 in
+       { t with t_context = as1.t_context @ as2.t_context },
+       [ { lower = Basetype.newty (Basetype.PairB(t.t_ann, code_of_context as2.t_context));
            upper = s1.t_ann;
            reason = "add: stack first"
          };
@@ -509,16 +246,17 @@ let infer_annotations (t: Cbvterm.t) : unit =
          }
        ] @ cs1 @ cs2
     | Const(Ast.Cintprint, [s1]) ->
-       let cs1 = constraints s1 in
+       let as1, cs1 = constraints s1 in
        unify_contexts t.t_context s1.t_context;
        Cbvtype.unify_exn t.t_type s1.t_type;
        Basetype.unify_exn t.t_ann s1.t_ann;
+       { t with t_context = as1.t_context },
        cs1
     | Const _ ->
        assert false
     | App(s1, s2) ->
-       let cs1 = constraints s1 in
-       let cs2 = constraints s2 in
+       let as1, cs1 = constraints s1 in
+       let as2, cs2 = constraints s2 in
        let c, (x, a, d, y) = selectfunty s1.t_type in
        unify_contexts t.t_context s1.t_context;
        unify_contexts t.t_context s2.t_context;
@@ -526,6 +264,7 @@ let infer_annotations (t: Cbvterm.t) : unit =
        Cbvtype.unify_exn y t.t_type;
        (* TODO *)
        Basetype.unify_exn a t.t_ann;
+       { t with t_context = as1.t_context @ as2.t_context },
        [ { lower = Basetype.newty (Basetype.PairB(t.t_ann, code_of_context s2.t_context));
            upper = s1.t_ann;
            reason = "app: function stack"
@@ -546,7 +285,7 @@ let infer_annotations (t: Cbvterm.t) : unit =
        ]
        @ cs1 @ cs2
     | Fun((v, xa), s) ->
-       let cs = constraints s in
+       let as1, cs1 = constraints s in
        let e, (x, a, d, y) = selectfunty t.t_type in
        (* note: the bound variable cannot appear in t.t_context *)
        Cbvtype.unify_exn x xa;
@@ -555,7 +294,7 @@ let infer_annotations (t: Cbvterm.t) : unit =
        Basetype.unify_exn a s.t_ann;
        let context_cs =
          List.map
-           t.t_context
+           as1.t_context
            ~f:(fun (y, a) ->
                let a' = List.Assoc.find_exn s.t_context y in
                let m' =  multiplicity_of_type a' in
@@ -565,16 +304,19 @@ let infer_annotations (t: Cbvterm.t) : unit =
                  reason =
                    Printf.sprintf "fun: context (%s)" (Ident.to_string v)
                }) in
+       { t with
+         t_context = List.filter as1.t_context ~f:(fun (y, _) -> y <> v)
+       },
        [ { lower = code_of_context t.t_context;
            upper = d;
            reason = "fun: closure"
          }
        ]
-       @ context_cs @ cs
+       @ context_cs @ cs1
     | Ifz(sc, st, sf) ->
-       let csc = constraints sc in
-       let cst = constraints st in
-       let csf = constraints sf in
+       let asc, csc = constraints sc in
+       let ast, cst = constraints st in
+       let asf, csf = constraints sf in
        unify_contexts t.t_context sc.t_context;
        unify_contexts t.t_context st.t_context;
        unify_contexts t.t_context sf.t_context;
@@ -582,6 +324,7 @@ let infer_annotations (t: Cbvterm.t) : unit =
        Cbvtype.unify_exn t.t_type sf.t_type;
        Basetype.unify_exn st.t_ann t.t_ann;
        Basetype.unify_exn sf.t_ann t.t_ann;
+       { t with t_context = asc.t_context @ ast.t_context @ asf.t_context },
        [ { lower = Basetype.newty
                      (Basetype.PairB(t.t_ann,
                                      Basetype.newty
@@ -601,7 +344,7 @@ let infer_annotations (t: Cbvterm.t) : unit =
        ]
        @ csc @ cst @ csf
     | Fix((h, f, v, va), s) ->
-       let cs = constraints s in
+       let as1, cs1 = constraints s in
        let e, (x, a, d, y) = selectfunty t.t_type in
        let g, (x', a', d', y') = selectfunty (List.Assoc.find_exn s.t_context f) in
        Basetype.unify_exn a a';
@@ -624,6 +367,9 @@ let infer_annotations (t: Cbvterm.t) : unit =
                  reason =
                    Printf.sprintf "fix: context (%s)" (Ident.to_string v)
                }) in
+       { t with
+         t_context = List.filter as1.t_context ~f:(fun (y, _) -> y <> v && v <> f)
+       },
        [ { lower = code_of_context t.t_context;
            upper = d;
            reason = "fix: closure"
@@ -635,41 +381,38 @@ let infer_annotations (t: Cbvterm.t) : unit =
            reason = "fix: call stack"
          }
        ]
-       @ cs @ context_cs
-    | Contr((x, xs), s) ->
-       let cs = constraints s in
-       let m = multiplicity_of_type (List.Assoc.find_exn t.t_context x) in
-       let a = freshen_multiplicity (List.Assoc.find_exn t.t_context x) in
-       let gamma = List.filter s.t_context ~f:(fun (y, _) -> not (List.mem xs y)) in
-       let delta = List.filter s.t_context ~f:(fun (y, _) -> List.mem xs y) in
-       let ms = List.map delta ~f:(fun (y, a) -> multiplicity_of_type a) in
+       @ cs1 @ context_cs
+    | Contr(((x, a), xs), s) ->
+       let as1, cs1 = constraints s in
+       let m = multiplicity_of_type a in
+       let delta, gamma =
+         List.partition_tf as1.t_context ~f:(fun (y, _) -> List.mem xs y) in
+       let sum =
+         let ms = List.map delta ~f:(fun (y, a) -> multiplicity_of_type a) in
+         let n = List.length ms in
+         Basetype.newty
+           (Basetype.DataB(Basetype.Data.sumid n, ms)) in
        Cbvtype.unify_exn t.t_type s.t_type;
        Basetype.unify_exn t.t_ann s.t_ann;
        unify_contexts t.t_context gamma;
        List.iter delta
                  ~f:(fun (_, b) ->
                      Cbvtype.unify_exn a (freshen_multiplicity b));
-       let n = List.length ms in
-       let sum =
-         match ms with
-(*         | [] -> Basetype.newty Basetype.UnitB
-           | [m'] -> m' *)
-         | _ -> 
-            Basetype.newty
-              (Basetype.DataB(Basetype.Data.sumid n, ms)) in
-       (*       Basetype.unify_exn m sum; *)
+       let gamma0 = List.filter as1.t_context ~f:(fun (y, _) -> not (List.mem xs y)) in
+       { t with t_context = (x, a) :: gamma0 },
        [ { lower = sum;
            upper = m;
            reason = "contraction"
          }
        ]
-       @ cs in
-  let cs = constraints t in
-  solve_constraints cs
+       @ cs1 in
+  let as1, cs1 = constraints t in
+  solve_constraints cs1;
+  as1
 
 let check_term (t: Ast.t)
     : Cbvterm.t =
-  let t1, _ = pt [] t in
-  let t2 = fresh_annotations_term t1 in
-  infer_annotations t2;
-  t2
+  let lt = Simpletyping.linearize [] t in
+  assert (lt.Simpletyping.subst = []);
+  let lt1 = fresh_annotations_term lt.Simpletyping.linear_term in
+  infer_annotations lt1
