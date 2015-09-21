@@ -1,2 +1,2 @@
 let step =
-   (fix f x -> intadd(f x, f x)) 
+   (fix f x -> intadd(f x, f x)) 10

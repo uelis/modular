@@ -112,7 +112,7 @@ let rec linearize (phi: Simpletype.t context) (t: Ast.t)
          t_context = sl.linear_term.t_context @ tl.linear_term.t_context;
          t_loc = t.Ast.loc
        };
-       subst = sl.subst @ sl.subst
+       subst = sl.subst @ tl.subst
      }
   | Ast.Const(_) ->
      let msg = "Wrong number of arguments to primitive operation." in
@@ -174,20 +174,20 @@ let rec linearize (phi: Simpletype.t context) (t: Ast.t)
      let ttl = linearize phi tt in
      let tfl = linearize phi tf in
      eq_constraint s
-                   ~actual:sl.linear_term.t_type
-                   ~expected:(Simpletype.newty Simpletype.Sig.Nat);
+       ~actual:sl.linear_term.t_type
+       ~expected:(Simpletype.newty Simpletype.Sig.Nat);
      eq_constraint tt
-                   ~actual:ttl.linear_term.t_type
-                   ~expected:(Simpletype.newty Simpletype.Sig.Nat);
+       ~actual:ttl.linear_term.t_type
+       ~expected:(Simpletype.newty Simpletype.Sig.Nat);
      eq_constraint tt
-                   ~actual:tfl.linear_term.t_type
-                   ~expected:(Simpletype.newty Simpletype.Sig.Nat);
+       ~actual:tfl.linear_term.t_type
+       ~expected:(Simpletype.newty Simpletype.Sig.Nat);
      { linear_term = {
          t_desc = Ifz(sl.linear_term, ttl.linear_term, tfl.linear_term);
          t_ann = Basetype.newvar ();
          t_type = ttl.linear_term.t_type;
          t_context = sl.linear_term.t_context @
-                       ttl.linear_term.t_context @ tfl.linear_term.t_context;
+                     ttl.linear_term.t_context @ tfl.linear_term.t_context;
          t_loc = t.Ast.loc
        };
        subst = sl.subst @ ttl.subst @ tfl.subst

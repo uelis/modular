@@ -168,21 +168,21 @@ let rec fresh_annotations_term (t: Simpletype.t Cbvterm.term) : Cbvterm.t =
     { t_desc = Cbvterm.Var(v);
       t_ann = t.t_ann;
       t_type =  fresh_annotations_type t.t_type;
-      t_context = fresh_annotations_context t.t_context;
+      t_context = [];
       t_loc = t.t_loc
     }
   | Const(c, ts) ->
     { t_desc = Cbvterm.Const(c, List.map ts ~f:fresh_annotations_term);
       t_ann = t.t_ann;
       t_type =  fresh_annotations_type t.t_type;
-      t_context = fresh_annotations_context t.t_context;
+      t_context = [];
       t_loc = t.t_loc
     }
   | App(s1, s2) ->
     { t_desc = Cbvterm.App(fresh_annotations_term s1, fresh_annotations_term s2);
       t_ann = t.t_ann;
       t_type =  fresh_annotations_type t.t_type;
-      t_context = fresh_annotations_context t.t_context;
+      t_context = [];
       t_loc = t.t_loc
     }
   | Fun((x, a), s) ->
@@ -190,7 +190,7 @@ let rec fresh_annotations_term (t: Simpletype.t Cbvterm.term) : Cbvterm.t =
                            fresh_annotations_term s);
       t_ann = t.t_ann;
       t_type =  fresh_annotations_type t.t_type;
-      t_context = fresh_annotations_context t.t_context;
+      t_context = [];
       t_loc = t.t_loc
     }
   | Ifz(sc, st, sf) ->
@@ -199,7 +199,7 @@ let rec fresh_annotations_term (t: Simpletype.t Cbvterm.term) : Cbvterm.t =
                            fresh_annotations_term sf);
       t_ann = t.t_ann;
       t_type =  fresh_annotations_type t.t_type;
-      t_context = fresh_annotations_context t.t_context;
+      t_context = [];
       t_loc = t.t_loc
     }
   | Fix((_, f, x, a), s) ->
@@ -207,7 +207,7 @@ let rec fresh_annotations_term (t: Simpletype.t Cbvterm.term) : Cbvterm.t =
                            fresh_annotations_term s);
       t_ann = t.t_ann;
       t_type =  fresh_annotations_type t.t_type;
-      t_context = fresh_annotations_context t.t_context;
+      t_context = [];
       t_loc = t.t_loc
     }
   | Contr(((x, a), xs), s) ->
@@ -215,7 +215,7 @@ let rec fresh_annotations_term (t: Simpletype.t Cbvterm.term) : Cbvterm.t =
                              fresh_annotations_term s);
       t_ann = t.t_ann;
       t_type =  fresh_annotations_type t.t_type;
-      t_context = fresh_annotations_context t.t_context;
+      t_context = [];
       t_loc = t.t_loc
     }
     
@@ -278,7 +278,7 @@ let infer_annotations (t: Cbvterm.t) : Cbvterm.t =
       { t with
         t_context = as1.t_context @ as2.t_context
       },
-      [ { lower = Basetype.newty (Basetype.PairB(t.t_ann, code_of_context s2.t_context));
+      [ { lower = Basetype.newty (Basetype.PairB(t.t_ann, code_of_context as2.t_context));
           upper = s1.t_ann;
           reason = "app: function stack"
         }
@@ -299,17 +299,18 @@ let infer_annotations (t: Cbvterm.t) : Cbvterm.t =
       @ cs1 @ cs2
     | Fun((v, xa), s) ->
       let as1, cs1 = constraints s in
+      print_context as1.t_context;
       let e, (x, a, d, y) = selectfunty t.t_type in
       (* note: the bound variable cannot appear in t.t_context *)
       Cbvtype.unify_exn x xa;
-      Cbvtype.unify_exn x (List.Assoc.find_exn s.t_context v);
+      Cbvtype.unify_exn x (List.Assoc.find_exn as1.t_context v);
       Cbvtype.unify_exn y s.t_type;
       Basetype.unify_exn a s.t_ann;
+      let gamma = List.filter as1.t_context ~f:(fun (y, _) -> y <> v) in
       let context_cs =
-        List.map
-          as1.t_context
+        List.map gamma
           ~f:(fun (y, a) ->
-              let a' = List.Assoc.find_exn s.t_context y in
+              let a' = List.Assoc.find_exn as1.t_context y in
               let m' =  multiplicity_of_type a' in
               Cbvtype.unify_exn a (freshen_multiplicity a');
               { lower = Basetype.newty (Basetype.PairB(e, m'));
@@ -318,9 +319,9 @@ let infer_annotations (t: Cbvterm.t) : Cbvterm.t =
                   Printf.sprintf "fun: context (%s)" (Ident.to_string v)
               }) in
       { t with
-        t_context = List.filter as1.t_context ~f:(fun (y, _) -> y <> v)
+        t_context = gamma
       },
-      [ { lower = code_of_context t.t_context;
+      [ { lower = code_of_context gamma;
           upper = d;
           reason = "fun: closure"
         }
@@ -340,8 +341,8 @@ let infer_annotations (t: Cbvterm.t) : Cbvterm.t =
       [ { lower = Basetype.newty
               (Basetype.PairB(t.t_ann,
                               Basetype.newty
-                                (Basetype.PairB(code_of_context st.t_context,
-                                                code_of_context sf.t_context))));
+                                (Basetype.PairB(code_of_context ast.t_context,
+                                                code_of_context asf.t_context))));
           upper = sc.t_ann;
           reason = "if: condition stack"
         }
@@ -359,9 +360,9 @@ let infer_annotations (t: Cbvterm.t) : Cbvterm.t =
       Cbvtype.unify_exn y y';
       Cbvtype.unify_exn y s.t_type;
       Basetype.unify_exn a s.t_ann;
+      let gamma = List.filter as1.t_context ~f:(fun (y, _) -> y <> v && v <> f) in
       let context_cs =
-        List.map
-          t.t_context
+        List.map gamma
           ~f:(fun (y, a) ->
               let a' = List.Assoc.find_exn as1.t_context y in
               let m' =  multiplicity_of_type a' in
@@ -371,9 +372,9 @@ let infer_annotations (t: Cbvterm.t) : Cbvterm.t =
                 reason = Printf.sprintf "fix: context (%s)" (Ident.to_string v)
               }) in
       { t with
-        t_context = List.filter as1.t_context ~f:(fun (y, _) -> y <> v && v <> f)
+        t_context = gamma
       },
-      [ { lower = code_of_context t.t_context;
+      [ { lower = code_of_context gamma;
           upper = d;
           reason = "fix: closure"
         }
@@ -399,6 +400,13 @@ let infer_annotations (t: Cbvterm.t) : Cbvterm.t =
       Basetype.unify_exn t.t_ann s.t_ann;
       List.iter delta
         ~f:(fun (_, b) -> Cbvtype.unify_exn a (freshen_multiplicity b));
+      Printf.printf "contraction:\n";
+      List.iter ~f:(fun y -> Printf.printf "%s, " (Ident.to_string y)) xs;
+      Printf.printf "\n";
+      print_context s.t_context;
+      print_context as1.t_context;
+      print_context ((x, a) :: gamma);
+      Printf.printf "/contraction:\n";
       { t with
         t_context = (x, a) :: gamma
       },
