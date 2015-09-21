@@ -306,12 +306,15 @@ let infer_annotations (t: Cbvterm.t) : Cbvterm.t =
       Cbvtype.unify_exn x (List.Assoc.find_exn as1.t_context v);
       Cbvtype.unify_exn y s.t_type;
       Basetype.unify_exn a s.t_ann;
-      let gamma = List.filter as1.t_context ~f:(fun (y, _) -> y <> v) in
+      let outer_context =
+        List.filter_map as1.t_context
+          ~f:(fun (y, a) ->
+              if y = v then None else Some (y, freshen_multiplicity a)) in
       let context_cs =
-        List.map gamma
+        List.map outer_context
           ~f:(fun (y, a) ->
               let a' = List.Assoc.find_exn as1.t_context y in
-              let m' =  multiplicity_of_type a' in
+              let m' = multiplicity_of_type a' in
               Cbvtype.unify_exn a (freshen_multiplicity a');
               { lower = Basetype.newty (Basetype.PairB(e, m'));
                 upper = multiplicity_of_type a;
@@ -319,9 +322,9 @@ let infer_annotations (t: Cbvterm.t) : Cbvterm.t =
                   Printf.sprintf "fun: context (%s)" (Ident.to_string v)
               }) in
       { t with
-        t_context = gamma
+        t_context = outer_context
       },
-      [ { lower = code_of_context gamma;
+      [ { lower = code_of_context outer_context;
           upper = d;
           reason = "fun: closure"
         }
@@ -360,9 +363,12 @@ let infer_annotations (t: Cbvterm.t) : Cbvterm.t =
       Cbvtype.unify_exn y y';
       Cbvtype.unify_exn y s.t_type;
       Basetype.unify_exn a s.t_ann;
-      let gamma = List.filter as1.t_context ~f:(fun (y, _) -> y <> v && v <> f) in
+      let outer_context =
+        List.filter_map as1.t_context
+          ~f:(fun (y, a) ->
+              if y = v then None else Some (y, freshen_multiplicity a)) in
       let context_cs =
-        List.map gamma
+        List.map outer_context
           ~f:(fun (y, a) ->
               let a' = List.Assoc.find_exn as1.t_context y in
               let m' =  multiplicity_of_type a' in
@@ -372,9 +378,9 @@ let infer_annotations (t: Cbvterm.t) : Cbvterm.t =
                 reason = Printf.sprintf "fix: context (%s)" (Ident.to_string v)
               }) in
       { t with
-        t_context = gamma
+        t_context = outer_context
       },
-      [ { lower = code_of_context gamma;
+      [ { lower = code_of_context outer_context;
           upper = d;
           reason = "fix: closure"
         }
