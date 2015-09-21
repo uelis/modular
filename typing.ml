@@ -274,7 +274,7 @@ let infer_annotations (t: Cbvterm.t) : Cbvterm.t =
       Cbvtype.unify_exn x s2.t_type;
       Cbvtype.unify_exn y t.t_type;
       (* TODO *)
-      Basetype.unify_exn a t.t_ann;
+         Basetype.unify_exn a t.t_ann;
       { t with
         t_context = as1.t_context @ as2.t_context
       },
@@ -282,11 +282,10 @@ let infer_annotations (t: Cbvterm.t) : Cbvterm.t =
           upper = s1.t_ann;
           reason = "app: function stack"
         }
-      (* TODO
-         ; { lower = a;
-         upper = t.t_ann;
-         reason = "app: argument stack"
-         } *)
+(*         ; { lower = t.t_ann;
+         upper = a;
+         reason = "app: fun stack"
+           } *)
       ; { lower = Basetype.newty (Basetype.PairB(t.t_ann, d));
           upper = s2.t_ann;
           reason = "app: argument stack"
