@@ -35,6 +35,11 @@ let unPairB a =
   match Basetype.case a with
   | Basetype.Sgn (Basetype.PairB(a1, a2)) -> a1, a2
   | _ -> assert false
+    
+let selectfunty a =
+  match Cbvtype.case a with
+  | Cbvtype.Sgn (Cbvtype.Fun(m, x)) -> m, x
+  | _ -> assert false
                 
 let fresh_ssa_name =
   let next_name = ref 0 in
@@ -249,8 +254,6 @@ let rec embed_context
 let rec translate (t: Cbvterm.t) : fragment =
   match t.t_desc with
   | Var x ->
-     Printf.printf "Var %s\n%!"
-       (Cbvtype.to_string ~concise:false t.t_type);
      let id = "var" in
      let eval = fresh_eval id t in
      let access = fresh_access id t.t_type in
@@ -272,7 +275,7 @@ let rec translate (t: Cbvterm.t) : fragment =
        blocks = [eval_block; access_block; x_access_exit_block];
        context = [(x, x_access)]
      }
-  | Contr((x, xs), s) ->
+  | Contr(((x, a), xs), s) ->
      let s_fragment = translate s in
      print_context s.t_context;
      print_fcontext s_fragment.context;
@@ -282,8 +285,7 @@ let rec translate (t: Cbvterm.t) : fragment =
                  (pairB t.t_ann (code_context t.t_context));
        exit = s_fragment.eval.exit
      } in
-     let x_access = fresh_access "contr"
-                      (List.Assoc.find_exn t.t_context x) in
+     let x_access = fresh_access "contr" a in
      let tsum =
        let summands = List.map xs
                         ~f:(fun x' -> Cbvtype.multiplicity
@@ -510,7 +512,6 @@ let rec translate (t: Cbvterm.t) : fragment =
       context = context
     }
   | Fix((th, f, x, xty), s) ->
-     Printf.printf "Fix: %s\n" (Cbvtype.to_string ~concise:false t.t_type);
      let s_fragment = lift th (translate s) in
      let id = "fix" in
      let eval = fresh_eval id t in
@@ -678,7 +679,6 @@ let rec translate (t: Cbvterm.t) : fragment =
     let id = "app" in
     let eval = fresh_eval id t in
     let access = fresh_access id t.t_type in
-    Printf.printf "App: %s\n" (Cbvtype.to_string ~concise:false t1.t_type);
     let block1 =
       let arg = Builder.begin_block eval.entry in
       let vu, vgammadelta = Builder.unpair arg in
@@ -702,9 +702,11 @@ let rec translate (t: Cbvterm.t) : fragment =
       let ve, vx = Builder.unpair arg in
       let vu_f = Builder.project ve (pairB t.t_ann (Cbvtype.code t1.t_type)) in
       let vu, vf = Builder.unpair vu_f in
-      let vufx = Builder.pair vu (Builder.pair vf vx) in
+      let _, (_, tv, _, _) = selectfunty t1.t_type in
+      let vv = Builder.embed vu tv in
+      let vvfx = Builder.pair vv (Builder.pair vf vx) in
       let td, tfunacc = unPairB t1_fragment.access.entry.Ssa.message_type in
-      let vfunacc = Builder.inj 0 vufx tfunacc in
+      let vfunacc = Builder.inj 0 vvfx tfunacc in
       let vd = Builder.embed Builder.unit td in
       let v = Builder.pair vd vfunacc in
       Builder.end_block_jump t1_fragment.access.entry v in
@@ -720,17 +722,25 @@ let rec translate (t: Cbvterm.t) : fragment =
       let vd = Builder.embed Builder.unit td in      
       let v = Builder.pair vd (Builder.inj 2 arg tfunacc) in
       Builder.end_block_jump t1_fragment.access.entry v in
+    let block8 =
+      let _, (_, tv, _, _) = selectfunty t1.t_type in
+      let _, tres = unPairB eval.exit.Ssa.message_type in
+      let arg = Builder.begin_block (fresh_label "decode_stack" (pairB tv tres)) in
+      let vv, vres = Builder.unpair arg in
+      let vu = Builder.project vv t.t_ann in
+      let v = Builder.pair vu vres in
+      Builder.end_block_jump eval.exit v in      
     let case_block =
       let arg = Builder.begin_block t1_fragment.access.exit in
       let vfun = Builder.snd arg in
       Builder.end_block_case
         vfun
-        [ (fun c -> eval.exit, c);
+        [ (fun c -> Ssa.label_of_block block8, c);
           (fun c -> access.exit, c);
           (fun c -> t2_fragment.access.entry, c) ] in
     { eval = eval;
       access = access;
-      blocks = [block1; block2; block3; block5; block7; case_block]
+      blocks = [block1; block2; block3; block5; block7; block8; case_block]
                @ t1_fragment.blocks
                @ t2_fragment.blocks;
       context = t1_fragment.context @ t2_fragment.context
@@ -846,13 +856,12 @@ let to_ssa t =
         Ident.Table.replace visited ~key:i ~data:();
 
         let b = Ident.Table.find_exn blocks i in
-        Ssa.fprint_block stdout b; 
+        (* Ssa.fprint_block stdout b; *)
         rev_sorted_blocks := b :: !rev_sorted_blocks;
         List.iter (Ssa.targets_of_block b)
           ~f:(fun l -> sort_blocks l.Ssa.name)
       end in
   sort_blocks f.eval.entry.Ssa.name;
-  Printf.printf "finisx%!\n";
   Ssa.make
     ~func_name:"main"
     ~entry_label:f.eval.entry

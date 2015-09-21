@@ -1,0 +1,7 @@
+/* Example for need for weakening in add */
+
+let step =
+   print (
+   (\f -> \x ->
+     if0 x then (let u = f 0 in let v = f 1 in intadd(u, v)) else f 3)
+     (\x -> intadd(x, 1)) 0)

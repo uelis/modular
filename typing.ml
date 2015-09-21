@@ -243,6 +243,7 @@ let infer_annotations (t: Cbvterm.t) : Cbvterm.t =
       let as1, cs1 = constraints s1 in
       let as2, cs2 = constraints s2 in
       { t with
+        t_desc = Const(Ast.Cintadd, [as1; as2]);
         t_context = as1.t_context @ as2.t_context
       },
       [ { lower = Basetype.newty (Basetype.PairB(t.t_ann, code_of_context as2.t_context));
@@ -262,6 +263,7 @@ let infer_annotations (t: Cbvterm.t) : Cbvterm.t =
       Cbvtype.unify_exn t.t_type s1.t_type;
       Basetype.unify_exn t.t_ann s1.t_ann;
       { t with
+        t_desc = Const(Ast.Cintprint, [as1]);
         t_context = as1.t_context
       },
       cs1
@@ -273,19 +275,18 @@ let infer_annotations (t: Cbvterm.t) : Cbvterm.t =
       let c, (x, a, d, y) = selectfunty s1.t_type in
       Cbvtype.unify_exn x s2.t_type;
       Cbvtype.unify_exn y t.t_type;
-      (* TODO *)
-         Basetype.unify_exn a t.t_ann;
       { t with
+        t_desc = App(as1, as2);
         t_context = as1.t_context @ as2.t_context
       },
       [ { lower = Basetype.newty (Basetype.PairB(t.t_ann, code_of_context as2.t_context));
           upper = s1.t_ann;
           reason = "app: function stack"
         }
-(*         ; { lower = t.t_ann;
-         upper = a;
-         reason = "app: fun stack"
-           } *)
+      ; { lower = t.t_ann;
+          upper = a;
+          reason = "app: fun stack"
+        } 
       ; { lower = Basetype.newty (Basetype.PairB(t.t_ann, d));
           upper = s2.t_ann;
           reason = "app: argument stack"
@@ -321,6 +322,7 @@ let infer_annotations (t: Cbvterm.t) : Cbvterm.t =
                   Printf.sprintf "fun: context (%s)" (Ident.to_string v)
               }) in
       { t with
+        t_desc = Fun((v, xa), as1);
         t_context = outer_context
       },
       [ { lower = code_of_context outer_context;
@@ -338,6 +340,7 @@ let infer_annotations (t: Cbvterm.t) : Cbvterm.t =
       Basetype.unify_exn st.t_ann t.t_ann;
       Basetype.unify_exn sf.t_ann t.t_ann;
       { t with
+        t_desc = Ifz(asc, ast, asf);
         t_context = asc.t_context @ ast.t_context @ asf.t_context
       },
       [ { lower = Basetype.newty
@@ -365,7 +368,7 @@ let infer_annotations (t: Cbvterm.t) : Cbvterm.t =
       let outer_context =
         List.filter_map as1.t_context
           ~f:(fun (y, a) ->
-              if y = v then None else Some (y, freshen_multiplicity a)) in
+              if y = v || y = f then None else Some (y, freshen_multiplicity a)) in
       let context_cs =
         List.map outer_context
           ~f:(fun (y, a) ->
@@ -377,6 +380,7 @@ let infer_annotations (t: Cbvterm.t) : Cbvterm.t =
                 reason = Printf.sprintf "fix: context (%s)" (Ident.to_string v)
               }) in
       { t with
+        t_desc = Fix((h, f, v, va), as1);
         t_context = outer_context
       },
       [ { lower = code_of_context outer_context;
@@ -413,6 +417,7 @@ let infer_annotations (t: Cbvterm.t) : Cbvterm.t =
       print_context ((x, a) :: gamma);
       Printf.printf "/contraction:\n";
       { t with
+        t_desc = Contr(((x, a), xs), as1);
         t_context = (x, a) :: gamma
       },
       [ { lower = sum;
