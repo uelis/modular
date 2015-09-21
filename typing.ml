@@ -218,13 +218,23 @@ let rec fresh_annotations_term (t: Simpletype.t Cbvterm.term) : Cbvterm.t =
       t_context = fresh_annotations_context t.t_context;
       t_loc = t.t_loc
     }
+    
+let print_context c =
+  List.iter c
+    ~f:(fun (x, a) ->
+     Printf.printf "%s:%s, "
+                   (Ident.to_string x)
+                   (Cbvtype.to_string ~concise:false a));
+  Printf.printf "\n"
 
 let infer_annotations (t: Cbvterm.t) : Cbvterm.t =
   let rec constraints (t: Cbvterm.t) : Cbvterm.t * lhd_constraint list =
     let open Cbvterm in
     match t.t_desc with
     | Var v ->
-      { t with t_context = [(v, t.t_type)] },
+      { t with
+        t_context = [(v, t.t_type)]
+      },
       []
     | Const(Ast.Cintconst _, []) ->
       t,
@@ -232,7 +242,9 @@ let infer_annotations (t: Cbvterm.t) : Cbvterm.t =
     | Const(Ast.Cintadd, [s1; s2]) ->
       let as1, cs1 = constraints s1 in
       let as2, cs2 = constraints s2 in
-      { t with t_context = as1.t_context @ as2.t_context },
+      { t with
+        t_context = as1.t_context @ as2.t_context
+      },
       [ { lower = Basetype.newty (Basetype.PairB(t.t_ann, code_of_context as2.t_context));
           upper = s1.t_ann;
           reason = "add: stack first"
@@ -351,7 +363,7 @@ let infer_annotations (t: Cbvterm.t) : Cbvterm.t =
         List.map
           t.t_context
           ~f:(fun (y, a) ->
-              let a' = List.Assoc.find_exn s.t_context y in
+              let a' = List.Assoc.find_exn as1.t_context y in
               let m' =  multiplicity_of_type a' in
               Cbvtype.unify_exn a (freshen_multiplicity a');
               { lower = Basetype.newty (Basetype.PairB(e, m'));

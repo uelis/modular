@@ -40,7 +40,7 @@ let contract_instances
   let xs, sigma =
     List.partition_map
       t.subst
-      ~f:(fun (y, y') -> if x = y then `Fst y else `Snd (y, y')) in
+      ~f:(fun (y, y') -> if x = y then `Fst y' else `Snd (y, y')) in
   let xs_types, gamma =
     List.partition_map
       t.linear_term.t_context
