@@ -78,7 +78,7 @@ let rec linearize (phi: Simpletype.t context) (t: Ast.t)
       subst = [(v, v')]
     }
   | Ast.Const(Ast.Cintconst _ as c, []) ->
-    let a = Simpletype.newty Simpletype.Sig.Nat in
+    let a = Simpletype.newty Simpletype.Nat in
     { linear_term = {
           t_desc = Const(c, []);
           t_ann = Basetype.newvar ();
@@ -91,11 +91,11 @@ let rec linearize (phi: Simpletype.t context) (t: Ast.t)
   | Ast.Const(Ast.Cintprint as c, [s]) ->
     let sl = linearize phi s in
     eq_constraint s ~actual:sl.linear_term.t_type
-      ~expected:(Simpletype.newty Simpletype.Sig.Nat);
+      ~expected:(Simpletype.newty Simpletype.Nat);
     { linear_term = {
           sl.linear_term with
           t_desc = Const(c, [sl.linear_term]);
-          t_type = Simpletype.newty Simpletype.Sig.Nat;
+          t_type = Simpletype.newty Simpletype.Nat;
           t_loc = t.Ast.loc
         };
       subst = sl.subst 
@@ -103,12 +103,12 @@ let rec linearize (phi: Simpletype.t context) (t: Ast.t)
   | Ast.Const(Ast.Cintadd as c, [s; t]) ->
     let sl = linearize phi s in
     let tl = linearize phi t in
-    eq_constraint s ~actual:sl.linear_term.t_type ~expected:(Simpletype.newty Simpletype.Sig.Nat);
-    eq_constraint t ~actual:tl.linear_term.t_type ~expected:(Simpletype.newty Simpletype.Sig.Nat);
+    eq_constraint s ~actual:sl.linear_term.t_type ~expected:(Simpletype.newty Simpletype.Nat);
+    eq_constraint t ~actual:tl.linear_term.t_type ~expected:(Simpletype.newty Simpletype.Nat);
     { linear_term = {
           t_desc = Const(c, [sl.linear_term; tl.linear_term]);
           t_ann = Basetype.newvar ();
-          t_type = Simpletype.newty Simpletype.Sig.Nat;
+          t_type = Simpletype.newty Simpletype.Nat;
           t_context = sl.linear_term.t_context @ tl.linear_term.t_context;
           t_loc = t.Ast.loc
         };
@@ -123,7 +123,7 @@ let rec linearize (phi: Simpletype.t context) (t: Ast.t)
     let beta = Simpletype.newvar () in
     eq_constraint s
       ~actual:sl.linear_term.t_type
-      ~expected:(Simpletype.newty (Simpletype.Sig.Fun(tl.linear_term.t_type, beta)));
+      ~expected:(Simpletype.newty (Simpletype.Fun(tl.linear_term.t_type, beta)));
     { linear_term = {
           t_desc = App(sl.linear_term, tl.linear_term);
           t_ann = Basetype.newvar ();
@@ -142,7 +142,7 @@ let rec linearize (phi: Simpletype.t context) (t: Ast.t)
     { linear_term = {
           t_desc = Fun((x, alpha), body.linear_term);
           t_ann = Basetype.newvar ();
-          t_type = Simpletype.newty (Simpletype.Sig.Fun(alpha, body.linear_term.t_type));
+          t_type = Simpletype.newty (Simpletype.Fun(alpha, body.linear_term.t_type));
           t_context = gamma;
           t_loc = t.Ast.loc
         };
@@ -157,7 +157,7 @@ let rec linearize (phi: Simpletype.t context) (t: Ast.t)
         (contract_instances (x, beta) sl) in
     let sigma = List.filter tl.subst ~f:(fun (y, _) -> y <> x && y <> f) in
     let gamma = List.filter tl.linear_term.t_context ~f:(fun (y, _) -> y <> x && y <> f) in
-    let a = Simpletype.newty (Simpletype.Sig.Fun(beta, tl.linear_term.t_type)) in
+    let a = Simpletype.newty (Simpletype.Fun(beta, tl.linear_term.t_type)) in
     let h = Basetype.newvar () in
     eq_constraint t ~actual:a ~expected:alpha;
     { linear_term = {
@@ -175,13 +175,13 @@ let rec linearize (phi: Simpletype.t context) (t: Ast.t)
     let tfl = linearize phi tf in
     eq_constraint s
       ~actual:sl.linear_term.t_type
-      ~expected:(Simpletype.newty Simpletype.Sig.Nat);
+      ~expected:(Simpletype.newty Simpletype.Nat);
     eq_constraint tt
       ~actual:ttl.linear_term.t_type
-      ~expected:(Simpletype.newty Simpletype.Sig.Nat);
+      ~expected:(Simpletype.newty Simpletype.Nat);
     eq_constraint tt
       ~actual:tfl.linear_term.t_type
-      ~expected:(Simpletype.newty Simpletype.Sig.Nat);
+      ~expected:(Simpletype.newty Simpletype.Nat);
     { linear_term = {
           t_desc = Ifz(sl.linear_term, ttl.linear_term, tfl.linear_term);
           t_ann = Basetype.newvar ();

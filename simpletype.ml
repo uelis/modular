@@ -2,13 +2,15 @@
 open Core.Std
 
 module Uftype = Intlib.Uftype
+                  
+type 'a sgn =
+  | Nat
+  | Fun of 'a * 'a
+with sexp
 
 module Sig = struct
 
-  type 'a t =
-    | Nat
-    | Fun of 'a * 'a
-  with sexp
+  type 'a t = 'a sgn with sexp
 
   let map (f : 'a -> 'b) (t : 'a t) : 'b t =
     match t with
@@ -78,14 +80,14 @@ let to_string ?concise:(concise=true) (ty: t): string =
           | Var -> s `Atom
           | Sgn st ->
             match st with
-            | Sig.Fun(t1, t2) ->
+            | Fun(t1, t2) ->
               if not concise then
                 Printf.sprintf "%s -> %s)"
                   (str t1 `Atom)
                   (str t2 `Type)
               else
                 Printf.sprintf "%s -> %s" (str t1 `Atom) (str t2 `Type)
-            | Sig.Nat ->
+            | Nat ->
               s `Atom
         end
       | `Atom ->
@@ -95,8 +97,8 @@ let to_string ?concise:(concise=true) (ty: t): string =
             "\'" ^ (name_of_typevar t)
           | Sgn st ->
             match st with
-            | Sig.Nat -> "Nat"
-            | Sig.Fun _ -> Printf.sprintf "(%s)" (s `Type)
+            | Nat -> "Nat"
+            | Fun _ -> Printf.sprintf "(%s)" (s `Type)
         end in
     let tid = repr_id t in
     match Int.Table.find strs tid with

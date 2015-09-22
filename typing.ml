@@ -80,7 +80,7 @@ let solve_constraints (ineqs: lhd_constraint list) : unit =
             let params = List.filter fv_unique
                 ~f:(fun beta -> not (Basetype.equals beta alpha)) in
             let n = List.length params in
-            Basetype.Data.make recty ~nparams:n ~discriminated:false;
+            Basetype.Data.make recty ~param_count:n ~discriminated:false;
             let data = Basetype.newty (Basetype.DataB(recty, params)) in
             let sol =
               if constraint_recursive then
@@ -146,10 +146,10 @@ let rec fresh_annotations_type (a: Simpletype.t) : Cbvtype.t =
     Cbvtype.newty (Cbvtype.Nat m)
   | Simpletype.Sgn s ->
     match s with
-    | Simpletype.Sig.Nat -> 
+    | Simpletype.Nat -> 
       let m = Basetype.newvar () in
       Cbvtype.newty (Cbvtype.Nat m)
-    | Simpletype.Sig.Fun(x, y) ->
+    | Simpletype.Fun(x, y) ->
       let xa = fresh_annotations_type x in
       let ya = fresh_annotations_type y in
       let m = Basetype.newvar () in
