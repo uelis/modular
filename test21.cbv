@@ -1,5 +1,4 @@
 /* Example for need for weakening in add */
 
 let step =
-   \f -> \x ->
-if0 x then (let u = f 0 in let v = f 1 in intadd(u, v)) else f 3
+   \f -> let x = 3 in if f 3 then f 4 else x

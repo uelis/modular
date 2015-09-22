@@ -222,14 +222,6 @@ let rec embed_context
     let outer_gamma', blocks = embed_context outer inner' in
     let y_outer_access = fresh_access "context_embed"
                            (List.Assoc.find_exn outer y) in
-           (*
-       let yty_inner = List.Assoc.find_exn s.t_context y in
-       Printf.printf "%s(%s), %s(%s)\n%!"
-       (Cbvtype.to_string ~concise:false yty_outer)
-       (Intlib.Printing.string_of_basetype tstack_outer)
-       (Cbvtype.to_string ~concise:false yty_inner)
-       (Intlib.Printing.string_of_basetype tstack_inner);
-    *)
     let exit_block =
       let arg = Builder.begin_block y_outer_access.exit in
       let vstack_outer, vm = Builder.unpair arg in
@@ -449,11 +441,6 @@ let rec translate (t: Cbvterm.t) : fragment =
     let invoke_block =
       let te = Cbvtype.multiplicity t.t_type in
       let ta = s.t_ann in
-      (*
-      Printf.printf "Ann: %s, %s\n"
-                    (Intlib.Printing.string_of_basetype ta)
-                    (Cbvtype.to_string ~concise:false t.t_type);
-       *)
       let td = Cbvtype.code t.t_type in
       let tcx = Cbvtype.code xty in
       let entry = fresh_label "fun_decode" (pairB te (pairB ta (pairB td tcx))) in
@@ -621,45 +608,6 @@ let rec translate (t: Cbvterm.t) : fragment =
            (fun c -> s_fragment.access.entry, Builder.pair vpushed c);
            (fun c -> x_access.exit, Builder.pair vpushed c)
          ] in
-     (*
-     let rec embed_context gamma =
-       match gamma with
-       | [] -> [], []
-       | (y, y_access) :: gamma'  ->
-          let outer_gamma', blocks = embed_context gamma' in
-          if x = y || f = y then
-            outer_gamma', blocks
-          else
-            let te = Cbvtype.multiplicity t.t_type in
-            let yty_outer = List.Assoc.find_exn t.t_context y in
-            let yty_inner = List.Assoc.find_exn s.t_context y in
-            let y_outer_access = fresh_access "context_embed" yty_outer in
-            let tstack_outer, _ = unPairB y_outer_access.entry.Ssa.message_type in
-            let _, tminner = unPairB y_access.entry.Ssa.message_type in
-            let tstack_inner, _ = unPairB tminner in
-            Printf.printf "%s(%s), %s(%s)\n%!"
-                          (Cbvtype.to_string ~concise:false yty_outer)
-                          (Intlib.Printing.string_of_basetype tstack_outer)
-                          (Cbvtype.to_string ~concise:false yty_inner)
-                          (Intlib.Printing.string_of_basetype tstack_inner);
-            let exit_block =
-              let arg = Builder.begin_block y_outer_access.exit in
-              let vstack_outer, vm = Builder.unpair arg in
-              let vstack_pair = Builder.project vstack_outer (pair te tstack_inner) in
-              let ve, vstack_inner = Builder.unpair vstack_pair in
-              let v = Builder.pair ve (Builder.pair vstack_inner vm) in
-              Builder.end_block_jump y_access.exit v in
-            let entry_block =
-              let arg = Builder.begin_block y_access.entry in
-              let ve, vpair = Builder.unpair arg in
-              let vstack_inner, vm = Builder.unpair vpair in
-              let vstack_outer = Builder.embed (Builder.pair ve vstack_inner) tstack_outer in
-              let v = Builder.pair vstack_outer vm in
-              Builder.end_block_jump y_outer_access.entry v in
-            (y, y_outer_access) :: outer_gamma',
-            [entry_block; exit_block] @ blocks in
-     let context, context_blocks = embed_context s_fragment.context in
-     *)
     let context, context_blocks =
       let gamma = List.filter s_fragment.context
                     ~f:(fun (y, _) -> y <> x && y <> f) in
@@ -761,22 +709,6 @@ let rec translate (t: Cbvterm.t) : fragment =
        let vstack1 = Builder.embed (Builder.pair vstack (Builder.pair vgamma1 vgamma2)) tc.t_ann in
        let v = Builder.pair vstack1 vgammac in
        Builder.end_block_jump tc_fragment.eval.entry v in
-     (*
-     let eval_blockt =
-       let arg = Builder.begin_block (fresh_label (pair t.t_ann (code_context t1.t_context))) in
-       let vstack = Builder.fst arg in
-       let vgamma1 = Builder.snd arg in
-       let vstacke = Builder.embed vstack t1.t_ann in
-       let v = Builder.pair vstacke vgamma1 in
-       Builder.end_block_jump t1_fragment.eval.entry v in
-     let eval_blockf =
-       let arg = Builder.begin_block (fresh_label (pair t.t_ann (code_context t2.t_context))) in
-       let vstack = Builder.fst arg in
-       let vgamma2 = Builder.snd arg in
-       let vstacke = Builder.embed vstack t2.t_ann in
-       let v = Builder.pair vstacke vgamma2 in
-       Builder.end_block_jump t2_fragment.eval.entry v in
-      *)
      let eval_blockc =
        let arg = Builder.begin_block tc_fragment.eval.exit in
        let vstack1, vn = Builder.unpair arg in
