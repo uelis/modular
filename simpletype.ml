@@ -5,44 +5,44 @@ module Uftype = Intlib.Uftype
 
 module Sig = struct
 
-    type 'a t =
-      | Nat
-      | Fun of 'a * 'a
-      with sexp
+  type 'a t =
+    | Nat
+    | Fun of 'a * 'a
+  with sexp
 
-    let map (f : 'a -> 'b) (t : 'a t) : 'b t =
-      match t with
-      | Nat -> Nat
-      | Fun(x, y) -> Fun(f x, f y)
+  let map (f : 'a -> 'b) (t : 'a t) : 'b t =
+    match t with
+    | Nat -> Nat
+    | Fun(x, y) -> Fun(f x, f y)
 
-    let children (t: 'a t) : 'a list =
-      match t with
-      | Nat -> []
-      | Fun(x, y) -> [x; y]
+  let children (t: 'a t) : 'a list =
+    match t with
+    | Nat -> []
+    | Fun(x, y) -> [x; y]
 
-    let equals (s: 'a t) (t: 'a t) ~equals:(eq: 'a -> 'a -> bool) : bool =
-      match s, t with
-      | Nat, Nat ->
-         true
-      | Fun(x1, y1), Fun(x2, y2) ->
-         eq x1 x2 &&
-           eq y1 y2
-      | Nat, _
-      | Fun _, _ -> false
+  let equals (s: 'a t) (t: 'a t) ~equals:(eq: 'a -> 'a -> bool) : bool =
+    match s, t with
+    | Nat, Nat ->
+      true
+    | Fun(x1, y1), Fun(x2, y2) ->
+      eq x1 x2 &&
+      eq y1 y2
+    | Nat, _
+    | Fun _, _ -> false
 
-    let unify_exn (s: 'a t) (t: 'a t) ~unify:(unify: 'a -> 'a -> unit) : unit =
-      match s, t with
-      | Nat, Nat ->
-         ()
-      | Fun(x1, y1), Fun(x2, y2) ->
-         unify x1 x2;
-         unify y1 y2
-      | Nat, _
-      | Fun _, _ -> raise Uftype.Constructor_mismatch
-  end
+  let unify_exn (s: 'a t) (t: 'a t) ~unify:(unify: 'a -> 'a -> unit) : unit =
+    match s, t with
+    | Nat, Nat ->
+      ()
+    | Fun(x1, y1), Fun(x2, y2) ->
+      unify x1 x2;
+      unify y1 y2
+    | Nat, _
+    | Fun _, _ -> raise Uftype.Constructor_mismatch
+end
 
 include Uftype.Make(Sig)
-                   
+
 let name_counter = ref 0
 
 let new_name () =
@@ -60,10 +60,10 @@ let name_of_typevar t =
   match Int.Table.find name_table (repr_id t) with
   | Some name -> name
   | None ->
-     let name = new_name() in
-     Int.Table.add_exn name_table ~key:(repr_id t) ~data:name;
-     name
-       
+    let name = new_name() in
+    Int.Table.add_exn name_table ~key:(repr_id t) ~data:name;
+    name
+
 let to_string ?concise:(concise=true) (ty: t): string =
   let cycle_nodes =
     let cycles = dfs_cycles ty |> List.map ~f:repr_id in
@@ -73,41 +73,41 @@ let to_string ?concise:(concise=true) (ty: t): string =
     let rec s l =
       match l with
       | `Type -> 
-         begin
-           match case t with
-           | Var -> s `Atom
-           | Sgn st ->
-              match st with
-              | Sig.Fun(t1, t2) ->
-                 if not concise then
-                   Printf.sprintf "%s -> %s)"
-                                  (str t1 `Atom)
-                                  (str t2 `Type)
-                 else
-                   Printf.sprintf "%s -> %s" (str t1 `Atom) (str t2 `Type)
-              | Sig.Nat ->
-                 s `Atom
-         end
+        begin
+          match case t with
+          | Var -> s `Atom
+          | Sgn st ->
+            match st with
+            | Sig.Fun(t1, t2) ->
+              if not concise then
+                Printf.sprintf "%s -> %s)"
+                  (str t1 `Atom)
+                  (str t2 `Type)
+              else
+                Printf.sprintf "%s -> %s" (str t1 `Atom) (str t2 `Type)
+            | Sig.Nat ->
+              s `Atom
+        end
       | `Atom ->
-         begin
-           match case t with
-           | Var ->
-              "\'" ^ (name_of_typevar t)
-           | Sgn st ->
-              match st with
-              | Sig.Nat -> "Nat"
-              | Sig.Fun _ -> Printf.sprintf "(%s)" (s `Type)
-         end in
+        begin
+          match case t with
+          | Var ->
+            "\'" ^ (name_of_typevar t)
+          | Sgn st ->
+            match st with
+            | Sig.Nat -> "Nat"
+            | Sig.Fun _ -> Printf.sprintf "(%s)" (s `Type)
+        end in
     let tid = repr_id t in
     match Int.Table.find strs tid with
     | Some s -> s
     | None ->
-       if Int.Set.mem cycle_nodes tid then
-         let alpha = "''" ^ (name_of_typevar (newvar())) in
-         Int.Table.replace strs ~key:tid ~data:alpha;
-         let s = "(rec " ^ alpha ^ ". " ^ (s l) ^ ")" in
-         Int.Table.replace strs ~key:tid ~data:s;
-         s
-       else
-         s l in
+      if Int.Set.mem cycle_nodes tid then
+        let alpha = "''" ^ (name_of_typevar (newvar())) in
+        Int.Table.replace strs ~key:tid ~data:alpha;
+        let s = "(rec " ^ alpha ^ ". " ^ (s l) ^ ")" in
+        Int.Table.replace strs ~key:tid ~data:s;
+        s
+      else
+        s l in
   str ty `Type

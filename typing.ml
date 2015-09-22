@@ -218,13 +218,13 @@ let rec fresh_annotations_term (t: Simpletype.t Cbvterm.term) : Cbvterm.t =
       t_context = [];
       t_loc = t.t_loc
     }
-    
+
 let print_context c =
   List.iter c
     ~f:(fun (x, a) ->
-     Printf.printf "%s:%s, "
-                   (Ident.to_string x)
-                   (Cbvtype.to_string ~concise:false a));
+        Printf.printf "%s:%s, "
+          (Ident.to_string x)
+          (Cbvtype.to_string ~concise:false a));
   Printf.printf "\n"
 
 let infer_annotations (t: Cbvterm.t) : Cbvterm.t =
