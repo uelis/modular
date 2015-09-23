@@ -1,0 +1,7 @@
+let main =
+    let a = \f -> let u = f 0 in
+                  let v = f 1 in intadd(u, v) in
+    let g = \f -> \x ->
+                if0 x then a f else f 3 in
+    let h = \x -> intadd(x, 1) in
+    print (g h 0)
