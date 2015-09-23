@@ -142,11 +142,11 @@ let unpair (v: value) : value * value =
 let pair (v1: value) (v2: value) : value =
   let vv1, va1 = v1 in
   let vv2, va2 = v2 in
-  match vv1, vv2 with
+(*  match vv1, vv2 with
   | Ssa.Fst(x, _, _), Ssa.Snd(y, _, _) when x = y ->
     x,
     Basetype.newty (Basetype.PairB(va1, va2))
-  | _ ->
+    | _ ->*)
     Ssa.Pair(vv1, vv2), 
     Basetype.newty (Basetype.PairB(va1, va2))
            

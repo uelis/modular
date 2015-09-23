@@ -6,7 +6,6 @@ module Printing = Intlib.Printing
 module Basetype = Intlib.Basetype
 module Uftype = Intlib.Uftype
 
-(* Contexts *)
 type 'a context = (Ident.t * 'a) list
 
 exception Typing_error of Ast.t option * string
@@ -177,11 +176,8 @@ let rec linearize (phi: Simpletype.t context) (t: Ast.t)
       ~actual:sl.linear_term.t_type
       ~expected:(Simpletype.newty Simpletype.Nat);
     eq_constraint tt
-      ~actual:ttl.linear_term.t_type
-      ~expected:(Simpletype.newty Simpletype.Nat);
-    eq_constraint tt
       ~actual:tfl.linear_term.t_type
-      ~expected:(Simpletype.newty Simpletype.Nat);
+      ~expected:ttl.linear_term.t_type;
     { linear_term = {
           t_desc = Ifz(sl.linear_term, ttl.linear_term, tfl.linear_term);
           t_ann = Basetype.newvar ();

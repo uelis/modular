@@ -335,10 +335,42 @@ let infer_annotations (t: Cbvterm.t) : Cbvterm.t =
       let asc, csc = constraints sc in
       let ast, cst = constraints st in
       let asf, csf = constraints sf in
-      Cbvtype.unify_exn t.t_type st.t_type;
-      Cbvtype.unify_exn t.t_type sf.t_type;
       Basetype.unify_exn st.t_ann t.t_ann;
       Basetype.unify_exn sf.t_ann t.t_ann;
+      (*
+      Cbvtype.unify_exn t.t_type st.t_type;
+      Cbvtype.unify_exn t.t_type sf.t_type;
+         *)
+      let rec join (t1: Cbvtype.t) (t2: Cbvtype.t)
+        : Cbvtype.t * lhd_constraint list =
+        let open Cbvtype in
+        match case t1, case t2 with
+        | Sgn (Nat _), Sgn (Nat _) ->
+          newty (Nat (Basetype.newvar ())),
+          []
+        | Sgn (Fun (m1, (x1, c1, d1, y1))), Sgn (Fun (m2, (x2, c2, d2, y2))) ->
+          Basetype.unify_exn m1 m2; (* TODO ?? *)
+          Basetype.unify_exn c1 c2; (* TODO ?? *)
+          Cbvtype.unify_exn x1 (freshen_multiplicity x2);
+          let x = freshen_multiplicity x1 in
+          let d = Basetype.newvar () in
+          let y, csy = join y1 y2 in
+          newty (Fun (m1, (x, c1, d, y))),
+          [ { lower = Basetype.newty
+                  (Basetype.DataB(Basetype.Data.sumid 2, [d1; d2]));
+              upper = d;
+              reason = "if: join closure"
+            };
+            { lower = Basetype.newty
+                  (Basetype.DataB(Basetype.Data.sumid 2,
+                                  [multiplicity x1; multiplicity x2]));
+              upper = multiplicity x;
+              reason = "if: join argument multiplicity"
+            };
+          ] @ csy
+        | _, _ -> assert false in
+      let y, csy = join st.t_type sf.t_type in
+      Cbvtype.unify_exn t.t_type y;
       { t with
         t_desc = Ifz(asc, ast, asf);
         t_context = asc.t_context @ ast.t_context @ asf.t_context
@@ -352,7 +384,7 @@ let infer_annotations (t: Cbvterm.t) : Cbvterm.t =
           reason = "if: condition stack"
         }
       ]
-      @ csc @ cst @ csf
+      @ csc @ cst @ csf @ csy
     | Fix((h, f, v, va), s) ->
       let as1, cs1 = constraints s in
       let e, (x, a, d, y) = selectfunty t.t_type in

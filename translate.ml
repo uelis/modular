@@ -93,7 +93,7 @@ let fresh_eval (s: string) (t: Cbvterm.t) : int_interface =
 
 let fresh_access (s: string) (a: Cbvtype.t) : int_interface =
   { entry = fresh_label (s ^ "_access_entry") (access_entry_type a);
-    exit = fresh_label (s ^ "_access_entry") (access_exit_type a)
+    exit = fresh_label (s ^ "_access_exit") (access_exit_type a)
   }
 
 let lift_label a l =
@@ -105,42 +105,43 @@ let lift_int_interface a i = {
   exit = lift_label a i.exit
 } 
 
+let lift_block (a: Basetype.t) (b: Ssa.block) : Ssa.block =
+  match b with
+  | Ssa.Direct(l, arg, lets, v, dst) ->
+    let l' = lift_label a l in
+    let arg' = Ident.variant arg in
+    let x = Ident.fresh "x" in
+    let lets' =
+      lets @
+      [Ssa.Let((x, a),
+               Ssa.Val(Ssa.Fst(Ssa.Var(arg'), a, l.Ssa.message_type)));
+       Ssa.Let((arg, l.Ssa.message_type),
+               Ssa.Val(Ssa.Snd(Ssa.Var(arg'), a, l.Ssa.message_type)))
+      ] in
+    let v' = Ssa.Pair(Ssa.Var(x), v) in
+    let dst' = lift_label a dst in
+    Ssa.Direct(l', arg', lets', v', dst')
+  | Ssa.Branch(l, arg, lets, (id, params, v, dsts)) ->
+    let l' = lift_label a l in
+    let arg' = Ident.variant arg in
+    let x = Ident.fresh "x" in
+    let lets' =
+      lets @
+      [Ssa.Let((x, a),
+               Ssa.Val(Ssa.Fst(Ssa.Var(arg'), a, l.Ssa.message_type)));
+       Ssa.Let((arg, l.Ssa.message_type),
+               Ssa.Val(Ssa.Snd(Ssa.Var(arg'), a, l.Ssa.message_type)))
+      ]  in
+    let dsts' = List.map dsts
+        ~f:(fun (y, w, d) ->
+            (y, Ssa.Pair(Ssa.Var(x), w), lift_label a d)) in
+    Ssa.Branch(l', arg', lets', (id, params, v, dsts'))
+  | Ssa.Return _ -> assert false
+  | Ssa.Unreachable _ -> assert false
+
 let lift (a: Basetype.t) (f: fragment) : fragment =
-  let lift_block (b: Ssa.block) : Ssa.block =
-    match b with
-    | Ssa.Direct(l, arg, lets, v, dst) ->
-      let l' = lift_label a l in
-      let arg' = Ident.variant arg in
-      let x = Ident.fresh "x" in
-      let lets' =
-        lets @
-        [Ssa.Let((x, a),
-                 Ssa.Val(Ssa.Fst(Ssa.Var(arg'), a, l.Ssa.message_type)));
-         Ssa.Let((arg, l.Ssa.message_type),
-                 Ssa.Val(Ssa.Snd(Ssa.Var(arg'), a, l.Ssa.message_type)))
-        ] in
-      let v' = Ssa.Pair(Ssa.Var(x), v) in
-      let dst' = lift_label a dst in
-      Ssa.Direct(l', arg', lets', v', dst')
-    | Ssa.Branch(l, arg, lets, (id, params, v, dsts)) ->
-      let l' = lift_label a l in
-      let arg' = Ident.variant arg in
-      let x = Ident.fresh "x" in
-      let lets' =
-        lets @
-        [Ssa.Let((x, a),
-                 Ssa.Val(Ssa.Fst(Ssa.Var(arg'), a, l.Ssa.message_type)));
-         Ssa.Let((arg, l.Ssa.message_type),
-                 Ssa.Val(Ssa.Snd(Ssa.Var(arg'), a, l.Ssa.message_type)))
-        ]  in
-      let dsts' = List.map dsts
-          ~f:(fun (y, w, d) ->
-              (y, Ssa.Pair(Ssa.Var(x), w), lift_label a d)) in
-      Ssa.Branch(l', arg', lets', (id, params, v, dsts'))
-    | Ssa.Return _ -> assert false
-    | Ssa.Unreachable _ -> assert false in
   { eval = lift_int_interface a f.eval;
-    blocks = List.map ~f:lift_block f.blocks;
+    blocks = List.map ~f:(lift_block a) f.blocks;
     access = lift_int_interface a f.access;
     context = List.map ~f:(fun (x, i) -> (x, lift_int_interface a i))
         f.context
@@ -699,7 +700,165 @@ let rec translate (t: Cbvterm.t) : fragment =
     let t2_fragment = translate t2 in
     let id = "if" in
     let eval = fresh_eval id t in
-    let access = fresh_access id t.t_type in
+    (* TODO: extremely ugly!! *)
+    let inject_code k v a =
+      let i = match k with
+        | `Case1 -> 0
+        | `Case2 -> 1 in
+      let open Cbvtype in
+      match case a with
+      | Sgn (Nat _) -> v
+      | Sgn (Fun (_ , (_ , _ , d , _))) ->
+        Builder.inj i v d
+      | _ -> assert false in
+    let rec join (access1, a1) (access2, a2) a : int_interface * (Ssa.block list) =
+      let open Cbvtype in
+        match case a1, case a2, case a with
+          | Sgn (Nat _),
+            Sgn (Nat _),
+            Sgn (Nat _) ->
+            let access = fresh_access "joinNat" a in
+            let block1 =
+              let arg = Builder.begin_block access.entry in
+              Builder.end_block_jump access.entry arg in
+            let block2 =
+              let arg = Builder.begin_block access1.exit in
+              Builder.end_block_jump access1.exit arg in
+            let block3 =
+              let arg = Builder.begin_block access2.exit in
+              Builder.end_block_jump access2.exit arg in
+            access, [block1; block2; block3]
+          | Sgn (Fun (m1, (x1, c1, d1, y1))),
+            Sgn (Fun (m2, (x2, c2, d2, y2))),
+            Sgn (Fun (m , (x , c , d , y ))) ->
+            assert (Basetype.equals m m1);
+            assert (Basetype.equals m m2);
+            assert (Basetype.equals c c1);
+            assert (Basetype.equals c c2);
+            let b = Cbvtype.multiplicity x in
+            let b1 = Cbvtype.multiplicity x1 in
+            let b2 = Cbvtype.multiplicity x2 in
+            let b12 = Basetype.newty
+                (Basetype.DataB(Basetype.Data.sumid 2, [b1; b2])) in
+            let access = fresh_access "joinFun" a in
+            (* TODO: Move outside? *)
+            let inject kind vm i v =
+              let label = match kind with
+                | `Entry1 -> access1.entry
+                | `Entry2 -> access2.entry
+                | `Exit -> access.exit in
+              let _, t = unPairB label.Ssa.message_type in
+              let j = match i with
+                | `Eval -> 0
+                | `Res -> 1
+                | `Arg -> 2 in
+              Builder.pair vm (Builder.inj j v t) in
+            (* Entry block *)
+            let block1 =
+              let arg = Builder.begin_block
+                  (fresh_label "join1" (pairB m (pairB c (pairB d (Cbvtype.code x))))) in
+              let vm, vcdx = Builder.unpair arg in
+              let vc, vdx = Builder.unpair vcdx in
+              let vd, vx = Builder.unpair vdx in
+              let d12 = Basetype.newty
+                  (Basetype.DataB(Basetype.Data.sumid 2, [d1; d2])) in
+              let vd12 = Builder.project vd d12 in
+              Builder.end_block_case vd12
+                [ (fun vd1 ->
+                      let vp = Builder.pair vc (Builder.pair vd1 vx) in
+                      let v = inject `Entry1 vm `Eval vp in
+                      access1.entry, v);
+                  (fun vd2 ->
+                     let vp = Builder.pair vc (Builder.pair vd2 vx) in
+                     let v = inject `Entry2 vm `Eval vp in
+                     access2.entry, v)
+                ] in
+            let accessy1 = fresh_access "joinFun1" y1 in
+            let accessy2 = fresh_access "joinFun2" y2 in
+            let accessy, blocksy =
+              let a, bs = join (accessy1, y1) (accessy2, y2) y in
+              lift_int_interface m a,
+              List.map bs ~f:(lift_block m) in
+            let block31 =
+              let arg = Builder.begin_block (lift_int_interface m accessy1).entry in
+              let vm, vy = Builder.unpair arg in
+              let v = inject `Entry1 vm `Res arg in
+              Builder.end_block_jump access1.entry v in
+            let block32 =
+              let arg = Builder.begin_block (lift_int_interface m accessy2).entry in
+              let vm, vy = Builder.unpair arg in
+              let v = inject `Entry2 vm `Res arg in
+              Builder.end_block_jump access2.entry v in
+            let block5 =
+              let arg = Builder.begin_block
+                  (fresh_label "join_arg_exit" (pairB m (access_exit_type x))) in
+              let vm, vv = Builder.unpair arg in
+              let vb, vx = Builder.unpair vv in
+              let vb12 = Builder.project vb b12 in
+              Builder.end_block_case vb12
+                [ (fun vb1 ->
+                      let vp = Builder.pair vb1 vx in
+                      let v = inject `Entry1 vm `Arg vp in
+                      access1.entry, v);
+                  (fun vb2 ->
+                     let vp = Builder.pair vb2 vx in
+                     let v = inject `Entry2  vm `Arg vp in
+                     access2.entry, v)
+                ] in
+            let entry_block =
+              let arg = Builder.begin_block access.entry in
+              let vm, vv = Builder.unpair arg in
+              Builder.end_block_case vv
+                [ (fun c -> Ssa.label_of_block block1, Builder.pair vm c);
+                  (fun c -> accessy.entry, Builder.pair vm c);
+                  (fun c -> Ssa.label_of_block block5, Builder.pair vm c)
+                ] in
+            (* Exit blocks *)
+            let exit_block1 =
+              let arg = Builder.begin_block access1.exit in
+              let vm, vv = Builder.unpair arg in
+              Builder.end_block_case vv
+                [ (fun vres ->
+                      let vc, vd1 = Builder.unpair vres in
+                      let vy = inject_code `Case1 vd1 y in
+                      let v = inject `Exit vm `Eval (Builder.pair vc vy) in
+                      access.exit, v);
+                  (fun vy1 ->
+                     (lift_int_interface m accessy1).exit, Builder.pair vm vy1);
+                  (fun varg ->
+                     let vb1, vx = Builder.unpair varg in
+                     let vb = Builder.embed (Builder.inj 0 vb1 b12) b in
+                     let vbx = Builder.pair vb vx in
+                     let v = inject `Exit vm `Arg vbx in
+                     access.exit, v)
+                ] in
+            let exit_block2 =
+              let arg = Builder.begin_block access2.exit in
+              let vm, vv = Builder.unpair arg in
+              Builder.end_block_case vv
+                [ (fun vres ->
+                      let vc, vd2 = Builder.unpair vres in
+                      let vy = inject_code `Case2 vd2 y in
+                      let v = inject `Exit vm `Eval (Builder.pair vc vy) in
+                      access.exit, v);
+                  (fun vy2 ->
+                     (lift_int_interface m accessy2).exit, Builder.pair vm vy2);
+                  (fun varg ->
+                     let vb2, vx = Builder.unpair varg in
+                     let vb = Builder.embed (Builder.inj 1 vb2 b12) b in
+                     let vbx = Builder.pair vb vx in
+                     let v = inject `Exit vm `Arg vbx in
+                     access.exit, v)
+                ] in
+            let yinject_block =
+              let arg = Builder.begin_block accessy.exit in
+              let vm, vy = Builder.unpair arg in
+              let v = inject `Exit vm `Res vy in
+              Builder.end_block_jump access.exit v in
+            access,
+            [block1; block31; block32; block5; entry_block; exit_block1; exit_block2; yinject_block]
+            @ blocksy
+          | _ -> assert false in
     let eval_block1 =
       let arg = Builder.begin_block eval.entry in
       let vstack, vgamma = Builder.unpair arg in
@@ -728,32 +887,27 @@ let rec translate (t: Cbvterm.t) : fragment =
       let arg = Builder.begin_block t1_fragment.eval.exit in
       let vstack = Builder.fst arg in
       let vn = Builder.snd arg in
-      let v = Builder.pair vstack vn in
+      let v = Builder.pair vstack (inject_code `Case1 vn t.t_type) in
       Builder.end_block_jump eval.exit v in
     let eval_blockrf =
       let arg = Builder.begin_block t2_fragment.eval.exit in
       let vstack = Builder.fst arg in
       let vn = Builder.snd arg in
-      let v = Builder.pair vstack vn in
+      let v = Builder.pair vstack (inject_code `Case2 vn t.t_type) in
       Builder.end_block_jump eval.exit v in
-    let access_block =
-      let arg = Builder.begin_block access.entry in
-      Builder.end_block_jump access.entry arg in
-    (* dummy blocks *)
     let access_blockc =
       let arg = Builder.begin_block tc_fragment.access.exit in
       Builder.end_block_jump tc_fragment.access.exit arg in
-    let access_block1 =
-      let arg = Builder.begin_block t1_fragment.access.exit in
-      Builder.end_block_jump t1_fragment.access.exit arg in
-    let access_block2 =
-      let arg = Builder.begin_block t2_fragment.access.exit in
-      Builder.end_block_jump t2_fragment.access.exit arg in
+    let access, join_blocks =
+      join
+        (t1_fragment.access, t1.t_type)
+        (t2_fragment.access, t2.t_type)
+        t.t_type in
     { eval = eval;
       access = access;
       blocks = [eval_block1; (* eval_blockt; eval_blockf;*) eval_blockc;
-                eval_blockrf; eval_blockrt;
-                access_block; access_blockc; access_block1; access_block2]
+                eval_blockrf; eval_blockrt; access_blockc]
+               @ join_blocks
                @ tc_fragment.blocks
                @ t1_fragment.blocks
                @ t2_fragment.blocks;
@@ -788,7 +942,7 @@ let to_ssa t =
         Ident.Table.replace visited ~key:i ~data:();
 
         let b = Ident.Table.find_exn blocks i in
-        (* Ssa.fprint_block stdout b; *)
+        Ssa.fprint_block stdout b; 
         rev_sorted_blocks := b :: !rev_sorted_blocks;
         List.iter (Ssa.targets_of_block b)
           ~f:(fun l -> sort_blocks l.Ssa.name)
