@@ -23,7 +23,7 @@ let solve_constraints (ineqs: lhd_constraint list) : unit =
   let cmp a b = Int.compare
       (Basetype.repr_id a)
       (Basetype.repr_id b) in
-  if true then
+  if !Opts.verbose then
     begin
       Printf.printf "Solving constraints:\n";
       List.iter ineqs
@@ -219,14 +219,6 @@ let rec fresh_annotations_term (t: Simpletype.t Cbvterm.term) : Cbvterm.t =
       t_loc = t.t_loc
     }
 
-let print_context c =
-  List.iter c
-    ~f:(fun (x, a) ->
-        Printf.printf "%s:%s, "
-          (Ident.to_string x)
-          (Cbvtype.to_string ~concise:false a));
-  Printf.printf "\n"
-
 let infer_annotations (t: Cbvterm.t) : Cbvterm.t =
   let rec constraints (t: Cbvterm.t) : Cbvterm.t * lhd_constraint list =
     let open Cbvterm in
@@ -299,7 +291,6 @@ let infer_annotations (t: Cbvterm.t) : Cbvterm.t =
       @ cs1 @ cs2
     | Fun((v, xa), s) ->
       let as1, cs1 = constraints s in
-      print_context as1.t_context;
       let e, (x, a, d, y) = selectfunty t.t_type in
       (* note: the bound variable cannot appear in t.t_context *)
       Cbvtype.unify_exn x xa;
@@ -439,13 +430,6 @@ let infer_annotations (t: Cbvterm.t) : Cbvterm.t =
       Basetype.unify_exn t.t_ann s.t_ann;
       List.iter delta
         ~f:(fun (_, b) -> Cbvtype.unify_exn a (freshen_multiplicity b));
-      Printf.printf "contraction:\n";
-      List.iter ~f:(fun y -> Printf.printf "%s, " (Ident.to_string y)) xs;
-      Printf.printf "\n";
-      print_context s.t_context;
-      print_context as1.t_context;
-      print_context ((x, a) :: gamma);
-      Printf.printf "/contraction:\n";
       { t with
         t_desc = Contr(((x, a), xs), as1);
         t_context = (x, a) :: gamma

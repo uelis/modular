@@ -263,8 +263,10 @@ let rec translate (t: Cbvterm.t) : fragment =
     }
   | Contr(((x, a), xs), s) ->
     let s_fragment = translate s in
+    (*
     print_context s.t_context;
     print_fcontext s_fragment.context;
+    *)
     let id = "contr" in
     let eval = {
       entry = fresh_label (id ^ "_eval_entry")
@@ -278,8 +280,6 @@ let rec translate (t: Cbvterm.t) : fragment =
                  (List.Assoc.find_exn s.t_context x')) in
       let sumid = Basetype.Data.sumid (List.length summands) in
       Basetype.newty (Basetype.DataB(sumid, summands)) in
-    Printf.printf "X+: %s\n"
-      (Intlib.Printing.string_of_basetype x_access.exit.Ssa.message_type);
     let eval_block =
       let arg = Builder.begin_block eval.entry in
       let vstack, vgamma = Builder.unpair arg in
@@ -337,8 +337,6 @@ let rec translate (t: Cbvterm.t) : fragment =
   | Const(Ast.Cintconst i, _) ->
     assert false
   | Const(Ast.Cintprint, [s]) ->
-    Printf.printf "Print %s\n%!"
-      (Cbvtype.to_string ~concise:false t.t_type);
     let s_fragment = translate s in
     let id = "intprint" in
     let eval = fresh_eval id t in
@@ -420,8 +418,6 @@ let rec translate (t: Cbvterm.t) : fragment =
     assert false
   | Fun((x, xty), s) ->
     let s_fragment = lift (Cbvtype.multiplicity t.t_type) (translate s) in
-    print_context s.t_context;
-    print_fcontext s_fragment.context;
     let id = "fun" in
     let eval = fresh_eval id t in
     let access = fresh_access id t.t_type in
@@ -500,8 +496,6 @@ let rec translate (t: Cbvterm.t) : fragment =
     let access = fresh_access id t.t_type in
     let x_access = List.Assoc.find_exn s_fragment.context x in
     let f_access = List.Assoc.find_exn s_fragment.context f in
-    print_context s.t_context;
-    print_fcontext s_fragment.context;
     (* E + H *G *)
     let te = Cbvtype.multiplicity t.t_type in
     let tg = Cbvtype.multiplicity (List.Assoc.find_exn s.t_context f) in
@@ -947,11 +941,11 @@ let to_ssa t =
   let rec sort_blocks i =
     if not (Ident.Table.mem visited i) then
       begin
-        Printf.printf "%s\n" (Ident.to_string i);
+        (* Printf.printf "%s\n" (Ident.to_string i); *)
         Ident.Table.replace visited ~key:i ~data:();
 
         let b = Ident.Table.find_exn blocks i in
-        Ssa.fprint_block stdout b; 
+        (* Ssa.fprint_block stdout b; *)
         rev_sorted_blocks := b :: !rev_sorted_blocks;
         List.iter (Ssa.targets_of_block b)
           ~f:(fun l -> sort_blocks l.Ssa.name)

@@ -184,9 +184,11 @@ let unbox (v: value) : value =
            
 let project (v: value) (a: Basetype.t) : value =
   let vv, va = v in
+  (*
   Printf.printf "project: %s <= %s\n"
                  (Intlib.Printing.string_of_basetype a)
                  (Intlib.Printing.string_of_basetype va);
+  *)
   let select id params x =
     let cs = Basetype.Data.constructor_types id params in
     let rec sel cs n =
@@ -219,9 +221,11 @@ let project (v: value) (a: Basetype.t) : value =
                     
 let embed (v: value) (a: Basetype.t) : value =
   let vv, va = v in
+  (*
   Printf.printf "embed: %s <= %s\n"
                  (Intlib.Printing.string_of_basetype va)
                  (Intlib.Printing.string_of_basetype a);
+  *)
   if Basetype.equals va a then
     v
   else

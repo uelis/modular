@@ -67,10 +67,11 @@ let compile (d: Decl.t) : unit =
         (Ident.to_string f)
         (Cbvtype.to_string ~concise:(not !Opts.print_type_details)
                            t.Cbvterm.t_type);
-      let f = Translate.translate t in
-      Translate.print_fragment f;
+      (* let f = Translate.translate t in
+       Translate.print_fragment f; *)
       let ssa = Translate.to_ssa t in
-      Intlib.Ssa.fprint_func stdout ssa;
+      if !Opts.verbose then
+        Intlib.Ssa.fprint_func stderr ssa; 
       let ssa_traced = Intlib.Trace.trace ssa in
       let ssa_shortcut = Intlib.Trace.shortcut_jumps ssa_traced in
       if !Opts.verbose then
