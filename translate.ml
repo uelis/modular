@@ -250,23 +250,16 @@ let rec translate (t: Cbvterm.t) : fragment =
     let id = "var" in
     let eval = fresh_eval id t in
     let access = fresh_access id t.t_type in
-    let x_access = fresh_access id t.t_type in
     let eval_block =
       let arg = Builder.begin_block eval.entry in
       let va, vgamma = Builder.unpair arg in
       let vx = build_context_lookup t.t_context x vgamma in
       let v = Builder.pair va vx in
       Builder.end_block_jump eval.exit v in
-    let access_block =
-      let arg = Builder.begin_block access.entry in
-      Builder.end_block_jump x_access.entry arg in
-    let x_access_exit_block =
-      let arg = Builder.begin_block x_access.exit in
-      Builder.end_block_jump access.exit arg in
     { eval = eval;
       access = access;
-      blocks = [eval_block; access_block; x_access_exit_block];
-      context = [(x, x_access)]
+      blocks = [eval_block];
+      context = [(x, access)]
     }
   | Contr(((x, a), xs), s) ->
     let s_fragment = translate s in
