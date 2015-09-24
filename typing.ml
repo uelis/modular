@@ -337,11 +337,9 @@ let infer_annotations (t: Cbvterm.t) : Cbvterm.t =
       let asf, csf = constraints sf in
       Basetype.unify_exn st.t_ann t.t_ann;
       Basetype.unify_exn sf.t_ann t.t_ann;
-      (*
-      Cbvtype.unify_exn t.t_type st.t_type;
-      Cbvtype.unify_exn t.t_type sf.t_type;
-         *)
-      let rec join (t1: Cbvtype.t) (t2: Cbvtype.t)
+      let rec join
+          (t1: Cbvtype.t)
+          (t2: Cbvtype.t)
         : Cbvtype.t * lhd_constraint list =
         let open Cbvtype in
         match case t1, case t2 with

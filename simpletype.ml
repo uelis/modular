@@ -82,7 +82,7 @@ let to_string ?concise:(concise=true) (ty: t): string =
             match st with
             | Fun(t1, t2) ->
               if not concise then
-                Printf.sprintf "%s -> %s)"
+                Printf.sprintf "%s -> %s"
                   (str t1 `Atom)
                   (str t2 `Type)
               else

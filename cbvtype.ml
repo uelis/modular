@@ -89,6 +89,8 @@ let name_of_typevar t =
     name
   
 let to_string ?concise:(concise=true) (ty: t): string =
+  let cyan = "\027[36m" in
+  let black = "\027[39m" in
   let cycle_nodes =
     let cycles = dfs_cycles ty |> List.map ~f:repr_id in
     List.fold cycles ~init:Int.Set.empty ~f:Int.Set.add in
@@ -104,8 +106,6 @@ let to_string ?concise:(concise=true) (ty: t): string =
             match st with
             | Fun(c1, (t1, a1, b1, t2)) ->
               if not concise then
-                let cyan = "\027[36m" in
-                let black = "\027[39m" in
                 Printf.sprintf "%s[%s]%s(%s -%s{%s, %s}%s-> %s)"
                   cyan
                   (Intlib.Printing.string_of_basetype c1)
@@ -130,8 +130,6 @@ let to_string ?concise:(concise=true) (ty: t): string =
             match st with
             | Nat c ->
               if not concise then
-                let cyan = "\027[36m" in
-                let black = "\027[39m" in
                 Printf.sprintf "Nat%s[%s]%s"
                   cyan
                   (Intlib.Printing.string_of_basetype c)
