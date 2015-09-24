@@ -350,6 +350,7 @@ let rec translate (t: Cbvterm.t) : fragment =
       let arg = Builder.begin_block s_fragment.eval.exit in
       let vi = Builder.snd arg in
       ignore (Builder.primop (Intast.Cintprint) vi);
+      ignore (Builder.primop (Intast.Cprint "\n") Builder.unit);
       Builder.end_block_jump eval.exit arg in
     let access_entry_block =
       let arg = Builder.begin_block access.entry in
