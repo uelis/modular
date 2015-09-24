@@ -740,6 +740,8 @@ let rec translate (t: Cbvterm.t) : fragment =
             let b2 = Cbvtype.multiplicity x2 in
             let b12 = Basetype.newty
                 (Basetype.DataB(Basetype.Data.sumid 2, [b1; b2])) in
+            let d12 = Basetype.newty
+                (Basetype.DataB(Basetype.Data.sumid 2, [d1; d2])) in
             let access = fresh_access "joinFun" a in
             (* TODO: Move outside? *)
             let inject kind vm i v =
@@ -754,14 +756,12 @@ let rec translate (t: Cbvterm.t) : fragment =
                 | `Arg -> 2 in
               Builder.pair vm (Builder.inj j v t) in
             (* Entry block *)
-            let block1 =
+            let fun_eval_entry_block =
               let arg = Builder.begin_block
                   (fresh_label "join1" (pairB m (pairB c (pairB d (Cbvtype.code x))))) in
               let vm, vcdx = Builder.unpair arg in
               let vc, vdx = Builder.unpair vcdx in
               let vd, vx = Builder.unpair vdx in
-              let d12 = Basetype.newty
-                  (Basetype.DataB(Basetype.Data.sumid 2, [d1; d2])) in
               let vd12 = Builder.project vd d12 in
               Builder.end_block_case vd12
                 [ (fun vd1 ->
@@ -773,23 +773,31 @@ let rec translate (t: Cbvterm.t) : fragment =
                      let v = inject `Entry2 vm `Eval vp in
                      access2.entry, v)
                 ] in
-            let accessy1 = fresh_access "joinFun1" y1 in
-            let accessy2 = fresh_access "joinFun2" y2 in
-            let accessy, blocksy =
-              let a, bs = join (accessy1, y1) (accessy2, y2) y in
+            (* Recursively join y1 and y2 to y and lift with m. *)
+            let lift_y1_access, lift_y2_access, lift_y_access, join_y_blocks =
+              let a1 = fresh_access "fun1_res" y1 in
+              let a2 = fresh_access "fun2_res" y2 in
+              let a, bs = join (a1, y1) (a2, y2) y in
+              lift_int_interface m a1,
+              lift_int_interface m a2,
               lift_int_interface m a,
               List.map bs ~f:(lift_block m) in
-            let block31 =
-              let arg = Builder.begin_block (lift_int_interface m accessy1).entry in
+            let fun1_res_block =
+              let arg = Builder.begin_block lift_y1_access.entry in
               let vm, vy = Builder.unpair arg in
               let v = inject `Entry1 vm `Res arg in
               Builder.end_block_jump access1.entry v in
-            let block32 =
-              let arg = Builder.begin_block (lift_int_interface m accessy2).entry in
+            let fun2_res_block =
+              let arg = Builder.begin_block lift_y2_access.entry in
               let vm, vy = Builder.unpair arg in
               let v = inject `Entry2 vm `Res arg in
               Builder.end_block_jump access2.entry v in
-            let block5 =
+            let fun_res_block =
+              let arg = Builder.begin_block lift_y_access.exit in
+              let vm, vy = Builder.unpair arg in
+              let v = inject `Exit vm `Res vy in
+              Builder.end_block_jump access.exit v in
+            let fun_arg_exit_block =
               let arg = Builder.begin_block
                   (fresh_label "join_arg_exit" (pairB m (access_exit_type x))) in
               let vm, vv = Builder.unpair arg in
@@ -809,11 +817,21 @@ let rec translate (t: Cbvterm.t) : fragment =
               let arg = Builder.begin_block access.entry in
               let vm, vv = Builder.unpair arg in
               Builder.end_block_case vv
-                [ (fun c -> Ssa.label_of_block block1, Builder.pair vm c);
-                  (fun c -> accessy.entry, Builder.pair vm c);
-                  (fun c -> Ssa.label_of_block block5, Builder.pair vm c)
+                [ (fun c -> Ssa.label_of_block fun_eval_entry_block, Builder.pair vm c);
+                  (fun c -> lift_y_access.entry, Builder.pair vm c);
+                  (fun c -> Ssa.label_of_block fun_arg_exit_block, Builder.pair vm c)
                 ] in
             (* Exit blocks *)
+            let fun_arg_entry_block =
+              let _, vx = unPairB (access_entry_type x) in
+              let arg = Builder.begin_block
+                  (fresh_label "fun_arg_entry" (pairB m (pairB b12 vx))) in
+              let vm, vb12x = Builder.unpair arg in
+              let vb12, vx = Builder.unpair vb12x in
+              let vb = Builder.embed vb12 b in
+              let vbx = Builder.pair vb vx in
+              let v = inject `Exit vm `Arg vbx in
+              Builder.end_block_jump access.exit v in
             let exit_block1 =
               let arg = Builder.begin_block access1.exit in
               let vm, vv = Builder.unpair arg in
@@ -824,13 +842,13 @@ let rec translate (t: Cbvterm.t) : fragment =
                       let v = inject `Exit vm `Eval (Builder.pair vc vy) in
                       access.exit, v);
                   (fun vy1 ->
-                     (lift_int_interface m accessy1).exit, Builder.pair vm vy1);
+                     lift_y1_access.exit, Builder.pair vm vy1);
                   (fun varg ->
                      let vb1, vx = Builder.unpair varg in
-                     let vb = Builder.embed (Builder.inj 0 vb1 b12) b in
-                     let vbx = Builder.pair vb vx in
-                     let v = inject `Exit vm `Arg vbx in
-                     access.exit, v)
+                     let vb12 = Builder.inj 0 vb1 b12 in
+                     let vb12x = Builder.pair vb12 vx in
+                     let v = Builder.pair vm vb12x in
+                     Ssa.label_of_block fun_arg_entry_block, v)
                 ] in
             let exit_block2 =
               let arg = Builder.begin_block access2.exit in
@@ -842,22 +860,19 @@ let rec translate (t: Cbvterm.t) : fragment =
                       let v = inject `Exit vm `Eval (Builder.pair vc vy) in
                       access.exit, v);
                   (fun vy2 ->
-                     (lift_int_interface m accessy2).exit, Builder.pair vm vy2);
+                     lift_y2_access.exit, Builder.pair vm vy2);
                   (fun varg ->
                      let vb2, vx = Builder.unpair varg in
-                     let vb = Builder.embed (Builder.inj 1 vb2 b12) b in
-                     let vbx = Builder.pair vb vx in
-                     let v = inject `Exit vm `Arg vbx in
-                     access.exit, v)
+                     let vb12 = Builder.inj 1 vb2 b12 in
+                     let vb12x = Builder.pair vb12 vx in
+                     let v = Builder.pair vm vb12x in
+                     Ssa.label_of_block fun_arg_entry_block, v)
                 ] in
-            let yinject_block =
-              let arg = Builder.begin_block accessy.exit in
-              let vm, vy = Builder.unpair arg in
-              let v = inject `Exit vm `Res vy in
-              Builder.end_block_jump access.exit v in
             access,
-            [block1; block31; block32; block5; entry_block; exit_block1; exit_block2; yinject_block]
-            @ blocksy
+            [fun_eval_entry_block; fun1_res_block; fun2_res_block; fun_res_block;
+             fun_arg_entry_block; fun_arg_exit_block;
+             entry_block; exit_block1; exit_block2]
+            @ join_y_blocks
           | _ -> assert false in
     let eval_block1 =
       let arg = Builder.begin_block eval.entry in
