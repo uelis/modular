@@ -405,9 +405,9 @@ let infer_annotations (t: Cbvterm.t) : Cbvterm.t =
               let a' = List.Assoc.find_exn as1.t_context y in
               let m' =  multiplicity_of_type a' in
               Cbvtype.unify_exn a (freshen_multiplicity a');
-              { lower = Basetype.newty (Basetype.PairB(e, m'));
+              { lower = Basetype.newty (Basetype.PairB(h, m'));
                 upper = multiplicity_of_type a;
-                reason = Printf.sprintf "fix: context (%s)" (Ident.to_string v)
+                reason = Printf.sprintf "fix: context (%s)" (Ident.to_string y)
               }) in
       { t with
         t_desc = Fix((h, f, v, va), as1);
