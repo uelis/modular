@@ -1,0 +1,23 @@
+let mul = \y -> \x ->
+   (fix mul x ->
+      \a -> if0 x then a else
+            let x' = intadd(x,-1) in
+            let a' = intadd(a, y) in
+            mul x' a') x 0
+let ymax = 10            
+let main =
+  (fix whiley y ->
+    if0 y then 0
+    else
+      (fix whilex x ->
+         if0 x then
+           let y' = intadd(y, -1) in
+           whiley y'
+         else
+           let u = print x in
+           let u = print y in
+           let u = print 999 in
+           let x' = intadd(x, -1) in
+           whilex x'
+      ) 10
+  ) ymax
