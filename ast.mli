@@ -1,4 +1,3 @@
-open Intlib
 (** Source terms *)
   
 (** Location of term in the source file *)

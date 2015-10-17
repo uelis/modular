@@ -1,6 +1,4 @@
 open Core.Std
-module Ident = Intlib.Ident
-module Basetype = Intlib.Basetype
 
 type const = Ast.const
                

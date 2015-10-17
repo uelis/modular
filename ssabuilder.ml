@@ -1,9 +1,4 @@
 open Core.Std
-
-module Ident = Intlib.Ident
-module Basetype = Intlib.Basetype
-module Ssa = Intlib.Ssa               
-module Intast = Intlib.Ast
                
 let unPairB a =
   match Basetype.case a with
@@ -51,7 +46,7 @@ let intconst (i: int) =
   Ssa.IntConst(i), 
   Basetype.newty (Basetype.IntB)
                            
-let primop (c: Intlib.Ast.op_const) (v: value) : value =
+let primop (c: Ssa.op_const) (v: value) : value =
   let vv, va = v in
   let prim = Ident.fresh "prim" in
   let vb =
@@ -60,66 +55,66 @@ let primop (c: Intlib.Ast.op_const) (v: value) : value =
       if equals a b then () else
         failwith "internal translate.ml: type mismatch" in
     match c with
-    | Intlib.Ast.Cprint(_) ->
+    | Ssa.Cprint(_) ->
        newty UnitB
-    | Intlib.Ast.Cintadd
-    | Intlib.Ast.Cintsub
-    | Intlib.Ast.Cintmul
-    | Intlib.Ast.Cintdiv
-    | Intlib.Ast.Cintshl
-    | Intlib.Ast.Cintshr
-    | Intlib.Ast.Cintsar
-    | Intlib.Ast.Cintand
-    | Intlib.Ast.Cintor
-    | Intlib.Ast.Cintxor ->
+    | Ssa.Cintadd
+    | Ssa.Cintsub
+    | Ssa.Cintmul
+    | Ssa.Cintdiv
+    | Ssa.Cintshl
+    | Ssa.Cintshr
+    | Ssa.Cintsar
+    | Ssa.Cintand
+    | Ssa.Cintor
+    | Ssa.Cintxor ->
        let intty = newty IntB in
        equals_exn va (newty (PairB(intty, intty)));
        intty
-    | Intlib.Ast.Cinteq
-    | Intlib.Ast.Cintlt
-    | Intlib.Ast.Cintslt ->
+    | Ssa.Cinteq
+    | Ssa.Cintlt
+    | Ssa.Cintslt ->
        let intty = newty IntB in
        let boolty = newty (DataB(Data.boolid, [])) in
        equals_exn va (newty (PairB(intty, intty)));
        boolty
-    | Intlib.Ast.Cintprint ->
+    | Ssa.Cintprint ->
        let intty = newty IntB in
        equals_exn va intty;
        newty UnitB
-    | Intlib.Ast.Calloc(b) ->
+    | Ssa.Calloc(b) ->
        equals_exn va (newty UnitB);
        newty (BoxB b)
-    | Intlib.Ast.Cfree(b) ->
+    | Ssa.Cfree(b) ->
        equals_exn va (newty (BoxB b));
        newty UnitB
-    | Intlib.Ast.Cload(b) ->
+    | Ssa.Cload(b) ->
        equals_exn va (newty (BoxB b));
        b
-    | Intlib.Ast.Cstore(b) ->
+    | Ssa.Cstore(b) ->
        equals_exn va (newty (PairB(newty (BoxB b), b)));
        (newty UnitB)
-    | Intlib.Ast.Carrayalloc(b) ->
+    | Ssa.Carrayalloc(b) ->
        equals_exn va (newty IntB);
        (newty (ArrayB b))
-    | Intlib.Ast.Carrayfree(b) ->
+    | Ssa.Carrayfree(b) ->
        equals_exn va (newty (ArrayB b));
        (newty UnitB)
-    | Intlib.Ast.Carrayget(b) ->
+    | Ssa.Carrayget(b) ->
        equals_exn va (newty (PairB(newty (ArrayB b), newty IntB)));
        (newty (BoxB(b)))
-    | Intlib.Ast.Cpush(b) ->
+    | Ssa.Cpush(b) ->
        equals_exn va b;
        (newty UnitB)
-    | Intlib.Ast.Cpop(b) ->
+    | Ssa.Cpop(b) ->
        equals_exn va (newty UnitB);
        b
-    | Intlib.Ast.Ccall(_, b1, b2) ->
+    | Ssa.Ccall(_, b1, b2) ->
        equals_exn va b1;
        b2
-    | Intlib.Ast.Cencode b ->
+    | Ssa.Cencode b ->
        equals_exn b va;
        b
-    | Intlib.Ast.Cdecode b ->
+    | Ssa.Cdecode b ->
        b in
   emit (Ssa.Let((prim, vb), Ssa.Const(c, vv)));
   Ssa.Var prim, vb
@@ -151,7 +146,7 @@ let pair (v1: value) (v2: value) : value =
     Basetype.newty (Basetype.PairB(va1, va2))
            
 let inj (i: int) (v: value) (data: Basetype.t) : value =
-  let vv, va = v in
+  let vv, _ = v in
   let id, _ = unDataB data in
   Ssa.In((id, i, vv), data), data
                                
@@ -168,8 +163,8 @@ let select (v: value) (i: int) : value =
 
 let box (v: value) : value =
   let _, va = v in
-  let vbox = primop (Intast.Calloc(va)) unit in
-  ignore (primop (Intast.Cstore(va)) (pair vbox v));
+  let vbox = primop (Ssa.Calloc(va)) unit in
+  ignore (primop (Ssa.Cstore(va)) (pair vbox v));
   vbox
            
 let unbox (v: value) : value =
@@ -178,12 +173,12 @@ let unbox (v: value) : value =
     match Basetype.case va with
     | Basetype.Sgn (Basetype.BoxB(b)) -> b
     | _ -> failwith "unbox" in
-  let w = primop (Intast.Cload(b)) v in
-  ignore (primop (Intast.Cfree(b)) v);
+  let w = primop (Ssa.Cload(b)) v in
+  ignore (primop (Ssa.Cfree(b)) v);
   w
            
 let project (v: value) (a: Basetype.t) : value =
-  let vv, va = v in
+  let _, va = v in
   (*
   Printf.printf "project: %s <= %s\n"
                  (Intlib.Printing.string_of_basetype a)
@@ -220,7 +215,7 @@ let project (v: value) (a: Basetype.t) : value =
        failwith "project3"
                     
 let embed (v: value) (a: Basetype.t) : value =
-  let vv, va = v in
+  let _, va = v in
   (*
   Printf.printf "embed: %s <= %s\n"
                  (Intlib.Printing.string_of_basetype va)
@@ -265,7 +260,7 @@ let embed (v: value) (a: Basetype.t) : value =
 
 (* TODO: add assertions to check types *)
 let end_block_jump (dst: Ssa.label) (v: value) : Ssa.block =
-  let vv, va = v in
+  let vv, _ = v in
   match !builder_state with
   | None -> assert false
   | Some s ->

@@ -1,8 +1,5 @@
 (** Typed representation of intput terms *)
 
-module Ident = Intlib.Ident
-module Basetype = Intlib.Basetype
-
 type const = Ast.const
                
 type 'a term = {

@@ -1,6 +1,4 @@
 open Core.Std
-module Basetype = Intlib.Basetype
-module Uftype = Intlib.Uftype                    
                     
 type 'a sgn =
   | Nat of Basetype.t
@@ -108,12 +106,12 @@ let to_string ?concise:(concise=true) (ty: t): string =
               if not concise then
                 Printf.sprintf "%s[%s]%s(%s -%s{%s, %s}%s-> %s)"
                   cyan
-                  (Intlib.Printing.string_of_basetype c1)
+                  (Printing.string_of_basetype c1)
                   black
                   (str t1 `Atom)
                   cyan
-                  (Intlib.Printing.string_of_basetype a1)
-                  (Intlib.Printing.string_of_basetype b1)
+                  (Printing.string_of_basetype a1)
+                  (Printing.string_of_basetype b1)
                   black
                   (str t2 `Type)
               else
@@ -132,7 +130,7 @@ let to_string ?concise:(concise=true) (ty: t): string =
               if not concise then
                 Printf.sprintf "Nat%s[%s]%s"
                   cyan
-                  (Intlib.Printing.string_of_basetype c)
+                  (Printing.string_of_basetype c)
                   black
               else
                "Nat"

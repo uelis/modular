@@ -1,4 +1,3 @@
-module Ident = Intlib.Ident
 type t =
   | TermDecl of Ident.t * Ast.t
 

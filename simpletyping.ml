@@ -1,11 +1,6 @@
 (** Type inference *)
 open Core.Std
 
-module Ident = Intlib.Ident
-module Printing = Intlib.Printing
-module Basetype = Intlib.Basetype
-module Uftype = Intlib.Uftype
-
 type 'a context = (Ident.t * 'a) list
 
 exception Typing_error of Ast.t option * string

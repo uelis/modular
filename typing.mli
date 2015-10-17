@@ -1,4 +1,3 @@
-module Ident = Intlib.Ident
 (** Type inference *)
 
 (** Type contexts *)

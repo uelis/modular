@@ -6,16 +6,6 @@ open Lexing
 open Parsing
 open Ast
 
-module Ident = Intlib.Ident
-module Basetype = Intlib.Basetype
-module Type = Intlib.Type
-
-let illformed msg =
-  let s = Parsing.symbol_start_pos () in
-  let line = s.pos_lnum in
-  let column = s.pos_cnum - s.pos_bol + 1 in
-  raise (Decl.Illformed_decl (msg, line, column))
-
 let location_of_pos pos = 
   { Location.line = pos.pos_lnum;
     Location.column = pos.pos_cnum - pos.pos_bol + 1 }

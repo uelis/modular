@@ -2,8 +2,6 @@
 open Core.Std
 open Lexing
 
-module Ident = Intlib.Ident
-
 module Opts = struct
   let print_type_details = ref false
   let verbose = ref false
@@ -48,14 +46,6 @@ let term_loc (s : Ast.t option) =
         loc.end_pos.line loc.end_pos.column
     | None -> "Term " (* ^ (Printing.string_of_ast s) *)
 
-let expand_prelude t =
-  let input = In_channel.read_all "prelude.int" in
-  let lexbuf = Lexing.from_string input in
-  let decls = Intlib.Parser.decls Intlib.Lexer.main lexbuf in
-  List.fold_right decls
-    ~init:t
-    ~f:Intlib.Decl.expand_in_term 
-
 let compile (d: Decl.t) : unit =
   match d with
   | Decl.TermDecl(f, ast) ->
@@ -71,12 +61,12 @@ let compile (d: Decl.t) : unit =
        Translate.print_fragment f; *)
       let ssa = Translate.to_ssa t in
       if !Opts.verbose then
-        Intlib.Ssa.fprint_func stderr ssa; 
-      let ssa_traced = Intlib.Trace.trace ssa in
-      let ssa_shortcut = Intlib.Trace.shortcut_jumps ssa_traced in
+        Ssa.fprint_func stderr ssa; 
+      let ssa_traced = Trace.trace ssa in
+      let ssa_shortcut = Trace.shortcut_jumps ssa_traced in
       if !Opts.verbose then
-        Intlib.Ssa.fprint_func stderr ssa_shortcut;
-      let llvm_module = Intlib.Llvmcodegen.llvm_compile ssa_shortcut in
+        Ssa.fprint_func stderr ssa_shortcut;
+      let llvm_module = Llvmcodegen.llvm_compile ssa_shortcut in
       let target = Printf.sprintf "%s.bc" f_name in
       ignore (Llvm_bitwriter.write_bitcode_file llvm_module target)
     with Simpletyping.Typing_error(s, err) ->
@@ -87,7 +77,7 @@ let arg_spec =
   [("--type-details", Arg.Set Opts.print_type_details,
     "Print full type details, including subexponentials.");
    ("--verbose", Arg.Set Opts.verbose, "Print compilation details..");
-   ("--intverbose", Arg.Set Intlib.Opts.verbose, "Print compilation details..");
+   ("--intverbose", Arg.Set Opts.verbose, "Print compilation details..");
   ]
 
 let usage_msg = "Usage: intc input.int\nOptions:"

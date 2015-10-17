@@ -1,5 +1,4 @@
 open Core.Std
-open Intlib
 (** Term representation *)
 
 module Location = struct

@@ -1,4 +1,3 @@
-module Ident = Intlib.Ident
 (** Declarations in an input file *)
 
 (** Currently there is just a single declaration for interaction terms *)

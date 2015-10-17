@@ -1,5 +1,3 @@
-module Ident = Intlib.Ident
-                 
 type 'a context = (Ident.t * 'a) list
                  
 type linearized_term = {

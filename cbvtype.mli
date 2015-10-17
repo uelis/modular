@@ -1,8 +1,5 @@
 (** Representation of interactive types *)
-
 open Core.Std
-module Basetype = Intlib.Basetype
-module Uftype = Intlib.Uftype                    
 
 type 'a sgn =
   | Nat of Basetype.t

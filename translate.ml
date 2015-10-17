@@ -1,10 +1,6 @@
 open Core.Std
 open Cbvterm
 
-module Ident = Intlib.Ident
-module Basetype = Intlib.Basetype
-module Ssa = Intlib.Ssa               
-module Intast = Intlib.Ast
 module Builder = Ssabuilder
 
 type int_interface = {
@@ -154,7 +150,7 @@ let rec build_context_lookup
   : Builder.value =
   match gamma with
   | [] -> assert false
-  | (y, a) :: delta ->
+  | (y, _) :: delta ->
     if x = y then
       Builder.snd v
     else
@@ -169,7 +165,7 @@ let build_context_map
   let rec values gamma code_gamma =
     match gamma with
     | [] -> []
-    | (x, a) :: gamma' ->
+    | (x, _) :: gamma' ->
       let code_gamma', code_x = Builder.unpair code_gamma in
       (x, code_x) :: (values gamma' code_gamma') in
   let gamma_values = values gamma code_gamma in
@@ -179,7 +175,7 @@ let build_context_map
       delta in
   let v = List.fold_right delta_values
       ~init:Builder.unit
-      ~f:(fun (x, vx) v -> Builder.pair v vx) in
+      ~f:(fun (_, vx) v -> Builder.pair v vx) in
   v
 
 let print_context c =
@@ -195,8 +191,8 @@ let print_fcontext c =
     ~f:(fun (x, a) ->
         Printf.printf "%s:(%s, %s), "
           (Ident.to_string x)
-          (Intlib.Printing.string_of_basetype a.entry.Ssa.message_type)
-          (Intlib.Printing.string_of_basetype a.exit.Ssa.message_type)
+          (Printing.string_of_basetype a.entry.Ssa.message_type)
+          (Printing.string_of_basetype a.exit.Ssa.message_type)
       );
   Printf.printf "\n"
 
@@ -314,7 +310,7 @@ let rec translate (t: Cbvterm.t) : fragment =
       blocks = eval_block :: proj_block :: inj_blocks @ s_fragment.blocks;
       context = (x, x_access) ::
                 (List.filter s_fragment.context
-                   ~f:(fun (x, a) -> not (List.mem xs x)))
+                   ~f:(fun (x, _) -> not (List.mem xs x)))
     }
   | Const(Ast.Cintconst i, []) ->
     let id = "intconst" in
@@ -334,7 +330,7 @@ let rec translate (t: Cbvterm.t) : fragment =
       blocks = [eval_block; access_block];
       context = []
     }
-  | Const(Ast.Cintconst i, _) ->
+  | Const(Ast.Cintconst _, _) ->
     assert false
   | Const(Ast.Cintprint, [s]) ->
     let s_fragment = translate s in
@@ -347,8 +343,8 @@ let rec translate (t: Cbvterm.t) : fragment =
     let print_block =
       let arg = Builder.begin_block s_fragment.eval.exit in
       let vi = Builder.snd arg in
-      ignore (Builder.primop (Intast.Cintprint) vi);
-      ignore (Builder.primop (Intast.Cprint "\n") Builder.unit);
+      ignore (Builder.primop (Ssa.Cintprint) vi);
+      ignore (Builder.primop (Ssa.Cprint "\n") Builder.unit);
       Builder.end_block_jump eval.exit arg in
     let access_entry_block =
       let arg = Builder.begin_block access.entry in
@@ -393,7 +389,7 @@ let rec translate (t: Cbvterm.t) : fragment =
       let vstack2, vn2 = Builder.unpair arg in
       let vp = Builder.project vstack2 (pairB t.t_ann intB) in
       let vstack, vn1 = Builder.unpair vp in
-      let vsum = Builder.primop (Intast.Cintadd) (Builder.pair vn1 vn2) in
+      let vsum = Builder.primop (Ssa.Cintadd) (Builder.pair vn1 vn2) in
       let v = Builder.pair vstack vsum in
       Builder.end_block_jump eval.exit v in
     let access_block =
@@ -466,14 +462,14 @@ let rec translate (t: Cbvterm.t) : fragment =
       Builder.end_block_jump access.exit v in
     let s_access_exit_block =
       let arg = Builder.begin_block s_fragment.access.exit in
-      let te, tf = unPairB access.exit.Ssa.message_type in      
+      let _(*te*), tf = unPairB access.exit.Ssa.message_type in      
       let ve, vy = Builder.unpair arg in
       let vy1 = Builder.inj 1 vy tf in
       let v = Builder.pair ve vy1 in
       Builder.end_block_jump access.exit v in
     let s_x_access_entry_block =
       let arg = Builder.begin_block x_access.entry in
-      let te, tf = unPairB access.exit.Ssa.message_type in      
+      let _(*te*), tf = unPairB access.exit.Ssa.message_type in      
       let ve, vy = Builder.unpair arg in
       let vx2 = Builder.inj 2 vy tf in
       let v = Builder.pair ve vx2 in
@@ -693,10 +689,9 @@ let rec translate (t: Cbvterm.t) : fragment =
       let i = match k with
         | `Case1 -> 0
         | `Case2 -> 1 in
-      let open Cbvtype in
-      match case a with
-      | Sgn (Nat _) -> v
-      | Sgn (Fun (_ , (_ , _ , d , _))) ->
+      match Cbvtype.case a with
+      | Cbvtype.Sgn (Cbvtype.Nat _) -> v
+      | Cbvtype.Sgn (Cbvtype.Fun (_ , (_ , _ , d , _))) ->
         Builder.inj i v d
       | _ -> assert false in
     let rec join (access1, a1) (access2, a2) a : int_interface * (Ssa.block list) =
@@ -772,12 +767,12 @@ let rec translate (t: Cbvterm.t) : fragment =
               List.map bs ~f:(lift_block m) in
             let fun1_res_block =
               let arg = Builder.begin_block lift_y1_access.entry in
-              let vm, vy = Builder.unpair arg in
+              let vm, _(*vy*) = Builder.unpair arg in
               let v = inject `Entry1 vm `Res arg in
               Builder.end_block_jump access1.entry v in
             let fun2_res_block =
               let arg = Builder.begin_block lift_y2_access.entry in
-              let vm, vy = Builder.unpair arg in
+              let vm, _(*vy*) = Builder.unpair arg in
               let v = inject `Entry2 vm `Res arg in
               Builder.end_block_jump access2.entry v in
             let fun_res_block =
@@ -881,7 +876,7 @@ let rec translate (t: Cbvterm.t) : fragment =
                                           )) in
       let vstack, vgamma12 = Builder.unpair vp in
       let vgamma1, vgamma2 = Builder.unpair vgamma12 in
-      let vz = Builder.primop (Intast.Cinteq) (Builder.pair vn (Builder.intconst 0)) in
+      let vz = Builder.primop (Ssa.Cinteq) (Builder.pair vn (Builder.intconst 0)) in
       Builder.end_block_case
         vz
         [ (fun _ -> t1_fragment.eval.entry, Builder.pair vstack vgamma1);

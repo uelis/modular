@@ -1,5 +1,4 @@
 open Core.Std
-module Uftype = Intlib.Uftype                    
 
 type 'a sgn =
   | Nat

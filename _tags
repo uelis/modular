@@ -1,1 +1,1 @@
-<*.ml> or <*.mli> or "cbv2int.native": g++, package(llvm), package(llvm.bitwriter), package(pa_ounit), package(pa_ounit.syntax), pa_ounit_lib(intc), package(intlib)
+<*.ml> or <*.mli> or "modular.native": g++, package(llvm), package(llvm.bitwriter), package(pa_ounit), package(pa_ounit.syntax), pa_ounit_lib(modular)

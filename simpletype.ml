@@ -1,8 +1,6 @@
 (** Type inference *)
 open Core.Std
 
-module Uftype = Intlib.Uftype
-                  
 type 'a sgn =
   | Nat
   | Fun of 'a * 'a
