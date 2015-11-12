@@ -148,6 +148,10 @@ invoke the script `llvm_compile.sh` as follows:
 
 This should generate an executable `main` that prints the 20-th Fibonacci number.
 
+```
+  > ./main
+  6765
+```
 
 ### Printing Type Annotations
 
