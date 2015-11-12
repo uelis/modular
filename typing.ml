@@ -94,8 +94,7 @@ let solve_constraints (ineqs: lhd_constraint list) : unit =
                     (recty ^ "_" ^ (string_of_int i))
                     params
                     arg_type);
-            if true then
-              Printf.printf "Declaring type:\n  %s\n" (Printing.string_of_data recty);
+            Printf.printf "Declaring type:\n  %s\n" (Printing.string_of_data recty);
             sol
           end
         else
@@ -108,20 +107,14 @@ let solve_constraints (ineqs: lhd_constraint list) : unit =
   in
   List.iter joined_lower_bounds ~f:solve_ineq
 
+(** Returns the code type of an annotated context *)
 let rec code_of_context (gamma : Cbvtype.t context) : Basetype.t =
   match gamma with
   | [] -> Basetype.newty Basetype.UnitB
   | (_, a) :: delta ->
     Basetype.newty (Basetype.PairB(code_of_context delta, Cbvtype.code a))
 
-let multiplicity_of_type (a : Cbvtype.t) : Basetype.t =
-  match Cbvtype.case a with
-  | Cbvtype.Var -> Basetype.newvar()
-  | Cbvtype.Sgn s ->
-    match s with
-    | Cbvtype.Nat(c) -> c
-    | Cbvtype.Fun(c, _) -> c
-
+(** Replaces the multiplicity with a fresh type variable *)
 let freshen_multiplicity (a : Cbvtype.t) : Cbvtype.t =
   match Cbvtype.case a with
   | Cbvtype.Var -> assert false
@@ -131,6 +124,7 @@ let freshen_multiplicity (a : Cbvtype.t) : Cbvtype.t =
     | Cbvtype.Nat _ -> Cbvtype.newty (Cbvtype.Nat(m))
     | Cbvtype.Fun(_, s) -> Cbvtype.newty (Cbvtype.Fun(m, s))
 
+(** Adds annotations to a simple type, thus giving a Cbvtype.t *)
 let rec fresh_annotations_type (a: Simpletype.t) : Cbvtype.t =
   match Simpletype.case a with
   | Simpletype.Var ->
@@ -149,6 +143,7 @@ let rec fresh_annotations_type (a: Simpletype.t) : Cbvtype.t =
       let a = Basetype.newvar () in
       Cbvtype.newty (Cbvtype.Fun(m, (xa, d, a, ya)))
 
+(** Add fresh type annotations to a term *)
 let rec fresh_annotations_term (t: Simpletype.t Cbvterm.term) : Cbvterm.t =
   let open Cbvterm in
   match t.t_desc with
@@ -207,6 +202,8 @@ let rec fresh_annotations_term (t: Simpletype.t Cbvterm.term) : Cbvterm.t =
       t_loc = t.t_loc
     }
 
+(** Given a term with fresh type variables as annotations, 
+    infer concrete annotations *)
 let infer_annotations (t: Cbvterm.t) : Cbvterm.t =
   let rec constraints (t: Cbvterm.t) : Cbvterm.t * lhd_constraint list =
     let open Cbvterm in
@@ -293,10 +290,10 @@ let infer_annotations (t: Cbvterm.t) : Cbvterm.t =
         List.map outer_context
           ~f:(fun (y, a) ->
               let a' = List.Assoc.find_exn as1.t_context y in
-              let m' = multiplicity_of_type a' in
+              let m' = Cbvtype.multiplicity a' in
               Cbvtype.unify_exn a (freshen_multiplicity a');
               { lower = Basetype.newty (Basetype.PairB(e, m'));
-                upper = multiplicity_of_type a;
+                upper = Cbvtype.multiplicity a;
                 reason =
                   Printf.sprintf "fun: context (%s)" (Ident.to_string v)
               }) in
@@ -382,10 +379,10 @@ let infer_annotations (t: Cbvterm.t) : Cbvterm.t =
         List.map outer_context
           ~f:(fun (y, a) ->
               let a' = List.Assoc.find_exn as1.t_context y in
-              let m' =  multiplicity_of_type a' in
+              let m' = Cbvtype.multiplicity a' in
               Cbvtype.unify_exn a (freshen_multiplicity a');
               { lower = Basetype.newty (Basetype.PairB(h, m'));
-                upper = multiplicity_of_type a;
+                upper = Cbvtype.multiplicity a;
                 reason = Printf.sprintf "fix: context (%s)" (Ident.to_string y)
               }) in
       { t with
@@ -406,11 +403,11 @@ let infer_annotations (t: Cbvterm.t) : Cbvterm.t =
       @ cs1 @ context_cs
     | Contr(((x, a), xs), s) ->
       let as1, cs1 = constraints s in
-      let m = multiplicity_of_type a in
+      let m = Cbvtype.multiplicity a in
       let delta, gamma =
         List.partition_tf as1.t_context ~f:(fun (y, _) -> List.mem xs y) in
       let sum =
-        let ms = List.map delta ~f:(fun (_, a) -> multiplicity_of_type a) in
+        let ms = List.map delta ~f:(fun (_, a) -> Cbvtype.multiplicity a) in
         let n = List.length ms in
         Basetype.newty
           (Basetype.DataB(Basetype.Data.sumid n, ms)) in
@@ -432,8 +429,7 @@ let infer_annotations (t: Cbvterm.t) : Cbvterm.t =
   solve_constraints cs1;
   as1
 
-let check_term (t: Ast.t)
-  : Cbvterm.t =
+let check_term (t: Ast.t) : Cbvterm.t =
   let lt = Simpletyping.linearize [] t in
   assert (lt.Simpletyping.subst = []);
   let lt1 = fresh_annotations_term lt.Simpletyping.linear_term in
