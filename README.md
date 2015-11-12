@@ -35,9 +35,9 @@ experimentally in an [earlier version of the translation](https://github.com/uel
 performance. Here the simple solution is implemented first, as it works without having to assume a stack and may have applications, e.g. for hardware synthesis.
 
 
-## Compilation
+## Installation
 
-The translation is writen in OCaml and uses LLVM for code generation. It depends on Jane Street's Core_kernel library and the OCaml LLVM bindings.
+The translation is written in OCaml and uses LLVM for code generation. It depends on Jane Street's Core_kernel library and the OCaml LLVM bindings.
 
 On Ubuntu, LLVM can be installed using `apt-get install llvm`. The OCaml
 libraries are most easily installed using the OCaml Package Manager (OPAM),
