@@ -1,4 +1,4 @@
-open Core.Std
+open Core_kernel.Std
        
 exception Not_equal
 exception Not_unifiable

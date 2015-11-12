@@ -1,4 +1,4 @@
-open Core.Std
+open Core_kernel.Std
 open Cbvterm
 
 module Builder = Ssabuilder
@@ -695,11 +695,10 @@ let rec translate (t: Cbvterm.t) : fragment =
         Builder.inj i v d
       | _ -> assert false in
     let rec join (access1, a1) (access2, a2) a : int_interface * (Ssa.block list) =
-      let open Cbvtype in
-        match case a1, case a2, case a with
-          | Sgn (Nat _),
-            Sgn (Nat _),
-            Sgn (Nat _) ->
+        match Cbvtype.case a1, Cbvtype.case a2, Cbvtype.case a with
+          | Cbvtype.Sgn (Cbvtype.Nat _),
+            Cbvtype.Sgn (Cbvtype.Nat _),
+            Cbvtype.Sgn (Cbvtype.Nat _) ->
             let access = fresh_access "joinNat" a in
             let block1 =
               let arg = Builder.begin_block access.entry in
@@ -711,9 +710,9 @@ let rec translate (t: Cbvterm.t) : fragment =
               let arg = Builder.begin_block access2.exit in
               Builder.end_block_jump access2.exit arg in
             access, [block1; block2; block3]
-          | Sgn (Fun (m1, (x1, c1, d1, y1))),
-            Sgn (Fun (m2, (x2, c2, d2, y2))),
-            Sgn (Fun (m , (x , c , d , y ))) ->
+          | Cbvtype.Sgn (Cbvtype.Fun (m1, (x1, c1, d1, y1))),
+            Cbvtype.Sgn (Cbvtype.Fun (m2, (x2, c2, d2, y2))),
+            Cbvtype.Sgn (Cbvtype.Fun (m , (x , c , d , y ))) ->
             assert (Basetype.equals m m1);
             assert (Basetype.equals m m2);
             assert (Basetype.equals c c1);

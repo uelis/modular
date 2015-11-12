@@ -1,4 +1,4 @@
-open Core.Std
+open Core_kernel.Std
 open Ssa
 
 let fresh_var () = Ident.fresh "z"

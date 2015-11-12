@@ -1,4 +1,4 @@
-open Core.Std
+open Core_kernel.Std
 
 let context = Llvm.global_context ()
 let builder = Llvm.builder context

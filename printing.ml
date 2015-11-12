@@ -1,4 +1,4 @@
-open Core.Std
+open Core_kernel.Std
 (** Printing of terms and types *)
 
 let name_counter = ref 0

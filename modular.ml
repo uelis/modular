@@ -1,5 +1,5 @@
 (** Simple main program. *)
-open Core.Std
+open Core_kernel.Std
 open Lexing
 
 module Opts = struct

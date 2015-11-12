@@ -1,4 +1,4 @@
-open Core.Std
+open Core_kernel.Std
        
 exception Constructor_mismatch
 exception Cyclic_type

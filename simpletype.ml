@@ -1,5 +1,5 @@
 (** Type inference *)
-open Core.Std
+open Core_kernel.Std
 
 type 'a sgn =
   | Nat
