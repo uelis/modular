@@ -1,10 +1,10 @@
 # Modular
 (More documentation will be added in the next few days.)
 
-This program implements the modular translation of call-by-value PCF
-that is described in detail in
-[this draft paper](http://www2.tcs.ifi.lmu.de/~schoepp/Docs/modular.pdf).
-The program takes as input a PCF program and performs the following steps:
+This program implements the modular translation of call-by-value PCF that is
+described in detail in
+[this draft paper](http://www2.tcs.ifi.lmu.de/~schoepp/Docs/modular.pdf). The
+program takes as input a PCF program and performs the following steps:
 
   1. Infer simple types for the input program.
   2. Infer type annotations to obtain a legal derivation in the
@@ -12,9 +12,12 @@ The program takes as input a PCF program and performs the following steps:
   3. Translate the annotated typing derivation to a low-level program.
   4. Generate LLVM-bitcode from the low-level program.
 
-The low-level language used in the implementation is a variant of that described in the paper. The main difference is that it uses a more low-level
-representation of recursive types. The low-level language does not support recursive types as such, but instead supports a type `box<A>` of typed
-pointers to the heap. Recursive types can be implemented using pointers to the heap. For examples, lists are available as
+The low-level language used in the implementation is a variant of that
+described in the paper. The main difference is that it uses a more low-level
+representation of recursive types. The low-level language does not support
+recursive types as such, but instead supports a type `box<A>` of typed pointers
+to the heap. Recursive types can be implemented using pointers to the heap. For
+example, lists are available as
 
 ```
   type list<'a> =
@@ -22,9 +25,12 @@ pointers to the heap. Recursive types can be implemented using pointers to the h
         | Cons of 'a * box<list<'a>>
 ```
 
-The translation in steps 2 and 3 is implemented, as it is described in the paper. As described there, in step 2 there are many different ways of choosing
-the solution to type annotations. The implementation currently uses the simple solution using recursive types described in the paper. For example, the two
-constraints `C <= 'a` and `'b *'a <= 'a` would be solved by letting `'a` be the following type:
+The translation in steps 2 and 3 is implemented as it is described in the
+paper. As described there, in step 2 there are many different ways of solving
+the constraints on type annotations. The implementation currently uses the
+simple solution using recursive types described in the paper. For example, the
+two constraints `C <= 'a` and `'b *'a <= 'a` would be solved by letting `'a` be
+the following type:
 
 ```
   type cons<'b> =
@@ -32,19 +38,27 @@ constraints `C <= 'a` and `'b *'a <= 'a` would be solved by letting `'a` be the 
         | Cons2 of 'b * box<cons<'b>>
 ```
 
-This solution amounts to a type of lists. The appearance of `box` means that these lists are stored as linked lists, where the tail is always a pointer to
-the heap. This use of the heap is somewhat inefficient and one may want to replace it by stack-allocated data, as described in the paper. This was done
-experimentally in an [earlier version of the translation](https://github.com/uelis/cbv2int), which shows that such a change is not hard to do and significantly improves
-performance. Here the simple solution is implemented first, as it works without having to assume a stack and may have applications, e.g. for hardware synthesis.
+This solution amounts to a type of lists. The appearance of `box` means that
+these lists are stored as linked lists, where the tail is always a pointer to
+the heap. This use of the heap is somewhat inefficient and one may want to
+replace it by stack-allocated data, as described in the paper. This was done
+experimentally in an
+[earlier version of the translation](https://github.com/uelis/cbv2int), which
+shows that such a change is not hard to do and significantly improves
+performance. Here the simple solution is implemented first, as it works without
+having to assume a stack and may have applications, e.g. for hardware
+synthesis.
 
 
 ## Installation
 
-The translation is written in OCaml and uses LLVM for code generation. It depends on Jane Street's Core_kernel library and the OCaml LLVM bindings.
+The translation is written in OCaml and uses LLVM for code generation. It
+depends on Jane Street's Core_kernel library and the OCaml LLVM bindings.
 
 On Ubuntu, LLVM can be installed using `apt-get install llvm`. The OCaml
 libraries are most easily installed using the OCaml Package Manager (OPAM),
-which can be obtained from (http://opam.ocamlpro.com). On Ubuntu, OPAM can be installed with `apt-get install opam`.
+which can be obtained from (http://opam.ocamlpro.com). On Ubuntu, OPAM can be
+installed with `apt-get install opam`.
 
 ```
   opam install core_kernel
@@ -52,7 +66,8 @@ which can be obtained from (http://opam.ocamlpro.com). On Ubuntu, OPAM can be in
 ```
 
 It may be necessary to pin the LLVM binding to the version of LLVM that is
-installed on the system. For example, pinning the LLVM binding to version 3.6 may be done as follows:
+installed on the system. For example, pinning the LLVM binding to version 3.6
+may be done as follows:
 
 ```
   opam pin add llvm 3.6
@@ -91,7 +106,8 @@ The concrete syntax for types is
   X, Y  ::=  Nat | X -> Y
 ```
 
-The term `print(t)` evaluates the term `t`, which must be of type `N`, and prints the resulting number. Its value is that of `t`.
+The term `print(t)` prints the value of the term `t`, which must have type `Nat`.
+The value of `print(t)` is that of `t`.
 
 For example, the following program prints the 20-th Fibonacci number
 
@@ -108,15 +124,23 @@ For example, the following program prints the 20-th Fibonacci number
 
 ## Usage
 
-The implementation produces an LLVM-bitcode file for each toplevel definition in the input file. If the file `fib.cbv` has the content of the Fibonacci example above, then the call
+The implementation produces an LLVM-bitcode file for each toplevel definition
+in the input file. If the file `fib.cbv` has the content of the Fibonacci
+example above, then the call
 
 ```
   > ./modular.native fib.cbv
 ```
 
-prints the types of `fib` and `main` (namely `Nat -> Nat` and `Nat` respectively) and produces LLVM bitcode files `fib.bc` and `main.bc` for them. While both have a well-specified interface, as explained in the paper, without further linking one can currently run only programs of base type. It is possible to link `fib.bc` to an assembly module implementing the function argument, but one needs to do the linking by hand, currently.
+prints the types of `fib` and `main` (namely `Nat -> Nat` and `Nat`
+respectively) and produces LLVM bitcode files `fib.bc` and `main.bc` for
+them. While both have a well-specified interface, as explained in the paper,
+without further linking one can currently run only programs of base type. It is
+possible to link `fib.bc` to an assembly module implementing the function
+argument, but one needs to do the linking by hand, currently.
 
-To generate an executable from `main.bc` using the LLVM compiler tools, one may invoke the script `llvm_compile.sh` as follows:
+To generate an executable from `main.bc` using the LLVM compiler tools, one may
+invoke the script `llvm_compile.sh` as follows:
 
 ```
   > ./llvm_compile main
@@ -127,7 +151,9 @@ This should generate an executable `main` that prints the 20-th Fibonacci number
 
 ### Printing Type Annotations
 
-By default, the implementation just shows simple types. Type annotations can be shown using the command-line argument `--type-details`. The concrete syntax for annotated types is as follows:
+By default, the implementation just shows simple types. Type annotations can be
+shown using the command-line argument `--type-details`. The concrete syntax for
+annotated types is as follows:
 
 ```
   X, Y  ::=  Nat[A] | X -{A, C}-> Y
