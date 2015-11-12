@@ -1,7 +1,5 @@
 # Modular
-Implementation of modular translation for call-by-value PCF.
-
-(Some documentation will be added in the next few days.)
+(More documentation will be added in the next few days.)
 
 This program implements the modular translation of call-by-value PCF
 that is described in detail in
