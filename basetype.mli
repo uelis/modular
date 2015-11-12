@@ -11,7 +11,7 @@
     must appear boxed.
 *)
 
-open Core.Std
+open Core_kernel.Std
 
 type 'a sgn =
   | EncodedB of 'a

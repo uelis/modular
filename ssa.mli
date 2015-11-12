@@ -1,5 +1,5 @@
 (** Progams in functional SSA form *)
-open Core.Std
+open Core_kernel.Std
        
 type value_const =
   | Cundef of Basetype.t

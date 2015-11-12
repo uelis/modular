@@ -1,5 +1,5 @@
 (** Representation of interactive types *)
-open Core.Std
+open Core_kernel.Std
 
 type 'a sgn =
   | Nat of Basetype.t
