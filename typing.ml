@@ -122,9 +122,6 @@ let multiplicity_of_type (a : Cbvtype.t) : Basetype.t =
     | Cbvtype.Nat(c) -> c
     | Cbvtype.Fun(c, _) -> c
 
-let multiplicities_of_context  (gamma: Cbvtype.t context) : Basetype.t list =
-  List.map ~f:(fun (_, a) -> multiplicity_of_type a) gamma 
-
 let freshen_multiplicity (a : Cbvtype.t) : Cbvtype.t =
   match Cbvtype.case a with
   | Cbvtype.Var -> assert false
@@ -151,10 +148,6 @@ let rec fresh_annotations_type (a: Simpletype.t) : Cbvtype.t =
       let d = Basetype.newvar () in
       let a = Basetype.newvar () in
       Cbvtype.newty (Cbvtype.Fun(m, (xa, d, a, ya)))
-
-let fresh_annotations_context (t: Simpletype.t context)
-  : Cbvtype.t context =
-  List.map t ~f:(fun (x, a) -> (x, fresh_annotations_type a))
 
 let rec fresh_annotations_term (t: Simpletype.t Cbvterm.term) : Cbvterm.t =
   let open Cbvterm in
@@ -327,19 +320,19 @@ let infer_annotations (t: Cbvterm.t) : Cbvterm.t =
           (t1: Cbvtype.t)
           (t2: Cbvtype.t)
         : Cbvtype.t * lhd_constraint list =
-        let open Cbvtype in
-        match case t1, case t2 with
-        | Sgn (Nat _), Sgn (Nat _) ->
-          newty (Nat (Basetype.newvar ())),
+        match Cbvtype.case t1, Cbvtype.case t2 with
+        | Cbvtype.Sgn (Cbvtype.Nat _), Cbvtype.Sgn (Cbvtype.Nat _) ->
+          Cbvtype.newty (Cbvtype.Nat (Basetype.newvar ())),
           []
-        | Sgn (Fun (m1, (x1, c1, d1, y1))), Sgn (Fun (m2, (x2, c2, d2, y2))) ->
+        | Cbvtype.Sgn (Cbvtype.Fun (m1, (x1, c1, d1, y1))),
+          Cbvtype.Sgn (Cbvtype.Fun (m2, (x2, c2, d2, y2))) ->
           Basetype.unify_exn m1 m2; (* TODO ?? *)
           Basetype.unify_exn c1 c2; (* TODO ?? *)
           Cbvtype.unify_exn x1 (freshen_multiplicity x2);
           let x = freshen_multiplicity x1 in
           let d = Basetype.newvar () in
           let y, csy = join y1 y2 in
-          newty (Fun (m1, (x, c1, d, y))),
+          Cbvtype.newty (Cbvtype.Fun (m1, (x, c1, d, y))),
           [ { lower = Basetype.newty
                   (Basetype.DataB(Basetype.Data.sumid 2, [d1; d2]));
               upper = d;
@@ -347,8 +340,8 @@ let infer_annotations (t: Cbvterm.t) : Cbvterm.t =
             };
             { lower = Basetype.newty
                   (Basetype.DataB(Basetype.Data.sumid 2,
-                                  [multiplicity x1; multiplicity x2]));
-              upper = multiplicity x;
+                                  [Cbvtype.multiplicity x1; Cbvtype.multiplicity x2]));
+              upper = Cbvtype.multiplicity x;
               reason = "if: join argument multiplicity"
             };
           ] @ csy
@@ -417,7 +410,7 @@ let infer_annotations (t: Cbvterm.t) : Cbvterm.t =
       let delta, gamma =
         List.partition_tf as1.t_context ~f:(fun (y, _) -> List.mem xs y) in
       let sum =
-        let ms = List.map delta ~f:(fun (y, a) -> multiplicity_of_type a) in
+        let ms = List.map delta ~f:(fun (_, a) -> multiplicity_of_type a) in
         let n = List.length ms in
         Basetype.newty
           (Basetype.DataB(Basetype.Data.sumid n, ms)) in
