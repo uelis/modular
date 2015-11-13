@@ -33,9 +33,8 @@ two constraints `C <= 'a` and `'b *'a <= 'a` would be solved by letting `'a` be
 the following type:
 
 ```
-  type cons<'b> =
-         Cons1 of C
-        | Cons2 of 'b * box<cons<'b>>
+  type cons<'b> = Cons1 of C
+                | Cons2 of 'b * box<cons<'b>>
 ```
 
 This solution amounts to a type of lists. The appearance of `box` means that
@@ -96,8 +95,8 @@ Terms can be formed using the following concrete syntax:
 
 ```
   s,t  ::=  x  |  let x = s in t  |  \x -> t  |  s t  |  fix f x -> t
-            |  0  |  -1  |  1  |  -2  |  2  | ...
-            |  intadd(s, t)  |  print(t)
+         |  0  |  -1  |  1  |  -2  |  2  | ...
+         |  intadd(s, t)  |  print(t)
 ```
 
 The concrete syntax for types is
@@ -179,5 +178,6 @@ gives the following types
 where
   
 ```
-  type conty0<'a> = conty0_0 of box<(conty0<'a>)> * (unit * int * 'a) | conty0_1 of box<(conty0<'a>)> * int
+  type conty0<'a> = conty0_0 of box<(conty0<'a>)> * (unit * int * 'a)
+                  | conty0_1 of box<(conty0<'a>)> * int
 ```
