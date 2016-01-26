@@ -50,6 +50,26 @@ let contract_instances
     subst = sigma
   }
 
+let arg_types c =
+  match c with
+  | Ast.Cintconst _ -> []
+  | Ast.Cintadd
+  | Ast.Cinteq ->
+    let nat = Simpletype.newty Simpletype.Nat in
+    [nat; nat]
+  | Ast.Cintprint ->
+    let nat = Simpletype.newty Simpletype.Nat in
+    [nat]
+    
+let ret_type c =
+  match c with
+  | Ast.Cintconst _ 
+  | Ast.Cintadd 
+  | Ast.Cintprint ->
+    Simpletype.newty Simpletype.Nat 
+  | Ast.Cinteq ->
+    Simpletype.newty Simpletype.Bool
+
 let rec linearize (phi: Simpletype.t context) (t: Ast.t)
   : linearized_term =
   let open Cbvterm in
@@ -71,46 +91,30 @@ let rec linearize (phi: Simpletype.t context) (t: Ast.t)
         };
       subst = [(v, v')]
     }
-  | Ast.Const(Ast.Cintconst _ as c, []) ->
-    let a = Simpletype.newty Simpletype.Nat in
+  | Ast.Const(c, args) ->
+    let args_with_expected_types =
+      match List.zip args (arg_types c) with
+      | Some a -> a
+      | None -> 
+        let msg = "Wrong number of arguments to primitive operation." in
+        raise (Typing_error (Some t, msg))
+    in
+    let linearized_args = List.map ~f:(linearize phi) args in
+    List.iter2_exn args_with_expected_types linearized_args
+      ~f:(fun (a, t) sa ->
+          eq_constraint a ~actual:sa.linear_term.t_type ~expected:t);
+    let args_linear_term = List.map linearized_args ~f:(fun s -> s.linear_term) in
+    let context = List.concat_map args_linear_term ~f:(fun t -> t.t_context) in
+    let subst = List.concat_map linearized_args ~f:(fun s -> s.subst) in
     { linear_term = {
-          t_desc = Const(c, []);
+          t_desc = Const(c, args_linear_term);
           t_ann = Basetype.newvar ();
-          t_type = a;
-          t_context = [];
+          t_type = ret_type c;
+          t_context = context;
           t_loc = t.Ast.loc
         };
-      subst = []
+      subst = subst
     }
-  | Ast.Const(Ast.Cintprint as c, [s]) ->
-    let sl = linearize phi s in
-    eq_constraint s ~actual:sl.linear_term.t_type
-      ~expected:(Simpletype.newty Simpletype.Nat);
-    { linear_term = {
-          sl.linear_term with
-          t_desc = Const(c, [sl.linear_term]);
-          t_type = Simpletype.newty Simpletype.Nat;
-          t_loc = t.Ast.loc
-        };
-      subst = sl.subst 
-    }
-  | Ast.Const(Ast.Cintadd as c, [s; t]) ->
-    let sl = linearize phi s in
-    let tl = linearize phi t in
-    eq_constraint s ~actual:sl.linear_term.t_type ~expected:(Simpletype.newty Simpletype.Nat);
-    eq_constraint t ~actual:tl.linear_term.t_type ~expected:(Simpletype.newty Simpletype.Nat);
-    { linear_term = {
-          t_desc = Const(c, [sl.linear_term; tl.linear_term]);
-          t_ann = Basetype.newvar ();
-          t_type = Simpletype.newty Simpletype.Nat;
-          t_context = sl.linear_term.t_context @ tl.linear_term.t_context;
-          t_loc = t.Ast.loc
-        };
-      subst = sl.subst @ tl.subst
-    }
-  | Ast.Const(_) ->
-    let msg = "Wrong number of arguments to primitive operation." in
-    raise (Typing_error (Some t, msg))
   | Ast.App(s, t) ->
     let sl = linearize phi s in
     let tl = linearize phi t in
@@ -169,7 +173,7 @@ let rec linearize (phi: Simpletype.t context) (t: Ast.t)
     let tfl = linearize phi tf in
     eq_constraint s
       ~actual:sl.linear_term.t_type
-      ~expected:(Simpletype.newty Simpletype.Nat);
+      ~expected:(Simpletype.newty Simpletype.Bool);
     eq_constraint tt
       ~actual:tfl.linear_term.t_type
       ~expected:ttl.linear_term.t_type;

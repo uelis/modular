@@ -121,6 +121,7 @@ let freshen_multiplicity (a : Cbvtype.t) : Cbvtype.t =
   | Cbvtype.Sgn s ->
     let m = Basetype.newvar () in
     match s with
+    | Cbvtype.Bool _ -> Cbvtype.newty (Cbvtype.Bool(m))
     | Cbvtype.Nat _ -> Cbvtype.newty (Cbvtype.Nat(m))
     | Cbvtype.Fun(_, s) -> Cbvtype.newty (Cbvtype.Fun(m, s))
 
@@ -132,6 +133,9 @@ let rec fresh_annotations_type (a: Simpletype.t) : Cbvtype.t =
     Cbvtype.newty (Cbvtype.Nat m)
   | Simpletype.Sgn s ->
     match s with
+    | Simpletype.Bool -> 
+      let m = Basetype.newvar () in
+      Cbvtype.newty (Cbvtype.Bool m)
     | Simpletype.Nat -> 
       let m = Basetype.newvar () in
       Cbvtype.newty (Cbvtype.Nat m)
@@ -235,6 +239,26 @@ let infer_annotations (t: Cbvterm.t) : Cbvterm.t =
           reason = "add: stack second"
         }
       ] @ cs1 @ cs2
+    (* TODO: almost the same as inteq *)
+    | Const(Ast.Cinteq, [s1; s2]) ->
+      let as1, cs1 = constraints s1 in
+      let as2, cs2 = constraints s2 in
+      { t with
+        t_desc = Const(Ast.Cinteq, [as1; as2]);
+        t_context = as1.t_context @ as2.t_context
+      },
+      [ { lower = Basetype.newty (Basetype.PairB(t.t_ann, code_of_context as2.t_context));
+          upper = s1.t_ann;
+          reason = "eq: stack first"
+        };
+        (* Note: this condition gives more slack!
+             Example: \f -> intadd(f 1, f 3)
+        *)              
+        { lower = Basetype.newty (Basetype.PairB(t.t_ann, Basetype.newty Basetype.IntB));
+          upper = s2.t_ann;
+          reason = "eq: stack second"
+        }
+      ] @ cs1 @ cs2
     | Const(Ast.Cintprint, [s1]) ->
       let as1, cs1 = constraints s1 in
       Cbvtype.unify_exn t.t_type s1.t_type;
@@ -318,6 +342,9 @@ let infer_annotations (t: Cbvterm.t) : Cbvterm.t =
           (t2: Cbvtype.t)
         : Cbvtype.t * lhd_constraint list =
         match Cbvtype.case t1, Cbvtype.case t2 with
+        | Cbvtype.Sgn (Cbvtype.Bool _), Cbvtype.Sgn (Cbvtype.Bool _) ->
+          Cbvtype.newty (Cbvtype.Bool (Basetype.newvar ())),
+          []
         | Cbvtype.Sgn (Cbvtype.Nat _), Cbvtype.Sgn (Cbvtype.Nat _) ->
           Cbvtype.newty (Cbvtype.Nat (Basetype.newvar ())),
           []
@@ -330,17 +357,15 @@ let infer_annotations (t: Cbvterm.t) : Cbvterm.t =
           let d = Basetype.newvar () in
           let y, csy = join y1 y2 in
           Cbvtype.newty (Cbvtype.Fun (m1, (x, c1, d, y))),
-          [ { lower = Basetype.newty
-                  (Basetype.DataB(Basetype.Data.sumid 2, [d1; d2]));
+          [ { lower = Basetype.sumB [d1; d2];
               upper = d;
               reason = "if: join closure"
             };
-            { lower = Basetype.newty
-                  (Basetype.DataB(Basetype.Data.sumid 2,
-                                  [Cbvtype.multiplicity x1; Cbvtype.multiplicity x2]));
+            { lower = Basetype.sumB
+                  [Cbvtype.multiplicity x1; Cbvtype.multiplicity x2];
               upper = Cbvtype.multiplicity x;
               reason = "if: join argument multiplicity"
-            };
+            }
           ] @ csy
         | _, _ -> assert false in
       let y, csy = join st.t_type sf.t_type in

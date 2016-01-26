@@ -87,3 +87,6 @@ sig
   *)
   val add_constructor : id -> string -> t list -> t -> unit
 end
+
+val boolB : t
+val sumB : t list -> t  

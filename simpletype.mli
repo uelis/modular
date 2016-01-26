@@ -1,6 +1,7 @@
 open Core_kernel.Std
 
 type 'a sgn =
+  | Bool
   | Nat
   | Fun of 'a * 'a
 with sexp

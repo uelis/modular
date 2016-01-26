@@ -10,6 +10,7 @@ end
 
 type const =
   | Cintconst of int
+  | Cinteq
   | Cintadd
   | Cintprint
 

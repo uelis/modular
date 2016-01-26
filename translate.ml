@@ -55,6 +55,7 @@ let rec access_entry_type (a: Cbvtype.t): Basetype.t =
   | Cbvtype.Var -> failwith "var"
   | Cbvtype.Sgn s ->
     match s with
+    | Cbvtype.Bool(m) -> pairB m voidB
     | Cbvtype.Nat(m) -> pairB m voidB
     | Cbvtype.Fun(m, (x, s, c, y)) ->
       let xc = Cbvtype.code x in
@@ -69,6 +70,7 @@ and access_exit_type (a: Cbvtype.t): Basetype.t =
   | Cbvtype.Var -> failwith "var"
   | Cbvtype.Sgn s ->
     match s with
+    | Cbvtype.Bool(m) -> pairB m voidB
     | Cbvtype.Nat(m) -> pairB m voidB
     | Cbvtype.Fun(m, (x, s, _, y)) ->
       let yc = Cbvtype.code y in
@@ -411,6 +413,58 @@ let rec translate (t: Cbvterm.t) : fragment =
       context = s1_fragment.context @ s2_fragment.context
     }
   | Const(Ast.Cintadd, _) ->
+    assert false
+  (* TODO: practially idential to intadd *)
+  | Const(Ast.Cinteq, [s1; s2]) ->
+    let s1_fragment = translate s1 in
+    let s2_fragment = translate s2 in
+    let id = "inteq" in
+    let eval = fresh_eval id t in
+    let access = fresh_access id t.t_type in
+    let eval_block1 =
+      let arg = Builder.begin_block eval.entry in
+      let vstack, vgamma = Builder.unpair arg in
+      let vgamma1 = build_context_map t.t_context s1.t_context vgamma in
+      let vgamma2 = build_context_map t.t_context s2.t_context vgamma in
+      let vstack1 = Builder.embed (Builder.pair vstack vgamma2) s1.t_ann in
+      let v = Builder.pair vstack1 vgamma1 in
+      Builder.end_block_jump s1_fragment.eval.entry v in
+    let eval_block2 =
+      let arg = Builder.begin_block s1_fragment.eval.exit in
+      let vstack1, vn1 = Builder.unpair arg in
+      let vp = Builder.project vstack1
+          (pairB t.t_ann (code_context s2.t_context)) in
+      let vstack, vgamma2 = Builder.unpair vp in
+      let vstack2 = Builder.embed (Builder.pair vstack vn1) s2.t_ann in
+      let v = Builder.pair vstack2 vgamma2 in
+      Builder.end_block_jump s2_fragment.eval.entry v in
+    let eval_block3 =
+      let arg = Builder.begin_block s2_fragment.eval.exit in
+      let vstack2, vn2 = Builder.unpair arg in
+      let vp = Builder.project vstack2 (pairB t.t_ann intB) in
+      let vstack, vn1 = Builder.unpair vp in
+      let veq = Builder.primop (Ssa.Cinteq) (Builder.pair vn1 vn2) in
+      let v = Builder.pair vstack veq in
+      Builder.end_block_jump eval.exit v in
+    let access_block =
+      let arg = Builder.begin_block access.entry in
+      Builder.end_block_jump access.exit arg in
+    (* dummy blocks *)
+    let access_block1 =
+      let arg = Builder.begin_block s1_fragment.access.exit in
+      Builder.end_block_jump s1_fragment.access.exit arg in
+    let access_block2 =
+      let arg = Builder.begin_block s2_fragment.access.exit in
+      Builder.end_block_jump s2_fragment.access.exit arg in
+    { eval = eval;
+      access = access;
+      blocks = [eval_block1; eval_block2; eval_block3;
+                access_block; access_block1; access_block2]
+               @ s1_fragment.blocks
+               @ s2_fragment.blocks;
+      context = s1_fragment.context @ s2_fragment.context
+    }
+  | Const(Ast.Cinteq, _) ->
     assert false
   | Fun((x, xty), s) ->
     let s_fragment = lift (Cbvtype.multiplicity t.t_type) (translate s) in
@@ -867,7 +921,7 @@ let rec translate (t: Cbvterm.t) : fragment =
       Builder.end_block_jump tc_fragment.eval.entry v in
     let eval_blockc =
       let arg = Builder.begin_block tc_fragment.eval.exit in
-      let vstack1, vn = Builder.unpair arg in
+      let vstack1, vz = Builder.unpair arg in
       let vp = Builder.project vstack1 (pairB t.t_ann
                                           (pairB
                                              (code_context t1.t_context)
@@ -875,7 +929,6 @@ let rec translate (t: Cbvterm.t) : fragment =
                                           )) in
       let vstack, vgamma12 = Builder.unpair vp in
       let vgamma1, vgamma2 = Builder.unpair vgamma12 in
-      let vz = Builder.primop (Ssa.Cinteq) (Builder.pair vn (Builder.intconst 0)) in
       Builder.end_block_case
         vz
         [ (fun _ -> t1_fragment.eval.entry, Builder.pair vstack vgamma1);

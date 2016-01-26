@@ -1,6 +1,7 @@
 open Core_kernel.Std
                     
-type 'a sgn =
+type 'a sgn =  
+  | Bool of Basetype.t
   | Nat of Basetype.t
   | Fun of Basetype.t * ('a * Basetype.t * Basetype.t * 'a)
 with sexp
@@ -11,16 +12,19 @@ module Sig = struct
 
   let map (f : 'a -> 'b) (t : 'a t) : 'b t =
     match t with
+    | Bool(a) -> Bool(a)
     | Nat(a) -> Nat(a)
     | Fun(c, (x, a, b, y)) -> Fun(c, (f x, a, b, f y))
 
   let children (t: 'a t) : 'a list =
     match t with
-    | Nat(_) -> []
-    | Fun(_, (x, _, _, y)) -> [x; y]
+    | Bool _ -> []
+    | Nat _ -> []
+    | Fun (_, (x, _, _, y)) -> [x; y]
 
   let equals (s: 'a t) (t: 'a t) ~equals:(eq: 'a -> 'a -> bool) : bool =
     match s, t with
+    | Bool(a1), Bool(a2) 
     | Nat(a1), Nat(a2) -> 
        Basetype.equals a1 a2 
     | Fun(c1, (x1, a1, b1, y1)), Fun(c2, (x2, a2, b2, y2)) ->
@@ -29,11 +33,13 @@ module Sig = struct
       Basetype.equals b1 b2 &&
       eq x1 x2 &&
       eq y1 y2
+    | Bool _, _
     | Nat _, _
     | Fun _, _ -> false
 
   let unify_exn (s: 'a t) (t: 'a t) ~unify:(unify: 'a -> 'a -> unit) : unit =
     match s, t with
+    | Bool(a1), Bool(a2) 
     | Nat(a1), Nat(a2) ->
       Basetype.unify_exn a1 a2
     | Fun(c1, (x1, a1, b1, y1)), Fun(c2, (x2, a2, b2, y2)) ->
@@ -42,6 +48,7 @@ module Sig = struct
       Basetype.unify_exn b1 b2;
       unify x1 x2;
       unify y1 y2
+    | Bool _, _
     | Nat _, _
     | Fun _, _ -> raise Uftype.Constructor_mismatch
 end
@@ -54,6 +61,7 @@ let code (a : Cbvtype.t) : Basetype.t =
   | Cbvtype.Var -> failwith "code"
   | Cbvtype.Sgn s ->
      match s with
+     | Bool _ -> Basetype.boolB
      | Nat _ -> Basetype.newty Basetype.IntB
      | Fun(_, (_, _, d, _)) -> d
 
@@ -61,9 +69,10 @@ let multiplicity (a : Cbvtype.t) : Basetype.t =
   match Cbvtype.case a with
   | Cbvtype.Var -> failwith "multiplicity"
   | Cbvtype.Sgn s ->
-     match s with
-     | Nat(c) -> c
-     | Fun(c, _) -> c
+    match s with
+    | Bool(c)
+    | Nat(c) 
+    | Fun(c, _) -> c
 
 let name_counter = ref 0
 
@@ -102,6 +111,9 @@ let to_string ?concise:(concise=true) (ty: t): string =
           | Var -> s `Atom
           | Sgn st ->
             match st with
+            | Bool _ 
+            | Nat _ ->
+              s `Atom
             | Fun(c1, (t1, a1, b1, t2)) ->
               if not concise then
                 Printf.sprintf "%s[%s]%s(%s -%s{%s, %s}%s-> %s)"
@@ -116,8 +128,6 @@ let to_string ?concise:(concise=true) (ty: t): string =
                   (str t2 `Type)
               else
                 Printf.sprintf "%s -> %s" (str t1 `Atom) (str t2 `Type)
-            | Nat _ ->
-              s `Atom
         end
       | `Atom ->
         begin
@@ -126,9 +136,17 @@ let to_string ?concise:(concise=true) (ty: t): string =
             "\'" ^ (name_of_typevar t)
           | Sgn st ->
             match st with
+            | Bool c ->
+              if not concise then
+                Printf.sprintf "bool%s[%s]%s"
+                  cyan
+                  (Printing.string_of_basetype c)
+                  black
+              else
+               "Nat"
             | Nat c ->
               if not concise then
-                Printf.sprintf "Nat%s[%s]%s"
+                Printf.sprintf "nat%s[%s]%s"
                   cyan
                   (Printing.string_of_basetype c)
                   black

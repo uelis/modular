@@ -2,6 +2,7 @@
 open Core_kernel.Std
 
 type 'a sgn =
+  | Bool of Basetype.t
   | Nat of Basetype.t
   | Fun of Basetype.t * ('a * Basetype.t * Basetype.t * 'a)
 with sexp

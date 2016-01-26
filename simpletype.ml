@@ -2,6 +2,7 @@
 open Core_kernel.Std
 
 type 'a sgn =
+  | Bool
   | Nat
   | Fun of 'a * 'a
 with sexp
@@ -12,31 +13,37 @@ module Sig = struct
 
   let map (f : 'a -> 'b) (t : 'a t) : 'b t =
     match t with
+    | Bool -> Bool
     | Nat -> Nat
     | Fun(x, y) -> Fun(f x, f y)
 
   let children (t: 'a t) : 'a list =
     match t with
+    | Bool
     | Nat -> []
     | Fun(x, y) -> [x; y]
 
   let equals (s: 'a t) (t: 'a t) ~equals:(eq: 'a -> 'a -> bool) : bool =
     match s, t with
+    | Bool, Bool
     | Nat, Nat ->
       true
     | Fun(x1, y1), Fun(x2, y2) ->
       eq x1 x2 &&
       eq y1 y2
+    | Bool, _
     | Nat, _
     | Fun _, _ -> false
 
   let unify_exn (s: 'a t) (t: 'a t) ~unify:(unify: 'a -> 'a -> unit) : unit =
     match s, t with
+    | Bool, Bool
     | Nat, Nat ->
       ()
     | Fun(x1, y1), Fun(x2, y2) ->
       unify x1 x2;
       unify y1 y2
+    | Bool, _
     | Nat, _
     | Fun _, _ -> raise Uftype.Constructor_mismatch
 end
@@ -85,6 +92,7 @@ let to_string ?concise:(concise=true) (ty: t): string =
                   (str t2 `Type)
               else
                 Printf.sprintf "%s -> %s" (str t1 `Atom) (str t2 `Type)
+            | Bool
             | Nat ->
               s `Atom
         end
@@ -95,7 +103,8 @@ let to_string ?concise:(concise=true) (ty: t): string =
             "\'" ^ (name_of_typevar t)
           | Sgn st ->
             match st with
-            | Nat -> "Nat"
+            | Bool -> "bool"
+            | Nat -> "nat"
             | Fun _ -> Printf.sprintf "(%s)" (s `Type)
         end in
     let tid = repr_id t in

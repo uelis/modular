@@ -63,6 +63,8 @@ term:
         { mkAst (Ifz($2, $4, $6)) }
     | LET identifier EQUALS term IN term
         { mkAst (App(mkAst (Fun($2, $6)), $4)) }
+    | term_app EQUALS term_app
+       { mkAst (Const(Cinteq, [$1; $3]))}
     | term_app
        { $1 }
 

@@ -260,3 +260,6 @@ struct
     let d' = { d with constructors = d.constructors @ [name, argtype'] } in
     String.Table.replace datatypes ~key:id ~data:d'
 end
+
+let boolB = newty (DataB(Data.boolid, []))
+let sumB xs = newty (DataB(Data.sumid (List.length xs), xs))
