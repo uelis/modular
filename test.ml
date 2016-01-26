@@ -27,7 +27,7 @@ let read_decls filename =
   |> parse
   |> Decl.expand_all
 
-let compile = function Decl.TermDecl(x, ast) ->
+let compile = function Decl.TermDecl(_, ast) ->
   ast
   |> Typing.check_term
   |> Translate.to_ssa
