@@ -1,0 +1,8 @@
+let mul = \y ->
+    fix mul x ->
+      \a -> if x = 0 then a else
+            let x' = intadd(x,-1) in
+            let a' = intadd(a, y) in
+            mul x' a'            
+let main =
+    print (mul 5 7 0)

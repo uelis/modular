@@ -1,0 +1,3 @@
+let main =
+   (\f -> let x = f 1 in
+          f 2) (\i -> print i)

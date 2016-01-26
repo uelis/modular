@@ -1,0 +1,2 @@
+let main =
+   (\f -> print intadd(f 1, f 2)) (let u = print 0 in \i -> print i)
