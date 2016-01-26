@@ -2,4 +2,4 @@
 
 let step =
    \f -> \x ->
-if0 x then (let u = f 0 in let v = f 1 in intadd(u, v)) else f 3
+if x=0 then (let u = f 0 in let v = f 1 in intadd(u, v)) else f 3

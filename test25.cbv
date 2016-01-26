@@ -1,2 +1,2 @@
 let main =
-    (if0 3 then \x -> 3 else \x -> 2)
+    (if 3 = 0 then \x -> 3 else \x -> 2)
