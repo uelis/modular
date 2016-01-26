@@ -1,2 +1,0 @@
-let step =
-   (\f -> if f 1 = 0 then f 2 else 3) (let u = print 0 in \i -> print i)

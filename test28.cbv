@@ -1,3 +1,0 @@
-let main =
-    let f = \g -> \y -> if y=0 then \x -> g x 3 else \x -> x in
-    print (f (\x -> \y -> intadd(x, y)) 0 4)

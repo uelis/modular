@@ -1,2 +1,0 @@
-let step =
-   \f -> \x -> f x

@@ -1,2 +1,0 @@
-let step =
-   (\f -> f 1) (\i -> print i)          

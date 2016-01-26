@@ -1,3 +1,0 @@
-let step =
-   (\i -> let x = print i in
-          print i) (3)

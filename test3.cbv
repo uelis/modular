@@ -1,3 +1,0 @@
-let step =
-   \f -> \x ->
-         intadd(f 1, f x)
