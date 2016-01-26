@@ -46,7 +46,7 @@ let run_llvm test_ctx llvm =
   let res =
     let open Result in
     Unix.system
-      ("llvm-link " ^ bc ^ " salloc.s " ^
+      ("llvm-link " ^ bc ^ " " ^
        "|  opt -always-inline -O3 " ^
        "| llc -O3 " ^
        "| gcc -x assembler - -o " ^ exe) >>= fun () ->
