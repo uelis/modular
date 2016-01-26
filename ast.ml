@@ -25,8 +25,6 @@ and t_desc =
   | Ifz of t * t * t
   | Fix of Ident.t * Ident.t * t
 
-let mkTerm d = { desc = d; loc = None }
-
 let rec free_vars (term: t) : Ident.t list =
   let abs x l = List.filter l ~f:(fun z -> not (z = x)) in
   match term.desc with
@@ -36,28 +34,6 @@ let rec free_vars (term: t) : Ident.t list =
   | App (s, t) -> (free_vars s) @ (free_vars t)
   | Ifz (s, t1, t2) -> free_vars s @ free_vars t1 @ free_vars t2
   | Fix (f, x, t) -> abs f (abs x (free_vars t))
-
-let rec all_vars (term: t) : Ident.t list =
-  match term.desc with
-  | Const(_, ts) -> List.concat_map ~f:all_vars ts
-  | Var x -> [x]
-  | Fun (x, t) -> x :: (all_vars t)
-  | App (s, t) -> (all_vars s) @ (all_vars t)
-  | Ifz (s, t1, t2) -> all_vars s @ all_vars t1 @ all_vars t2
-  | Fix (f, x, t) -> f :: x :: all_vars t
-
-let rename_vars (f: Ident.t -> Ident.t) (term: t) : t =
-  let rec rn term =
-    match term.desc with
-    | Const(c, ts) -> { term with desc = Const(c, List.map ts ~f:rn) }
-    | Var x -> { term with desc = (Var(f x)) }
-    | Fun (x, t) -> { term with desc = (Fun(f x, rn t)) }
-    | App (s, t) -> { term with desc = (App(rn s, rn t)) }
-    | Ifz (s, t1, t2) -> { term with desc = (Ifz(rn s, rn t1, rn t2)) }
-    | Fix (g, x, t) -> { term with desc = (Fix(f g, f x, rn t)) }
-  in rn term
-
-let variant = rename_vars Ident.variant
 
 (* Substitues [s] for [x].
    Returns [None] if [t] does not contain [x].
@@ -111,12 +87,7 @@ let substitute ?head:(head=false) (s: t) (x: Ident.t) (t: t) : t option =
   let result = sub [] t in
   if (!substituted) then Some result else None
 
-let head_subst (s: t) (x: Ident.t) (t: t) : t option =
-  substitute ~head:true s x t
-
 let subst (s: t) (x: Ident.t) (t: t) : t =
   match substitute ~head:false s x t with
   | None -> t
   | Some t' -> t'
-
-let freshen_type_vars t = t
