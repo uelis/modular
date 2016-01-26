@@ -47,7 +47,10 @@ end
 
   let to_lltype (x: t) =
     match x with
-    | Integer i -> Llvm.integer_type context i
+    | Integer 0 ->
+      Llvm.integer_type context 1
+    | Integer i ->
+      Llvm.integer_type context i
     | Pointer -> Llvm.pointer_type (Llvm.i8_type context)
 
 end
