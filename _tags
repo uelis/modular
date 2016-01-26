@@ -1,1 +1,3 @@
-<*.ml> or <*.mli> or "modular.native": g++, package(llvm), package(llvm.bitwriter)
+<*.ml> or <*.mli> or "modular.native": g++, package(llvm), package(core_kernel), package(sexplib.syntax), package(llvm.bitwriter)
+<test.*>: package(core), package(oUnit)
+"test.native": g++, package(llvm), package(llvm.bitwriter)
