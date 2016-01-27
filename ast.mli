@@ -27,6 +27,9 @@ and t_desc =
   | Var of Ident.t
   | Fun of Ident.t * t
   | App of t * t
+  | Pair of t * t
+  | Fst of t
+  | Snd of t
   | Ifz of t * t * t
   | Fix of Ident.t * Ident.t * t
 

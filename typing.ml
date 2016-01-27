@@ -7,6 +7,11 @@ let selectfunty a =
   match Cbvtype.case a with
   | Cbvtype.Sgn (Cbvtype.Fun(m, x)) -> m, x
   | _ -> assert false
+    
+let selectpairty a =
+  match Cbvtype.case a with
+  | Cbvtype.Sgn (Cbvtype.Pair(m, x)) -> m, x
+  | _ -> assert false
 
 type lhd_constraint = {
   lower: Basetype.t;
@@ -123,6 +128,7 @@ let freshen_multiplicity (a : Cbvtype.t) : Cbvtype.t =
     match s with
     | Cbvtype.Bool _ -> Cbvtype.newty (Cbvtype.Bool(m))
     | Cbvtype.Nat _ -> Cbvtype.newty (Cbvtype.Nat(m))
+    | Cbvtype.Pair(_, s) -> Cbvtype.newty (Cbvtype.Pair(m, s))
     | Cbvtype.Fun(_, s) -> Cbvtype.newty (Cbvtype.Fun(m, s))
 
 (** Adds annotations to a simple type, thus giving a Cbvtype.t *)
@@ -139,6 +145,11 @@ let rec fresh_annotations_type (a: Simpletype.t) : Cbvtype.t =
     | Simpletype.Nat -> 
       let m = Basetype.newvar () in
       Cbvtype.newty (Cbvtype.Nat m)
+    | Simpletype.Pair(x, y) ->
+      let xa = fresh_annotations_type x in
+      let ya = fresh_annotations_type y in
+      let m = Basetype.newvar () in
+      Cbvtype.newty (Cbvtype.Pair(m, (xa, ya)))
     | Simpletype.Fun(x, y) ->
       let xa = fresh_annotations_type x in
       let ya = fresh_annotations_type y in
@@ -167,6 +178,27 @@ let rec fresh_annotations_term (t: Simpletype.t Cbvterm.term) : Cbvterm.t =
     }
   | App(s1, s2) ->
     { t_desc = Cbvterm.App(fresh_annotations_term s1, fresh_annotations_term s2);
+      t_ann = t.t_ann;
+      t_type =  fresh_annotations_type t.t_type;
+      t_context = [];
+      t_loc = t.t_loc
+    }
+  | Pair(s1, s2) ->
+    { t_desc = Cbvterm.Pair(fresh_annotations_term s1, fresh_annotations_term s2);
+      t_ann = t.t_ann;
+      t_type =  fresh_annotations_type t.t_type;
+      t_context = [];
+      t_loc = t.t_loc
+    }
+  | Fst(s1) ->
+    { t_desc = Cbvterm.Fst(fresh_annotations_term s1);
+      t_ann = t.t_ann;
+      t_type =  fresh_annotations_type t.t_type;
+      t_context = [];
+      t_loc = t.t_loc
+    }
+  | Snd(s2) ->
+    { t_desc = Cbvterm.Snd(fresh_annotations_term s2);
       t_ann = t.t_ann;
       t_type =  fresh_annotations_type t.t_type;
       t_context = [];
@@ -255,6 +287,61 @@ let infer_annotations (t: Cbvterm.t) : Cbvterm.t =
       cs1
     | Const _ ->
       assert false
+    | Pair(s1, s2) ->
+      let as1, cs1 = constraints s1 in
+      let as2, cs2 = constraints s2 in
+      let (a, (x, y)) = selectpairty t.t_type in
+      Cbvtype.unify_exn x (freshen_multiplicity s1.t_type);
+      Cbvtype.unify_exn y (freshen_multiplicity s2.t_type);
+      { t with
+        t_desc = Pair(as1, as2);
+        t_context = as1.t_context @ as2.t_context
+      },
+      [ { lower = Basetype.newty (Basetype.PairB(t.t_ann, code_of_context as2.t_context));
+          upper = s1.t_ann;
+          reason = "pair: eval first stack"
+        }
+      ; { lower = Basetype.newty (Basetype.PairB(t.t_ann, Cbvtype.code as1.t_type));
+          upper = s2.t_ann;
+          reason = "pair: eval second stack"
+        }
+      ; { lower = Basetype.newty (Basetype.PairB(a, Cbvtype.multiplicity x));
+          upper = Cbvtype.multiplicity as1.t_type ;
+          reason = "pair: multiplicity left"
+        }
+      ; { lower = Basetype.newty (Basetype.PairB(a, Cbvtype.multiplicity y));
+          upper = Cbvtype.multiplicity as2.t_type;
+          reason = "pair: multiplicity right"
+        }
+      ] @ cs1 @ cs2
+    | Fst(s1) ->
+      let as1, cs1 = constraints s1 in
+      let (a, (x, _)) = selectpairty s1.t_type in
+      Cbvtype.unify_exn x t.t_type;
+      Basetype.unify_exn t.t_ann s1.t_ann;
+      { t with
+        t_desc = Fst(as1);
+        t_context = as1.t_context
+      },
+      [ { lower = Basetype.newty (Basetype.UnitB);
+          upper = a;
+          reason = "fst: one pair copy"
+        }
+      ] @ cs1
+    | Snd(s1) ->
+      let as1, cs1 = constraints s1 in
+      let (a, (_, y)) = selectpairty s1.t_type in
+      Cbvtype.unify_exn y t.t_type;
+      Basetype.unify_exn t.t_ann s1.t_ann;
+      { t with
+        t_desc = Snd(as1);
+        t_context = as1.t_context
+      },
+      [ { lower = Basetype.newty (Basetype.UnitB);
+          upper = a;
+          reason = "snd: one pair copy"
+        }
+      ] @ cs1
     | App(s1, s2) ->
       let as1, cs1 = constraints s1 in
       let as2, cs2 = constraints s2 in

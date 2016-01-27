@@ -89,11 +89,17 @@ term_atom:
        { mkAst (Ast.Var($1)) }
     | LPAREN term RPAREN
        { $2 }
+    | LPAREN term COMMA term RPAREN
+       { mkAst (Pair($2, $4)) }
     | TILDE NUM
        { mkAst (Const(Cintconst(-$2), [])) }
     | NUM
        { mkAst (Const(Cintconst($1), [])) }
     | PRINT term_atom
        { mkAst (Const(Cintprint, [$2])) }
+    | FST term_atom
+       { mkAst (Fst $2) }
+    | SND term_atom
+       { mkAst (Snd $2) }
 
 %%

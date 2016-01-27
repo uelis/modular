@@ -40,8 +40,8 @@ rule main = parse
   | '/'          { SLASH }
   | '='          { EQUALS }
   | '~'          { TILDE }
-  | "fst"        { FST }
-  | "snd"        { SND }
+  | "#1"         { FST }
+  | "#2"         { SND }
   | "print"      { PRINT }
   | "intadd"     { INTADD }
   | "if"         { IF }
