@@ -220,43 +220,24 @@ let infer_annotations (t: Cbvterm.t) : Cbvterm.t =
     | Const(Ast.Cintconst _, []) ->
       t,
       []
-    | Const(Ast.Cintadd, [s1; s2]) ->
+    | Const(Ast.Cintadd as c, [s1; s2]) 
+    | Const(Ast.Cinteq as c, [s1; s2]) ->
       let as1, cs1 = constraints s1 in
       let as2, cs2 = constraints s2 in
       { t with
-        t_desc = Const(Ast.Cintadd, [as1; as2]);
+        t_desc = Const(c, [as1; as2]);
         t_context = as1.t_context @ as2.t_context
       },
       [ { lower = Basetype.newty (Basetype.PairB(t.t_ann, code_of_context as2.t_context));
           upper = s1.t_ann;
-          reason = "add: stack first"
+          reason = "prim: stack first"
         };
         (* Note: this condition gives more slack!
              Example: \f -> intadd(f 1, f 3)
         *)              
         { lower = Basetype.newty (Basetype.PairB(t.t_ann, Basetype.newty Basetype.IntB));
           upper = s2.t_ann;
-          reason = "add: stack second"
-        }
-      ] @ cs1 @ cs2
-    (* TODO: almost the same as inteq *)
-    | Const(Ast.Cinteq, [s1; s2]) ->
-      let as1, cs1 = constraints s1 in
-      let as2, cs2 = constraints s2 in
-      { t with
-        t_desc = Const(Ast.Cinteq, [as1; as2]);
-        t_context = as1.t_context @ as2.t_context
-      },
-      [ { lower = Basetype.newty (Basetype.PairB(t.t_ann, code_of_context as2.t_context));
-          upper = s1.t_ann;
-          reason = "eq: stack first"
-        };
-        (* Note: this condition gives more slack!
-             Example: \f -> intadd(f 1, f 3)
-        *)              
-        { lower = Basetype.newty (Basetype.PairB(t.t_ann, Basetype.newty Basetype.IntB));
-          upper = s2.t_ann;
-          reason = "eq: stack second"
+          reason = "prim: stack second"
         }
       ] @ cs1 @ cs2
     | Const(Ast.Cintprint, [s1]) ->
