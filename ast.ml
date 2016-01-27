@@ -11,7 +11,11 @@ end
 type const =
   | Cintconst of int
   | Cinteq
+  | Cintlt
   | Cintadd
+  | Cintsub
+  | Cintmul
+  | Cintdiv
   | Cintprint
 
 type t = {

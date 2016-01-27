@@ -366,8 +366,13 @@ let rec translate (t: Cbvterm.t) : fragment =
   | Const(c, [s1; s2]) ->
     let id, primop = match c with
       | Ast.Cintadd -> "intadd", Ssa.Cintadd
+      | Ast.Cintsub -> "intsub", Ssa.Cintsub
+      | Ast.Cintmul -> "intmul", Ssa.Cintmul
+      | Ast.Cintdiv -> "intdiv", Ssa.Cintdiv
       | Ast.Cinteq -> "inteq", Ssa.Cinteq
-      | _ -> failwith "unknown primitive binary operation" in
+      | Ast.Cintlt -> "intlt", Ssa.Cintlt
+      | Ast.Cintconst _ -> assert false
+      | Ast.Cintprint -> assert false in
     let s1_fragment = translate s1 in
     let s2_fragment = translate s2 in
     let eval = fresh_eval id t in

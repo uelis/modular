@@ -34,8 +34,12 @@ rule main = parse
   | ','          { COMMA }
   | "λ"          { LAMBDA }
   | '\\'         { LAMBDA }
+  | '+'          { PLUS }
   | '-'          { MINUS }
+  | '*'          { STAR }
+  | '/'          { SLASH }
   | '='          { EQUALS }
+  | '~'          { TILDE }
   | "fst"        { FST }
   | "snd"        { SND }
   | "print"      { PRINT }

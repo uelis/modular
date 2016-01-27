@@ -53,8 +53,12 @@ let contract_instances
 let arg_types c =
   match c with
   | Ast.Cintconst _ -> []
+  | Ast.Cinteq
+  | Ast.Cintlt
   | Ast.Cintadd
-  | Ast.Cinteq ->
+  | Ast.Cintsub
+  | Ast.Cintmul
+  | Ast.Cintdiv ->
     let nat = Simpletype.newty Simpletype.Nat in
     [nat; nat]
   | Ast.Cintprint ->
@@ -64,10 +68,14 @@ let arg_types c =
 let ret_type c =
   match c with
   | Ast.Cintconst _ 
-  | Ast.Cintadd 
+  | Ast.Cintadd
+  | Ast.Cintsub
+  | Ast.Cintmul
+  | Ast.Cintdiv 
   | Ast.Cintprint ->
     Simpletype.newty Simpletype.Nat 
-  | Ast.Cinteq ->
+  | Ast.Cinteq 
+  | Ast.Cintlt ->
     Simpletype.newty Simpletype.Bool
 
 let rec linearize (phi: Simpletype.t context) (t: Ast.t)
