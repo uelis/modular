@@ -76,11 +76,10 @@ let compile (d: Decl.t) : unit =
 let arg_spec =
   [("--type-details", Arg.Set Opts.print_type_details,
     "Print full type details, including subexponentials.");
-   ("--verbose", Arg.Set Opts.verbose, "Print compilation details..");
-   ("--intverbose", Arg.Set Opts.verbose, "Print compilation details..");
+   ("--verbose", Arg.Set Opts.verbose, "Print compilation details..")
   ]
 
-let usage_msg = "Usage: intc input.int\nOptions:"
+let usage_msg = "Usage: modular input.cbv\nOptions:"
 
 let () =
   (* Intlib.Opts.verbose := true; *)
