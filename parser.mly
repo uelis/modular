@@ -20,7 +20,7 @@ let mkAst d : Ast.t =
 
 %token LPAREN RPAREN 
 %token PLUS MINUS STAR SLASH TILDE
-%token COMMA EQUALS TO
+%token COMMA EQUALS LT GT TO
 %token LAMBDA
 %token FST SND
 %token INTADD
@@ -73,10 +73,16 @@ term_inf:
        { $1 }
     | term_app EQUALS term_app
        { mkAst (Const(Cinteq, [$1; $3]))}
+    | term_app LT term_app
+       { mkAst (Const(Cintlt, [$1; $3]))}
     | term_app PLUS term_app
        { mkAst (Const(Cintadd, [$1; $3]))}
     | term_app MINUS term_app
        { mkAst (Const(Cintsub, [$1; $3]))}
+    | term_app STAR term_app
+       { mkAst (Const(Cintmul, [$1; $3]))}
+    | term_app SLASH term_app
+       { mkAst (Const(Cintdiv, [$1; $3]))}
 
 term_app:
     | term_atom

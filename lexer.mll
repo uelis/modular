@@ -31,6 +31,8 @@ rule main = parse
   |  white       { main lexbuf }
   | '('          { LPAREN }
   | ')'          { RPAREN }
+  | '<'          { LT }
+  | '>'          { GT }
   | ','          { COMMA }
   | "λ"          { LAMBDA }
   | '\\'         { LAMBDA }
