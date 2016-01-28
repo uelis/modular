@@ -1146,7 +1146,6 @@ let to_ssa t =
         Ident.Table.replace visited ~key:i ~data:();
 
         let b = Ident.Table.find_exn blocks i in
-        (* Ssa.fprint_block stdout b; *)
         rev_sorted_blocks := b :: !rev_sorted_blocks;
         List.iter (Ssa.targets_of_block b)
           ~f:(fun l -> sort_blocks l.Ssa.name)

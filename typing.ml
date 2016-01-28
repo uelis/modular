@@ -19,6 +19,12 @@ type lhd_constraint = {
   reason: string
 }
 
+let print_constratint c =
+  Printf.printf "  %s <= %s (%s)\n"
+    (Printing.string_of_basetype c.lower)
+    (Printing.string_of_basetype c.upper)
+    c.reason
+
 let solve_constraints (ineqs: lhd_constraint list) : unit =
   let cmp a b = Int.compare
       (Basetype.repr_id a)
@@ -26,12 +32,7 @@ let solve_constraints (ineqs: lhd_constraint list) : unit =
   if !Opts.verbose then
     begin
       Printf.printf "Solving constraints:\n";
-      List.iter ineqs
-        ~f:(fun c -> Printf.printf "  %s <= %s (%s)\n"
-               (Printing.string_of_basetype c.lower)
-               (Printing.string_of_basetype c.upper)
-               c.reason
-           )
+      List.iter ineqs ~f:print_constratint
     end;
   (* Turn all encoding type upper bounds into type variables. *)
   List.iter ineqs
@@ -110,7 +111,12 @@ let solve_constraints (ineqs: lhd_constraint list) : unit =
       Printf.printf "%s\n" (Printing.string_of_basetype alpha);
       assert false
   in
-  List.iter joined_lower_bounds ~f:solve_ineq
+  List.iter joined_lower_bounds ~f:solve_ineq;
+  if !Opts.verbose then
+    begin
+      Printf.printf "Solution:\n";
+      List.iter ineqs ~f:print_constratint
+    end
 
 (** Returns the code type of an annotated context *)
 let rec code_of_context (gamma : Cbvtype.t context) : Basetype.t =
