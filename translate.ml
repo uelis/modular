@@ -296,14 +296,19 @@ let rec translate (t: Cbvterm.t) : fragment =
       let v = Builder.pair vstack vdelta in
       Builder.end_block_jump s_fragment.eval.entry v in
     let proj_block =
-      let arg = Builder.begin_block x_access.exit in
-      let vd, vx = Builder.unpair arg in
-      let vsum = Builder.project vd tsum in
-      let target y =
-        fun c -> let y_access = List.Assoc.find_exn s_fragment.context y in
-          let v = Builder.pair c vx in
-          y_access.exit, v in
-      Builder.end_block_case vsum (List.map xs ~f:target) in
+      if xs = [] then
+        (* variable unused; dummy block *)
+        let arg = Builder.begin_block x_access.exit in
+        Builder.end_block_jump x_access.exit arg
+      else
+        let arg = Builder.begin_block x_access.exit in
+        let vd, vx = Builder.unpair arg in
+        let vsum = Builder.project vd tsum in
+        let target y =
+          fun c -> let y_access = List.Assoc.find_exn s_fragment.context y in
+            let v = Builder.pair c vx in
+            y_access.exit, v in
+        Builder.end_block_case vsum (List.map xs ~f:target) in
     let inj_blocks =
       List.mapi xs
         ~f:(fun i y ->
