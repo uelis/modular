@@ -31,13 +31,19 @@ rule main = parse
   |  white       { main lexbuf }
   | '('          { LPAREN }
   | ')'          { RPAREN }
+  | '<'          { LT }
+  | '>'          { GT }
   | ','          { COMMA }
   | "λ"          { LAMBDA }
   | '\\'         { LAMBDA }
+  | '+'          { PLUS }
   | '-'          { MINUS }
+  | '*'          { STAR }
+  | '/'          { SLASH }
   | '='          { EQUALS }
-  | "fst"        { FST }
-  | "snd"        { SND }
+  | '~'          { TILDE }
+  | "#1"         { FST }
+  | "#2"         { SND }
   | "print"      { PRINT }
   | "intadd"     { INTADD }
   | "if"         { IF }

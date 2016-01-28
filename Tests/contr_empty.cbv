@@ -1,0 +1,5 @@
+let fac =
+  fix f x ->
+    if 0 = 0 then print 1 else f (0, 1)
+let main =
+  fac (10, 1)

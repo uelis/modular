@@ -4,6 +4,7 @@ open Core_kernel.Std
 type 'a sgn =
   | Bool
   | Nat
+  | Pair of 'a * 'a
   | Fun of 'a * 'a
 with sexp
 
@@ -15,12 +16,14 @@ module Sig = struct
     match t with
     | Bool -> Bool
     | Nat -> Nat
+    | Pair(x, y) -> Pair(f x, f y)
     | Fun(x, y) -> Fun(f x, f y)
 
   let children (t: 'a t) : 'a list =
     match t with
     | Bool
     | Nat -> []
+    | Pair(x, y) -> [x; y]
     | Fun(x, y) -> [x; y]
 
   let equals (s: 'a t) (t: 'a t) ~equals:(eq: 'a -> 'a -> bool) : bool =
@@ -28,11 +31,15 @@ module Sig = struct
     | Bool, Bool
     | Nat, Nat ->
       true
+    | Pair(x1, y1), Pair(x2, y2) ->
+      eq x1 x2 &&
+      eq y1 y2
     | Fun(x1, y1), Fun(x2, y2) ->
       eq x1 x2 &&
       eq y1 y2
     | Bool, _
     | Nat, _
+    | Pair _, _
     | Fun _, _ -> false
 
   let unify_exn (s: 'a t) (t: 'a t) ~unify:(unify: 'a -> 'a -> unit) : unit =
@@ -40,11 +47,15 @@ module Sig = struct
     | Bool, Bool
     | Nat, Nat ->
       ()
+    | Pair(x1, y1), Pair(x2, y2) ->
+      unify x1 x2;
+      unify y1 y2
     | Fun(x1, y1), Fun(x2, y2) ->
       unify x1 x2;
       unify y1 y2
     | Bool, _
     | Nat, _
+    | Pair _, _
     | Fun _, _ -> raise Uftype.Constructor_mismatch
 end
 
@@ -85,6 +96,13 @@ let to_string ?concise:(concise=true) (ty: t): string =
           | Var -> s `Atom
           | Sgn st ->
             match st with
+            | Pair(t1, t2) ->
+              if not concise then
+                Printf.sprintf "%s * %s"
+                  (str t1 `Atom)
+                  (str t2 `Atom)
+              else
+                Printf.sprintf "%s * %s" (str t1 `Atom) (str t2 `Atom)
             | Fun(t1, t2) ->
               if not concise then
                 Printf.sprintf "%s -> %s"
@@ -105,6 +123,7 @@ let to_string ?concise:(concise=true) (ty: t): string =
             match st with
             | Bool -> "bool"
             | Nat -> "nat"
+            | Pair _
             | Fun _ -> Printf.sprintf "(%s)" (s `Type)
         end in
     let tid = repr_id t in

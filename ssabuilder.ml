@@ -211,7 +211,6 @@ let project (v: value) (a: Basetype.t) : value =
     | Basetype.Sgn (Basetype.DataB(id, params)) ->
        select id params v 
     | _ ->
-       ignore (List.Assoc.find_exn [(1,1)] 2);
        failwith "project3"
                     
 let embed (v: value) (a: Basetype.t) : value =

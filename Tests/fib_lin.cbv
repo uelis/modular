@@ -1,0 +1,8 @@
+let fib =
+  fix fib x -> let n = #1 x in
+               let ab = #2 x in
+               let a = #1 ab in
+               let b = #2 ab in
+               if n = 0 then a else fib (n-1, (b, a+b))
+let main =
+  print (fib (20, (0, 1)))

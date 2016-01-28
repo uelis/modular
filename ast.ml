@@ -11,7 +11,11 @@ end
 type const =
   | Cintconst of int
   | Cinteq
+  | Cintlt
   | Cintadd
+  | Cintsub
+  | Cintmul
+  | Cintdiv
   | Cintprint
 
 type t = {
@@ -23,6 +27,9 @@ and t_desc =
   | Var of Ident.t
   | Fun of Ident.t * t
   | App of t * t
+  | Pair of t * t
+  | Fst of t
+  | Snd of t
   | Ifz of t * t * t
   | Fix of Ident.t * Ident.t * t
 
@@ -33,6 +40,9 @@ let rec free_vars (term: t) : Ident.t list =
   | Var x -> [x]
   | Fun (x, t) -> abs x (free_vars t)
   | App (s, t) -> (free_vars s) @ (free_vars t)
+  | Pair (s, t) -> (free_vars s) @ (free_vars t)
+  | Fst t -> free_vars t
+  | Snd t -> free_vars t
   | Ifz (s, t1, t2) -> free_vars s @ free_vars t1 @ free_vars t2
   | Fix (f, x, t) -> abs f (abs x (free_vars t))
 
@@ -63,6 +73,12 @@ let substitute ?head:(head=false) (s: t) (x: Ident.t) (t: t) : t option =
       { term with desc = Fun(x', t') }
     | App (s, t) -> 
       { term with desc = App(sub sigma s, sub sigma t) }
+    | Pair (s, t) -> 
+      { term with desc = Pair(sub sigma s, sub sigma t) }
+    | Fst t -> 
+      { term with desc = Fst(sub sigma t) }
+    | Snd t -> 
+      { term with desc = Snd(sub sigma t) }
     | Ifz (s, t1, t2) -> 
       { term with desc = Ifz(sub sigma s, sub sigma t1, sub sigma t2) }
     | Fix (f, x, t) ->

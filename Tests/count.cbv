@@ -1,0 +1,2 @@
+let main =
+   (fix f x -> if x = 0 then print 0 else let u = print x in f (x - 1)) 10

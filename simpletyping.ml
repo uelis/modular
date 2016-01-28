@@ -53,8 +53,12 @@ let contract_instances
 let arg_types c =
   match c with
   | Ast.Cintconst _ -> []
+  | Ast.Cinteq
+  | Ast.Cintlt
   | Ast.Cintadd
-  | Ast.Cinteq ->
+  | Ast.Cintsub
+  | Ast.Cintmul
+  | Ast.Cintdiv ->
     let nat = Simpletype.newty Simpletype.Nat in
     [nat; nat]
   | Ast.Cintprint ->
@@ -64,10 +68,14 @@ let arg_types c =
 let ret_type c =
   match c with
   | Ast.Cintconst _ 
-  | Ast.Cintadd 
+  | Ast.Cintadd
+  | Ast.Cintsub
+  | Ast.Cintmul
+  | Ast.Cintdiv 
   | Ast.Cintprint ->
     Simpletype.newty Simpletype.Nat 
-  | Ast.Cinteq ->
+  | Ast.Cinteq 
+  | Ast.Cintlt ->
     Simpletype.newty Simpletype.Bool
 
 let rec linearize (phi: Simpletype.t context) (t: Ast.t)
@@ -114,6 +122,51 @@ let rec linearize (phi: Simpletype.t context) (t: Ast.t)
           t_loc = t.Ast.loc
         };
       subst = subst
+    }
+  | Ast.Pair(s, t) ->
+    let sl = linearize phi s in
+    let tl = linearize phi t in
+    { linear_term = {
+          t_desc = Pair(sl.linear_term, tl.linear_term);
+          t_ann = Basetype.newvar ();
+          t_type = Simpletype.newty
+              (Simpletype.Pair(sl.linear_term.t_type, tl.linear_term.t_type));
+          t_context = sl.linear_term.t_context @ tl.linear_term.t_context;
+          t_loc = t.Ast.loc
+        };
+      subst = sl.subst @ tl.subst
+    }
+  | Ast.Fst(t) ->
+    let tl = linearize phi t in
+    let alpha = Simpletype.newvar () in
+    let beta = Simpletype.newvar () in
+    eq_constraint t
+      ~actual:tl.linear_term.t_type
+      ~expected:(Simpletype.newty (Simpletype.Pair(alpha, beta)));
+    { linear_term = {
+          t_desc = Fst(tl.linear_term);
+          t_ann = Basetype.newvar ();
+          t_type = alpha;
+          t_context = tl.linear_term.t_context;
+          t_loc = t.Ast.loc
+        };
+      subst = tl.subst
+    }
+  | Ast.Snd(t) ->
+    let tl = linearize phi t in
+    let alpha = Simpletype.newvar () in
+    let beta = Simpletype.newvar () in
+    eq_constraint t
+      ~actual:tl.linear_term.t_type
+      ~expected:(Simpletype.newty (Simpletype.Pair(alpha, beta)));
+    { linear_term = {
+          t_desc = Snd(tl.linear_term);
+          t_ann = Basetype.newvar ();
+          t_type = beta;
+          t_context = tl.linear_term.t_context;
+          t_loc = t.Ast.loc
+        };
+      subst = tl.subst
     }
   | Ast.App(s, t) ->
     let sl = linearize phi s in

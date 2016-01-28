@@ -1,0 +1,5 @@
+let main =
+  let p = ((\ x -> x + 1), (\x -> x+2)) in
+  let f = #1 p in
+  let g = #2 p in
+  print (f 4 + (g 5))

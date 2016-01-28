@@ -15,6 +15,9 @@ type 'a term = {
    | Contr of ((Ident.t * 'a) * Ident.t list) * 'a term
    | Fun of (Ident.t * 'a) * 'a term
    | App of 'a term * 'a term
+   | Pair of 'a term * 'a term
+   | Fst of 'a term
+   | Snd of 'a term
    | Ifz of 'a term * 'a term * 'a term
    | Fix of (Basetype.t * Ident.t * Ident.t * 'a) * 'a term
 

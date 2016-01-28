@@ -95,7 +95,7 @@ let success_tests = files_in_dir "Tests" ".cbv"
 let fail_tests = files_in_dir "Tests/Should_fail" ".cbv"
     
 let suite =
-  "intc tests" >:::
+  "modular tests" >:::
     ["success tests" >:::
      (success_tests |> List.map ~f:test_of_file);
      "fail tests" >:::

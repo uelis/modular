@@ -2,11 +2,6 @@
 open Core_kernel.Std
 open Lexing
 
-module Opts = struct
-  let print_type_details = ref false
-  let verbose = ref false
-end
-
 let parse_error_loc lexbuf =
   let start_pos = lexbuf.lex_start_p in
   Printf.sprintf "line %i, character %i:"
@@ -76,14 +71,12 @@ let compile (d: Decl.t) : unit =
 let arg_spec =
   [("--type-details", Arg.Set Opts.print_type_details,
     "Print full type details, including subexponentials.");
-   ("--verbose", Arg.Set Opts.verbose, "Print compilation details..");
-   ("--intverbose", Arg.Set Opts.verbose, "Print compilation details..");
+   ("--verbose", Arg.Set Opts.verbose, "Print compilation details..")
   ]
 
-let usage_msg = "Usage: intc input.int\nOptions:"
+let usage_msg = "Usage: modular input.cbv\nOptions:"
 
 let () =
-  (* Intlib.Opts.verbose := true; *)
   try
     let file_name = ref "" in
     Arg.parse arg_spec (fun s -> file_name := s) usage_msg;
