@@ -755,8 +755,8 @@ let rec translate (t: Cbvterm.t) : fragment =
       let tm, tq = unPairB t1_fragment.access.entry.Ssa.message_type in
       let vm = Builder.embed vu tm in
       let vq = Builder.inj 0 arg tq in
-      let v = Builder.pair vu (Builder.pair vm vq) in
-      Builder.end_block_jump eval.exit v in
+      let v = Builder.pair vm vq in
+      Builder.end_block_jump t1_fragment.access.entry v in
     let assert_false =
       let l = fresh_label "assert_false" unitB in
       let arg = Builder.begin_block l in
@@ -795,8 +795,8 @@ let rec translate (t: Cbvterm.t) : fragment =
       let tm, tq = unPairB t1_fragment.access.entry.Ssa.message_type in
       let vm = Builder.embed vu tm in
       let vq = Builder.inj 1 arg tq in
-      let v = Builder.pair vu (Builder.pair vm vq) in
-      Builder.end_block_jump eval.exit v in
+      let v = Builder.pair vm vq in
+      Builder.end_block_jump t1_fragment.access.entry v in
     let assert_false =
       let l = fresh_label "assert_false" unitB in
       let arg = Builder.begin_block l in
@@ -1109,7 +1109,7 @@ let rec translate (t: Cbvterm.t) : fragment =
         t.t_type in
     { eval = eval;
       access = access;
-      blocks = [eval_block1; (* eval_blockt; eval_blockf;*) eval_blockc;
+      blocks = [eval_block1; eval_blockc;
                 eval_blockrf; eval_blockrt; access_blockc]
                @ join_blocks
                @ tc_fragment.blocks
