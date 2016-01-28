@@ -220,6 +220,28 @@ let rec linearize (phi: Simpletype.t context) (t: Ast.t)
         };
       subst = sigma
     }
+  | Ast.Tailfix(f, x, s) ->    
+    (* TODO: verify that f appears in tail position *)
+    let alpha = Simpletype.newvar() in
+    let beta = Simpletype.newvar() in
+    let sl = linearize ((f, alpha) :: (x, beta) :: phi) s in
+    let tl = contract_instances
+        (f, alpha)
+        (contract_instances (x, beta) sl) in
+    let sigma = List.filter tl.subst ~f:(fun (y, _) -> y <> x && y <> f) in
+    let gamma = List.filter tl.linear_term.t_context ~f:(fun (y, _) -> y <> x && y <> f) in
+    let a = Simpletype.newty (Simpletype.Fun(beta, tl.linear_term.t_type)) in
+    let h = Basetype.newvar () in
+    eq_constraint t ~actual:a ~expected:alpha;
+    { linear_term = {
+          t_desc = Tailfix((h, f, x, beta), tl.linear_term);
+          t_ann = Basetype.newvar ();
+          t_type = a;
+          t_context = gamma;
+          t_loc = t.Ast.loc
+        };
+      subst = sigma
+    }
   | Ast.Ifz(s, tt, tf) ->
     let sl = linearize phi s in
     let ttl = linearize phi tt in

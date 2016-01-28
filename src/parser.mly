@@ -25,7 +25,7 @@ let mkAst d : Ast.t =
 %token FST SND
 %token INTADD
 %token IF THEN ELSE PRINT LET IN
-%token FIX 
+%token FIX TAILFIX
 %token <int> NUM
 %token <string> IDENT
 %token <string> STRING
@@ -62,6 +62,8 @@ term:
         { mkAst (Fun($2, $4)) }
     | FIX identifier identifier TO term
         { mkAst (Fix($2, $3, $5)) }
+    | TAILFIX identifier identifier TO term
+        { mkAst (Tailfix($2, $3, $5)) }
     | IF term THEN term ELSE term
         { mkAst (Ifz($2, $4, $6)) }
     | LET identifier EQUALS term IN term

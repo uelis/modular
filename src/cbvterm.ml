@@ -20,5 +20,6 @@ type 'a term = {
    | Snd of 'a term
    | Ifz of 'a term * 'a term * 'a term
    | Fix of (Basetype.t * Ident.t * Ident.t * 'a) * 'a term
+   | Tailfix of (Basetype.t * Ident.t * Ident.t * 'a) * 'a term
 
 type t = Cbvtype.t term

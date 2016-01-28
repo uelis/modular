@@ -51,6 +51,7 @@ rule main = parse
   | "then"       { THEN }
   | "else"       { ELSE }
   | "fix"        { FIX }
+  | "tailfix"    { TAILFIX }
   | "let"        { LET }
   | "in"         { IN }
   | "->"         { TO }

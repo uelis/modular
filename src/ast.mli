@@ -32,6 +32,7 @@ and t_desc =
   | Snd of t
   | Ifz of t * t * t
   | Fix of Ident.t * Ident.t * t
+  | Tailfix of Ident.t * Ident.t * t
 
 (** Capture avoiding substitution.
     [subst s x t] substitues [s] for [x] in [t]. *)

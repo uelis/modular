@@ -32,6 +32,7 @@ and t_desc =
   | Snd of t
   | Ifz of t * t * t
   | Fix of Ident.t * Ident.t * t
+  | Tailfix of Ident.t * Ident.t * t
 
 let rec free_vars (term: t) : Ident.t list =
   let abs x l = List.filter l ~f:(fun z -> not (z = x)) in
@@ -45,6 +46,7 @@ let rec free_vars (term: t) : Ident.t list =
   | Snd t -> free_vars t
   | Ifz (s, t1, t2) -> free_vars s @ free_vars t1 @ free_vars t2
   | Fix (f, x, t) -> abs f (abs x (free_vars t))
+  | Tailfix (f, x, t) -> abs f (abs x (free_vars t))
 
 (* Substitues [s] for [x].
    Returns [None] if [t] does not contain [x].
@@ -82,11 +84,21 @@ let substitute ?head:(head=false) (s: t) (x: Ident.t) (t: t) : t option =
     | Ifz (s, t1, t2) -> 
       { term with desc = Ifz(sub sigma s, sub sigma t1, sub sigma t2) }
     | Fix (f, x, t) ->
-       match abs_list sigma ([f; x], t) with
-       | [f'; x'], t' ->
+      begin
+        match abs_list sigma ([f; x], t) with
+        | [f'; x'], t' ->
           { term with desc = Fix(f', x', t') }
-       | _ ->
+        | _ ->
           assert false
+      end
+    | Tailfix (f, x, t) ->
+      begin
+        match abs_list sigma ([f; x], t) with
+        | [f'; x'], t' ->
+          { term with desc = Tailfix(f', x', t') }
+        | _ ->
+          assert false
+      end
   and abs sigma (y, u) =
     match abs_list sigma ([y], u) with
     | [y'], u -> y', u
