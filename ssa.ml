@@ -460,8 +460,15 @@ let rec typecheck_let_bindings
     (v, a) :: gamma1
 
 let typecheck_block (label_types: Basetype.t Ident.Table.t) (b: block) : unit =
-  let equals_exn a b =
-    if Basetype.equals a b then () else failwith "internal ssa.ml: type mismatch" in
+  let equals_exn a1 a2 =
+    if Basetype.equals a1 a2 then () else
+      begin
+        fprint_block stderr b;
+        Printf.fprintf stderr "   %s\n!= %s\n"
+          (Printing.string_of_basetype a1)
+          (Printing.string_of_basetype a2);
+        failwith "ssa.ml, typecheck_block: type mismatch"
+      end in
   let check_label_exn l a =
     match Ident.Table.find label_types l.name with
     | Some b ->
