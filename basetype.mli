@@ -14,12 +14,10 @@
 open Core_kernel.Std
 
 type 'a sgn =
-  | EncodedB of 'a
   | IntB
   | ZeroB
   | UnitB
   | BoxB of 'a
-  | ArrayB of 'a
   | PairB of 'a * 'a
   | DataB of string * 'a list
 with sexp
@@ -89,4 +87,4 @@ sig
 end
 
 val boolB : t
-val sumB : t list -> t  
+val sumB : t list -> t

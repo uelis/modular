@@ -1,6 +1,6 @@
 (** Progams in functional SSA form *)
 open Core_kernel.Std
-       
+
 type value_const =
   | Cundef of Basetype.t
   | Cintconst of int
@@ -27,12 +27,7 @@ type op_const =
   | Cstore of Basetype.t
   | Cpush of Basetype.t
   | Cpop of Basetype.t
-  | Carrayalloc of Basetype.t
-  | Carrayfree of Basetype.t
-  | Carrayget of Basetype.t
   | Ccall of string * Basetype.t * Basetype.t
-  | Cencode of Basetype.t
-  | Cdecode of Basetype.t
 
 (** SSA values and terms *)
 type value =

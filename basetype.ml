@@ -1,12 +1,10 @@
 open Core_kernel.Std
 
 type 'a sgn =
-  | EncodedB of 'a
   | IntB
   | ZeroB
   | UnitB
   | BoxB of 'a
-  | ArrayB of 'a
   | PairB of 'a * 'a
   | DataB of string * 'a list
 with sexp
@@ -17,23 +15,19 @@ module Sig = struct
 
   let map (f : 'a -> 'b) (t : 'a t) : 'b t =
     match t with
-     | EncodedB x -> EncodedB (f x)
      | IntB  -> IntB
      | ZeroB  -> ZeroB
      | UnitB  -> UnitB
      | BoxB x -> BoxB (f x)
-     | ArrayB x -> ArrayB (f x)
      | PairB(x, y) -> PairB(f x, f y)
      | DataB(id, xs) -> DataB(id, List.map ~f:f xs)
 
   let children (t: 'a t) : 'a list =
     match t with
-     | EncodedB x -> [x]
      | IntB
      | ZeroB
      | UnitB -> []
      | BoxB x -> [x]
-     | ArrayB x -> [x]
      | PairB(x, y) -> [x; y]
      | DataB(_, xs) -> xs
 
@@ -43,9 +37,7 @@ module Sig = struct
     | ZeroB, ZeroB
     | UnitB, UnitB ->
       true
-    | EncodedB(t1), EncodedB(s1)
-    | BoxB(t1), BoxB(s1)
-    | ArrayB(t1), ArrayB(s1) ->
+    | BoxB(t1), BoxB(s1) ->
       equals t1 s1
     | PairB(t1, t2), PairB(s1, s2) ->
       equals t1 s1 && equals t2 s2
@@ -55,8 +47,8 @@ module Sig = struct
         | None -> false
         | Some l -> List.for_all l ~f:(fun (t, s) -> equals t s)
       end
-    | EncodedB _, _ | IntB, _ | ZeroB, _ | UnitB, _
-    | BoxB _, _ | ArrayB _, _ | PairB _, _ | DataB _, _ ->
+    | IntB, _ | ZeroB, _ | UnitB, _
+    | BoxB _, _ | PairB _, _ | DataB _, _ ->
       false
 
   let unify_exn (s: 'a t) (t: 'a t) ~unify:(unify: 'a -> 'a -> unit) : unit =
@@ -65,9 +57,7 @@ module Sig = struct
     | ZeroB, ZeroB
     | UnitB, UnitB ->
       ()
-    | EncodedB(t1), EncodedB(s1)
-    | BoxB(t1), BoxB(s1)
-    | ArrayB(t1), ArrayB(s1) ->
+    | BoxB(t1), BoxB(s1) ->
       unify t1 s1
     | PairB(t1, t2), PairB(s1, s2) ->
       unify t1 s1;
@@ -78,8 +68,8 @@ module Sig = struct
         | None -> raise Uftype.Constructor_mismatch
         | Some l -> List.iter l ~f:(fun (t, s) -> unify t s)
       end
-    | EncodedB _, _ | IntB, _ | ZeroB, _ | UnitB, _
-    | BoxB _, _ | ArrayB _, _ | PairB _, _ | DataB _, _ ->
+    | IntB, _ | ZeroB, _ | UnitB, _
+    | BoxB _, _ | PairB _, _ | DataB _, _ ->
       raise Uftype.Constructor_mismatch
 end
 
@@ -171,8 +161,7 @@ struct
         begin
           match s with
           | ZeroB | UnitB | IntB -> false
-          | EncodedB(b1) | BoxB(b1) -> check_rec b1
-          | ArrayB(b1) -> check_rec b1
+          | BoxB(b1) -> check_rec b1
           | PairB(b1, b2) -> check_rec b1 && check_rec b2
           | DataB(id', bs) -> id = id' || List.exists ~f:check_rec bs
         end
@@ -236,7 +225,7 @@ struct
       | Sgn s ->
         begin
           match s with
-          | EncodedB _ | IntB | UnitB | ZeroB -> ()
+          | IntB | UnitB | ZeroB -> ()
           | PairB(a1, a2) ->
             check_rec_occ a1;
             check_rec_occ a2
@@ -246,7 +235,6 @@ struct
             else
               List.iter params ~f:check_rec_occ
           | BoxB _ -> ()
-          | ArrayB _ -> ()
         end
     in
     check_rec_occ argtype;

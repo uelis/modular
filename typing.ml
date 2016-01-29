@@ -7,7 +7,7 @@ let selectfunty a =
   match Cbvtype.case a with
   | Cbvtype.Sgn (Cbvtype.Fun(m, x)) -> m, x
   | _ -> assert false
-    
+
 let selectpairty a =
   match Cbvtype.case a with
   | Cbvtype.Sgn (Cbvtype.Pair(m, x)) -> m, x
@@ -34,13 +34,6 @@ let solve_constraints (ineqs: lhd_constraint list) : unit =
       Printf.printf "Solving constraints:\n";
       List.iter ineqs ~f:print_constratint
     end;
-  (* Turn all encoding type upper bounds into type variables. *)
-  List.iter ineqs
-    ~f:(fun c -> 
-        match Basetype.case c.upper with
-        | Basetype.Sgn (Basetype.EncodedB alpha) -> 
-          Basetype.replace_by c.upper alpha
-        | _ -> ());
   (* All inequalities have the form A <= alpha for some variable alpha.
    * Gather now all constraints A1 <= alpha, ..., An <= alpha for each
    * variable alpha in the form [A1,...,An] <= alpha. *)
@@ -145,10 +138,10 @@ let rec fresh_annotations_type (a: Simpletype.t) : Cbvtype.t =
     Cbvtype.newty (Cbvtype.Nat m)
   | Simpletype.Sgn s ->
     match s with
-    | Simpletype.Bool -> 
+    | Simpletype.Bool ->
       let m = Basetype.newvar () in
       Cbvtype.newty (Cbvtype.Bool m)
-    | Simpletype.Nat -> 
+    | Simpletype.Nat ->
       let m = Basetype.newvar () in
       Cbvtype.newty (Cbvtype.Nat m)
     | Simpletype.Pair(x, y) ->
@@ -244,7 +237,7 @@ let rec fresh_annotations_term (t: Simpletype.t Cbvterm.term) : Cbvterm.t =
       t_loc = t.t_loc
     }
 
-(** Given a term with fresh type variables as annotations, 
+(** Given a term with fresh type variables as annotations,
     infer concrete annotations *)
 let infer_annotations (t: Cbvterm.t) : Cbvterm.t =
   let rec constraints (t: Cbvterm.t) : Cbvterm.t * lhd_constraint list =
@@ -258,9 +251,9 @@ let infer_annotations (t: Cbvterm.t) : Cbvterm.t =
     | Const(Ast.Cintconst _, []) ->
       t,
       []
-    | Const(Ast.Cinteq as c, [s1; s2]) 
-    | Const(Ast.Cintlt as c, [s1; s2]) 
-    | Const(Ast.Cintadd as c, [s1; s2]) 
+    | Const(Ast.Cinteq as c, [s1; s2])
+    | Const(Ast.Cintlt as c, [s1; s2])
+    | Const(Ast.Cintadd as c, [s1; s2])
     | Const(Ast.Cintsub as c, [s1; s2])
     | Const(Ast.Cintmul as c, [s1; s2])
     | Const(Ast.Cintdiv as c, [s1; s2]) ->
@@ -276,7 +269,7 @@ let infer_annotations (t: Cbvterm.t) : Cbvterm.t =
         };
         (* Note: this condition gives more slack!
              Example: \f -> intadd(f 1, f 3)
-        *)              
+        *)
         { lower = Basetype.newty (Basetype.PairB(t.t_ann, Basetype.newty Basetype.IntB));
           upper = s2.t_ann;
           reason = "prim: stack second"
@@ -365,7 +358,7 @@ let infer_annotations (t: Cbvterm.t) : Cbvterm.t =
       ; { lower = t.t_ann;
           upper = a;
           reason = "app: fun stack"
-        } 
+        }
       ; { lower = Basetype.newty (Basetype.PairB(t.t_ann, d));
           upper = s2.t_ann;
           reason = "app: argument stack"

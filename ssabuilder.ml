@@ -1,10 +1,10 @@
 open Core_kernel.Std
-               
+
 let unPairB a =
   match Basetype.case a with
   | Basetype.Sgn (Basetype.PairB(a1, a2)) -> a1, a2
   | _ -> assert false
-                
+
 let unDataB a =
   match Basetype.case a with
   | Basetype.Sgn (Basetype.DataB(id, params)) ->
@@ -37,15 +37,15 @@ let begin_block (l: Ssa.label) : value =
      v
   | Some _ ->
      assert false
-            
+
 let unit : value =
-  Ssa.Unit, 
+  Ssa.Unit,
   Basetype.newty (Basetype.UnitB)
 
 let intconst (i: int) =
-  Ssa.IntConst(i), 
+  Ssa.IntConst(i),
   Basetype.newty (Basetype.IntB)
-                           
+
 let primop (c: Ssa.op_const) (v: value) : value =
   let vv, va = v in
   let prim = Ident.fresh "prim" in
@@ -93,15 +93,6 @@ let primop (c: Ssa.op_const) (v: value) : value =
     | Ssa.Cstore(b) ->
        equals_exn va (newty (PairB(newty (BoxB b), b)));
        (newty UnitB)
-    | Ssa.Carrayalloc(b) ->
-       equals_exn va (newty IntB);
-       (newty (ArrayB b))
-    | Ssa.Carrayfree(b) ->
-       equals_exn va (newty (ArrayB b));
-       (newty UnitB)
-    | Ssa.Carrayget(b) ->
-       equals_exn va (newty (PairB(newty (ArrayB b), newty IntB)));
-       (newty (BoxB(b)))
     | Ssa.Cpush(b) ->
        equals_exn va b;
        (newty UnitB)
@@ -110,12 +101,7 @@ let primop (c: Ssa.op_const) (v: value) : value =
        b
     | Ssa.Ccall(_, b1, b2) ->
        equals_exn va b1;
-       b2
-    | Ssa.Cencode b ->
-       equals_exn b va;
-       b
-    | Ssa.Cdecode b ->
-       b in
+       b2 in
   emit (Ssa.Let((prim, vb), Ssa.Const(c, vv)));
   Ssa.Var prim, vb
 
@@ -123,7 +109,7 @@ let fst (v: value) : value =
   let vv, va = v in
   let a1, a2 = unPairB va in
   Ssa.Fst(vv, a1, a2), a1
-           
+
 let snd (v: value) : value =
   let vv, va = v in
   let a1, a2 = unPairB va in
@@ -133,7 +119,7 @@ let unpair (v: value) : value * value =
   let v1 = fst v in
   let v2 = snd v in
   v1, v2
-           
+
 let pair (v1: value) (v2: value) : value =
   let vv1, va1 = v1 in
   let vv2, va2 = v2 in
@@ -142,14 +128,14 @@ let pair (v1: value) (v2: value) : value =
     x,
     Basetype.newty (Basetype.PairB(va1, va2))
     | _ ->*)
-    Ssa.Pair(vv1, vv2), 
+    Ssa.Pair(vv1, vv2),
     Basetype.newty (Basetype.PairB(va1, va2))
-           
+
 let inj (i: int) (v: value) (data: Basetype.t) : value =
   let vv, _ = v in
   let id, _ = unDataB data in
   Ssa.In((id, i, vv), data), data
-                               
+
 let select (v: value) (i: int) : value =
   let vv, va = v in
   let id, params = unDataB va in
@@ -205,14 +191,14 @@ let project (v: value) (a: Basetype.t) : value =
          match Basetype.case c with
          | Basetype.Sgn (Basetype.DataB(id, params)) ->
             let x = unbox v in
-            select id params x 
+            select id params x
          | _ -> failwith "project2"
        end
     | Basetype.Sgn (Basetype.DataB(id, params)) ->
-       select id params v 
+       select id params v
     | _ ->
        failwith "project3"
-                    
+
 let embed (v: value) (a: Basetype.t) : value =
   let _, va = v in
   (*
@@ -265,7 +251,7 @@ let end_block_jump (dst: Ssa.label) (v: value) : Ssa.block =
   | Some s ->
     builder_state := None;
     Ssa.Direct(s.cur_label, s.cur_arg, s.cur_lets, vv, dst)
-           
+
 (* TODO: add assertions to check types *)
 (* TODO: the functions in [targets] must not create new let-definitions *)
 let end_block_case (v: value) (targets: (value -> Ssa.label * value) list) : Ssa.block =
@@ -286,7 +272,7 @@ let end_block_case (v: value) (targets: (value -> Ssa.label * value) list) : Ssa
        if !builder_state.cur_lets = [] then
          !builder_state.cur_arg, v, dst
        else
-         
+
                     let x = Ident.fresh "x" in
                     let vx = Ssa.Var x, a in
                     let dst, (arg, _) = t vx in
@@ -303,7 +289,7 @@ let end_block_case (v: value) (targets: (value -> Ssa.label * value) list) : Ssa
      builder_state := None;
      Ssa.Branch(s.cur_label, s.cur_arg, s.cur_lets,
                 (id, params, vv, branches))
-       
+
 let end_block_return (v: value) : Ssa.block =
   let vv, va = v in
   match !builder_state with

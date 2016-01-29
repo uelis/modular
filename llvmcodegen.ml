@@ -14,14 +14,14 @@ let rec log i =
 
 (** Representation of LLVM types suitable for use as keys in a map. *)
 module Lltype: sig
-  
+
   type t =
     | Integer of int
     | Pointer (* void pointer *)
   with sexp
 
   module Map: Map.S with type Key.t = t
-    
+
   val int_type: t
   val to_lltype: t -> Llvm.lltype
 end
@@ -42,7 +42,7 @@ end
   end
   include T
   module Map = Map.Make(T)
-                 
+
   let int_type = Integer !Opts.int_size
 
   let to_lltype (x: t) =
@@ -57,7 +57,7 @@ end
 
 (** A profile is a finite map from llvm types to numbers.
     Below, ssa values are encoded as vectors of llvm values
-    of different type.The profile of a vector explains how many 
+    of different type.The profile of a vector explains how many
     values of each type it contains.
 
     The following module enforces the invariant that
@@ -65,7 +65,7 @@ end
     value is > 0.
 *)
 module Profile: sig
-  
+
   type t
 
   (* The empty profile. *)
@@ -73,7 +73,7 @@ module Profile: sig
 
   (* Profile of a vector containing a single value of the given type.*)
   val singleton : Lltype.t -> t
-    
+
   (* Profile of a vector containing n values of the given type. *)
   val ntimes : Lltype.t -> int -> t
 
@@ -91,7 +91,7 @@ module Profile: sig
 
 end
 = struct
-  
+
   type t = int Lltype.Map.t
 
   let null = Lltype.Map.empty
@@ -123,10 +123,9 @@ end
       | Sgn sa ->
         begin
           match sa with
-          | EncodedB _ -> assert false
           | ZeroB | UnitB -> null
           | IntB -> singleton Lltype.int_type
-          | BoxB _ | ArrayB _ -> singleton Lltype.Pointer
+          | BoxB _ -> singleton Lltype.Pointer
           | PairB(a1, a2) -> add (a_s a1) (a_s a2)
           | DataB(id, ps) ->
             begin
@@ -477,10 +476,7 @@ let build_term
   | Ssa.Const(Ssa.Calloc _ as const, arg)
   | Ssa.Const(Ssa.Cfree _ as const, arg)
   | Ssa.Const(Ssa.Cload _ as const, arg)
-  | Ssa.Const(Ssa.Cstore _ as const, arg)
-  | Ssa.Const(Ssa.Carrayalloc _ as const, arg)
-  | Ssa.Const(Ssa.Carrayfree _ as const, arg)
-  | Ssa.Const(Ssa.Carrayget _ as const, arg) ->
+  | Ssa.Const(Ssa.Cstore _ as const, arg) ->
     begin
       let argenc = build_value the_module ctx arg in
       let intargs = Mixedvector.llvalues_at_key argenc Lltype.int_type in
@@ -578,52 +574,12 @@ let build_term
         ignore (Llvm.build_store v_packed mem_ptr builder);
         Mixedvector.null
       | Ssa.Cstore _, _, _ -> failwith "internal: wrong argument to store"
-      | Ssa.Carrayalloc a, [length], [] ->
-        let a_struct = packing_type a in
-        let malloc =
-          match Llvm.lookup_function "malloc" the_module with
-          | Some malloc -> malloc
-          | None -> assert false in
-        let byte_size =
-          Llvm.build_mul length (Llvm.size_of a_struct) "size" builder in
-        let addr = Llvm.build_call malloc
-                          (Array.of_list [byte_size])
-                          "addr" builder in
-        Mixedvector.singleton Lltype.Pointer addr
-      | Ssa.Carrayalloc _, _, _ ->
-        failwith "internal: wrong argument to arrayalloc"
-      | Ssa.Carrayfree _, [], [addr] ->
-        let free =
-          match Llvm.lookup_function "free" the_module with
-          | Some free -> free
-          | None -> assert false in
-        ignore (Llvm.build_call free (Array.of_list [addr]) "free" builder);
-        Mixedvector.null
-      | Ssa.Carrayfree _, _, _ ->
-        failwith "internal: wrong argument to arrayfree"
-      | Ssa.Carrayget a, [idx], [addr] ->
-        let a_struct = packing_type a in
-        let arr = Llvm.build_bitcast addr
-                    (Llvm.pointer_type a_struct) "arr" builder in
-        let offset_arr = Llvm.build_gep arr
-                           (Array.of_list [idx]) "offset_arr" builder in
-        let offset = Llvm.build_bitcast offset_arr
-                       (Llvm.pointer_type (Llvm.i8_type context))
-                       "offset" builder in
-        Mixedvector.singleton Lltype.Pointer offset
-      | Ssa.Carrayget _, _, _ ->
-        failwith "internal: wrong argument to arrayget"
       | Ssa.Cprint _, _, _
       | Ssa.Cpush _, _, _
       | Ssa.Cpop _, _, _
       | Ssa.Ccall _, _, _
-      | Ssa.Cencode _, _, _
-      | Ssa.Cdecode _, _, _
         -> assert false
     end
-  | Ssa.Const(Ssa.Cencode _, _)
-  | Ssa.Const(Ssa.Cdecode _, _) ->
-    assert false
 
 let rec build_letbindings
       (the_module : Llvm.llmodule)

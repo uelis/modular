@@ -29,12 +29,7 @@ type op_const =
   | Cstore of Basetype.t
   | Cpush of Basetype.t
   | Cpop of Basetype.t
-  | Carrayalloc of Basetype.t
-  | Carrayfree of Basetype.t
-  | Carrayget of Basetype.t
   | Ccall of string * Basetype.t * Basetype.t
-  | Cencode of Basetype.t
-  | Cdecode of Basetype.t
 
 type value =
   | Var of Ident.t
@@ -49,7 +44,7 @@ type value =
 type term =
   | Val of value
   | Const of op_const * value
-             
+
 let string_of_op_const (c: op_const) : string =
   let open Ast in
   match c with
@@ -72,15 +67,10 @@ let string_of_op_const (c: op_const) : string =
   | Cfree(_) -> "free"
   | Cload(_) -> "load"
   | Cstore(_) -> "store"
-  | Carrayalloc _ -> "arrayalloc"
-  | Carrayget _ -> "arrayget"
-  | Carrayfree _ -> "arrayfree"
   | Cpush a -> "push{" ^ (Printing.string_of_basetype a) ^ "}"
   | Cpop a -> "pop{" ^ (Printing.string_of_basetype a) ^ "}"
   | Ccall(f, a, b) -> "call(" ^ f ^ ": " ^ (Printing.string_of_basetype a) ^
                       " -> " ^ (Printing.string_of_basetype b) ^ ") "
-  | Cencode a -> "encode{" ^ (Printing.string_of_basetype a) ^ "}"
-  | Cdecode a -> "decode{" ^ (Printing.string_of_basetype a) ^ "}"
 
 let rec fprint_value (oc: Out_channel.t) (v: value) : unit =
   match v with
@@ -417,18 +407,6 @@ let typecheck_term
     let c = typeof_value gamma v in
     equals_exn c (newty (PairB(newty (BoxB b), b)));
     equals_exn a (newty UnitB)
-  | Const(Carrayalloc(b), v) ->
-    let c = typeof_value gamma v in
-    equals_exn c (newty IntB);
-    equals_exn a (newty (ArrayB b))
-  | Const(Carrayfree(b), v) ->
-    let c = typeof_value gamma v in
-    equals_exn c (newty (ArrayB b));
-    equals_exn a (newty UnitB)
-  | Const(Carrayget(b), v) ->
-    let c = typeof_value gamma v in
-    equals_exn c (newty (PairB(newty (ArrayB b), newty IntB)));
-    equals_exn a (newty (BoxB(b)))
   | Const(Cpush(b), v) ->
     let c = typeof_value gamma v in
     equals_exn c b;
@@ -441,11 +419,6 @@ let typecheck_term
     let c = typeof_value gamma v in
     equals_exn c b1;
     equals_exn a b2
-  | Const(Cencode b, v) ->
-    let c = typeof_value gamma v in
-    equals_exn b c
-  | Const(Cdecode b, _) ->
-    equals_exn b a
 
 let rec typecheck_let_bindings
       (gamma: Basetype.t Typing.context)
@@ -527,4 +500,3 @@ let make ~func_name:(func_name: string)
     entry_label = entry_label;
     blocks = blocks;
     return_type = return_type }
-
