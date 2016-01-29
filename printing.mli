@@ -9,3 +9,4 @@ val reset_names : unit -> unit
 val string_of_data : string -> string
 
 val string_of_basetype : Basetype.t -> string
+val string_of_cbvtype : ?concise:bool -> Cbvtype.t -> string

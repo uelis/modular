@@ -50,8 +50,9 @@ let compile (d: Decl.t) : unit =
       (*      let _ = Translate.translate t in*)
       Printf.printf "%s : %s%!\n"
         (Ident.to_string f)
-        (Cbvtype.to_string ~concise:(not !Opts.print_type_details)
-                           t.Cbvterm.t_type);
+        (Printing.string_of_cbvtype
+           ~concise:(not !Opts.print_type_details)
+           t.Cbvterm.t_type);
       (* let f = Translate.translate t in
        Translate.print_fragment f; *)
       let ssa = Translate.to_ssa t in

@@ -10,10 +10,10 @@ type 'a sgn =
   | PairB of 'a * 'a
   | DataB of string * 'a list
 with sexp
-    
+
 module Sig = struct
 
-  type 'a t = 'a sgn with sexp                  
+  type 'a t = 'a sgn with sexp
 
   let map (f : 'a -> 'b) (t : 'a t) : 'b t =
     match t with
@@ -43,8 +43,8 @@ module Sig = struct
     | ZeroB, ZeroB
     | UnitB, UnitB ->
       true
-    | EncodedB(t1), EncodedB(s1) 
-    | BoxB(t1), BoxB(s1) 
+    | EncodedB(t1), EncodedB(s1)
+    | BoxB(t1), BoxB(s1)
     | ArrayB(t1), ArrayB(s1) ->
       equals t1 s1
     | PairB(t1, t2), PairB(s1, s2) ->
@@ -65,8 +65,8 @@ module Sig = struct
     | ZeroB, ZeroB
     | UnitB, UnitB ->
       ()
-    | EncodedB(t1), EncodedB(s1) 
-    | BoxB(t1), BoxB(s1) 
+    | EncodedB(t1), EncodedB(s1)
+    | BoxB(t1), BoxB(s1)
     | ArrayB(t1), ArrayB(s1) ->
       unify t1 s1
     | PairB(t1, t2), PairB(s1, s2) ->
@@ -135,7 +135,7 @@ struct
     let used_names = String.Table.keys datatypes in
     Vargen.mkVarGenerator basename ~avoid:used_names ()
 
-  (* declare nullary and binary sums by default; 
+  (* declare nullary and binary sums by default;
      all others are declared on demand *)
   let _ = ignore (sumid 0); ignore (sumid 2)
 
