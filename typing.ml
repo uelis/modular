@@ -312,11 +312,11 @@ let infer_annotations (t: Cbvterm.t) : Cbvterm.t =
           reason = "pair: eval second stack"
         }
       ; { lower = Basetype.newty (Basetype.PairB(a, Cbvtype.multiplicity x));
-          upper = Cbvtype.multiplicity as1.t_type ;
+          upper = Cbvtype.multiplicity s1.t_type ;
           reason = "pair: multiplicity left"
         }
       ; { lower = Basetype.newty (Basetype.PairB(a, Cbvtype.multiplicity y));
-          upper = Cbvtype.multiplicity as2.t_type;
+          upper = Cbvtype.multiplicity s2.t_type;
           reason = "pair: multiplicity right"
         }
       ] @ cs1 @ cs2

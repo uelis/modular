@@ -893,14 +893,18 @@ let rec translate (t: Cbvterm.t) : fragment =
     let id = "if" in
     let eval = fresh_eval id t in
     (* TODO: extremely ugly!! *)
-    let inject_code k v a =
+    let inject_code k v a1 a2 a =
       let i = match k with
         | `Case1 -> 0
         | `Case2 -> 1 in
       match Cbvtype.case a with
       | Cbvtype.Sgn (Cbvtype.Nat _) -> v
-      | Cbvtype.Sgn (Cbvtype.Fun (_ , (_ , _ , d , _))) ->
-        Builder.inj i v d
+      | Cbvtype.Sgn (Cbvtype.Fun _) ->
+        let d1 = Cbvtype.code a1 in
+        let d2 = Cbvtype.code a2 in
+        let d = Cbvtype.code a in
+        let vi = Builder.inj i v (Basetype.sumB [d1; d2]) in
+        Builder.embed vi d
       | _ -> assert false in
     let rec join (access1, a1) (access2, a2) a : int_interface * (Ssa.block list) =
         match Cbvtype.case a1, Cbvtype.case a2, Cbvtype.case a with
@@ -1028,7 +1032,7 @@ let rec translate (t: Cbvterm.t) : fragment =
               Builder.end_block_case vv
                 [ (fun vres ->
                       let vc, vd1 = Builder.unpair vres in
-                      let vy = inject_code `Case1 vd1 y in
+                      let vy = inject_code `Case1 vd1 y1 y2 y in
                       let v = inject `Exit vm `Eval (Builder.pair vc vy) in
                       access.exit, v);
                   (fun vy1 ->
@@ -1046,7 +1050,7 @@ let rec translate (t: Cbvterm.t) : fragment =
               Builder.end_block_case vv
                 [ (fun vres ->
                       let vc, vd2 = Builder.unpair vres in
-                      let vy = inject_code `Case2 vd2 y in
+                      let vy = inject_code `Case2 vd2 y1 y2 y in
                       let v = inject `Exit vm `Eval (Builder.pair vc vy) in
                       access.exit, v);
                   (fun vy2 ->
@@ -1091,13 +1095,13 @@ let rec translate (t: Cbvterm.t) : fragment =
       let arg = Builder.begin_block t1_fragment.eval.exit in
       let vstack = Builder.fst arg in
       let vn = Builder.snd arg in
-      let v = Builder.pair vstack (inject_code `Case1 vn t.t_type) in
+      let v = Builder.pair vstack (inject_code `Case1 vn t1.t_type t2.t_type t.t_type) in
       Builder.end_block_jump eval.exit v in
     let eval_blockrf =
       let arg = Builder.begin_block t2_fragment.eval.exit in
       let vstack = Builder.fst arg in
       let vn = Builder.snd arg in
-      let v = Builder.pair vstack (inject_code `Case2 vn t.t_type) in
+      let v = Builder.pair vstack (inject_code `Case2 vn t1.t_type t2.t_type t.t_type) in
       Builder.end_block_jump eval.exit v in
     let access_blockc =
       let arg = Builder.begin_block tc_fragment.access.exit in
