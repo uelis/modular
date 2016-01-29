@@ -224,3 +224,138 @@ let string_of_cbvtype ?concise:(concise=true) (ty: Cbvtype.t): string =
       else
         s l in
   str ty `Type
+
+
+let fprint_annotated_term (f: Format.formatter) (term: Cbvterm.t) : unit =
+  let open Cbvterm in
+  let open Format in
+  let rec s_term (t: Cbvterm.t): unit =
+    match t.t_desc with
+    | Contr(((x, _), xs), t1) ->
+      fprintf f "copy %s as %s in@ @["
+        (Ident.to_string x)
+        (String.concat ~sep:", " (List.map ~f:Ident.to_string xs));
+      s_term t1;
+      fprintf f "@]"
+    | Fun((x, _), t1) ->
+      fprintf f "@[<hv 1>\\%s ->@;" (Ident.to_string x);
+      s_term t1;
+      fprintf f "@]"
+    | Fix((_, y, x, a), t1) ->
+      fprintf f "@[<hv 1>fix (%s : %s) (%s : %s) ->@;"
+        (Ident.to_string y)
+        (string_of_cbvtype ~concise:false t.t_type)
+        (Ident.to_string x)
+        (string_of_cbvtype ~concise:false a);
+      s_term t1;
+      fprintf f "@]"
+    | Ifz(t1, t2, t3) ->
+      fprintf f "@[<hv>if ";
+      s_term t1;
+      fprintf f " then ";
+      s_term t2;
+      fprintf f "@ else ";
+      s_term t3;
+      fprintf f "@]"
+    | App(t1, t2) ->
+      begin
+        match t1.t_desc with
+        | Fun((x, _), t1') ->
+          fprintf f "@[<hv 1>let %s =@ " (Ident.to_string x);
+          s_term t2;
+          fprintf f "@] in@ @[";
+          s_term t1';
+          fprintf f "@]"
+        | _ ->
+          s_term_inf t
+      end
+    | Var _ | Const _ | Pair _ | Fst _ | Snd _
+      -> s_term_inf t
+  and s_term_inf (t: Cbvterm.t) =
+    match t.t_desc with
+    | Const(Ast.Cinteq, [t1; t2]) ->
+      s_term_app t1;
+      fprintf f " = ";
+      s_term_app t2
+    | Const(Ast.Cinteq, _) -> assert false
+    | Const(Ast.Cintlt, [t1; t2]) ->
+      s_term_app t1;
+      fprintf f " < ";
+      s_term_app t2
+    | Const(Ast.Cintlt, _) -> assert false
+    | Const(Ast.Cintadd, [t1; t2]) ->
+      s_term_app t1;
+      fprintf f " + ";
+      s_term_app t2
+    | Const(Ast.Cintadd, _) -> assert false
+    | Const(Ast.Cintsub, [t1; t2]) ->
+      s_term_app t1;
+      fprintf f " - ";
+      s_term_app t2
+    | Const(Ast.Cintsub, _) -> assert false
+    | Const(Ast.Cintmul, [t1; t2]) ->
+      s_term_app t1;
+      fprintf f " * ";
+      s_term_app t2
+    | Const(Ast.Cintmul, _) -> assert false
+    | Const(Ast.Cintdiv, [t1; t2]) ->
+      s_term_app t1;
+      fprintf f " / ";
+      s_term_app t2
+    | Const(Ast.Cintdiv, _) -> assert false
+    | Fun _ | Fix _ | App _ | Var _
+    | Const(Ast.Cintprint, _) | Const(Ast.Cintconst _, _)
+    | Pair _ | Fst _ | Snd _ | Contr _ | Ifz _
+      -> s_term_app t
+  and s_term_app (t: Cbvterm.t) =
+    match t.t_desc with
+    | App(t1, t2) ->
+      fprintf f "@[";
+      s_term_app t1;
+      fprintf f "@ ";
+      s_term_atom t2;
+      fprintf f "@]"
+    | _ ->
+      s_term_atom t
+  and s_term_atom (t: Cbvterm.t) =
+    match t.t_desc with
+    | Var(x) ->
+      fprintf f "%s" (Ident.to_string x)
+    | Const(Ast.Cintconst(i), []) ->
+      if i >= 0 then
+        fprintf f "%i" i
+      else
+        fprintf f "~%i" (-i)
+    | Const(Ast.Cintconst _, _) -> assert false
+    | Const(Ast.Cintprint, [t1]) ->
+      fprintf f "print@ ";
+      s_term_atom t1
+    | Const(Ast.Cintprint, _) -> assert false
+    | Pair(t1, t2) ->
+      fprintf f "(@[";
+      s_term t1;
+      fprintf f "@] #@ @[";
+      s_term t2;
+      fprintf f "@])"
+    | Fst(t1) ->
+      fprintf f "@[#1 ";
+      s_term t1;
+      fprintf f "@]"
+    | Snd(t1) ->
+      fprintf f "@[#2 ";
+      s_term t1;
+      fprintf f "@]"
+    | App _ | Fun _ | Fix _ | Ifz _ | Contr _
+    | Const(Ast.Cinteq, _)
+    | Const(Ast.Cintlt, _)
+    | Const(Ast.Cintadd, _)
+    | Const(Ast.Cintsub, _)
+    | Const(Ast.Cintmul, _)
+    | Const(Ast.Cintdiv, _) ->
+      fprintf f "(@[";
+      s_term t;
+      fprintf f "@])"
+  in
+  fprintf f "@[";
+  s_term term;
+  fprintf f "@]@.\n\n"

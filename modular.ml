@@ -47,14 +47,13 @@ let compile (d: Decl.t) : unit =
     let f_name = Ident.to_string f in
     try
       let t = Typing.check_term ast in
-      (*      let _ = Translate.translate t in*)
       Printf.printf "%s : %s%!\n"
         (Ident.to_string f)
         (Printing.string_of_cbvtype
            ~concise:(not !Opts.print_type_details)
            t.Cbvterm.t_type);
-      (* let f = Translate.translate t in
-       Translate.print_fragment f; *)
+      if !Opts.print_annotated_term then
+        Printing.fprint_annotated_term Format.std_formatter t;
       let ssa = Translate.to_ssa t in
       Out_channel.with_file
         (f_name ^ ".ssa")
@@ -74,7 +73,9 @@ let compile (d: Decl.t) : unit =
 let arg_spec =
   [("--type-details", Arg.Set Opts.print_type_details,
     "Print full type details, including subexponentials.");
-   ("--verbose", Arg.Set Opts.verbose, "Print compilation details..")
+   ("--verbose", Arg.Set Opts.verbose, "Print compilation details..");
+   ("--print-annotated-term", Arg.Set Opts.print_annotated_term,
+    "Print program term with type annotations.")
   ]
 
 let usage_msg = "Usage: modular input.cbv\nOptions:"
