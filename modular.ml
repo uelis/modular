@@ -39,7 +39,7 @@ let term_loc (s : Ast.t option) =
       Printf.sprintf "line %i, column %i to line %i, column %i:"
         loc.start_pos.line loc.start_pos.column
         loc.end_pos.line loc.end_pos.column
-    | None -> "Term " (* ^ (Printing.string_of_ast s) *)
+    | None -> ""
 
 let compile (d: Decl.t) : unit =
   match d with
@@ -47,31 +47,35 @@ let compile (d: Decl.t) : unit =
     let f_name = Ident.to_string f in
     try
       let t = Typing.check_term ast in
-      (*      let _ = Translate.translate t in*)
       Printf.printf "%s : %s%!\n"
         (Ident.to_string f)
-        (Cbvtype.to_string ~concise:(not !Opts.print_type_details)
-                           t.Cbvterm.t_type);
-      (* let f = Translate.translate t in
-       Translate.print_fragment f; *)
+        (Printing.string_of_cbvtype
+           ~concise:(not !Opts.print_type_details)
+           t.Cbvterm.t_type);
+      if !Opts.print_annotated_term then
+        Printing.fprint_annotated_term Format.std_formatter t;
       let ssa = Translate.to_ssa t in
-      if !Opts.verbose then
-        Ssa.fprint_func stderr ssa; 
+      Out_channel.with_file
+        (f_name ^ ".ssa")
+        ~f:(fun c -> Ssa.fprint_func c ssa);
       let ssa_traced = Trace.trace ssa in
       let ssa_shortcut = Trace.shortcut_jumps ssa_traced in
-      if !Opts.verbose then
-        Ssa.fprint_func stderr ssa_shortcut;
+      Out_channel.with_file
+        (f_name ^ ".opt.ssa")
+        ~f:(fun c -> Ssa.fprint_func c ssa_shortcut);
       let llvm_module = Llvmcodegen.llvm_compile ssa_shortcut in
       let target = Printf.sprintf "%s.bc" f_name in
       ignore (Llvm_bitwriter.write_bitcode_file llvm_module target)
     with Simpletyping.Typing_error(s, err) ->
       let msg = err ^ "\nIn declaration of '" ^ f_name ^ "'." in
-      raise (Failure (error_msg (term_loc s) msg)) 
+      raise (Failure (error_msg (term_loc s) msg))
 
 let arg_spec =
   [("--type-details", Arg.Set Opts.print_type_details,
     "Print full type details, including subexponentials.");
-   ("--verbose", Arg.Set Opts.verbose, "Print compilation details..")
+   ("--verbose", Arg.Set Opts.verbose, "Print compilation details..");
+   ("--print-annotated-term", Arg.Set Opts.print_annotated_term,
+    "Print program term with type annotations.")
   ]
 
 let usage_msg = "Usage: modular input.cbv\nOptions:"
@@ -90,7 +94,7 @@ let () =
         List.iter ~f:compile substituted_decls
       end
   with
-  | Sys_error msg 
+  | Sys_error msg
   | Failure msg ->
     exit_with_error "" msg
   | Simpletyping.Typing_error(t, msg)->

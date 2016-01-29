@@ -12,5 +12,3 @@ include Uftype.S with type 'a Sgn.t = 'a sgn
 
 val code: t -> Basetype.t
 val multiplicity: t -> Basetype.t
-
-val to_string: ?concise:bool -> t -> string
