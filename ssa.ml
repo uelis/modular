@@ -23,6 +23,7 @@ type op_const =
   | Cintor
   | Cintxor
   | Cintprint
+  | Cgcalloc of Basetype.t
   | Calloc of Basetype.t
   | Cfree of Basetype.t
   | Cload of Basetype.t
@@ -63,6 +64,7 @@ let string_of_op_const (c: op_const) : string =
   | Cintor  -> "intor"
   | Cintxor -> "intxor"
   | Cintprint -> "print"
+  | Cgcalloc(_) -> "gcalloc"
   | Calloc(_) -> "alloc"
   | Cfree(_) -> "free"
   | Cload(_) -> "load"
@@ -391,6 +393,7 @@ let typecheck_term
     let intty = newty IntB in
     equals_exn b intty;
     equals_exn a (newty UnitB)
+  | Const(Cgcalloc(b), v)
   | Const(Calloc(b), v) ->
     let c = typeof_value gamma v in
     equals_exn c (newty UnitB);

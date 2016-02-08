@@ -81,6 +81,7 @@ let primop (c: Ssa.op_const) (v: value) : value =
        let intty = newty IntB in
        equals_exn va intty;
        newty UnitB
+    | Ssa.Cgcalloc(b)
     | Ssa.Calloc(b) ->
        equals_exn va (newty UnitB);
        newty (BoxB b)
@@ -149,20 +150,20 @@ let select (v: value) (i: int) : value =
 
 let box (v: value) : value =
   let _, va = v in
-  let vbox = primop (Ssa.Calloc(va)) unit in
+  let vbox = primop (Ssa.Cgcalloc(va)) unit in
   ignore (primop (Ssa.Cstore(va)) (pair vbox v));
   vbox
-           
+
 let unbox (v: value) : value =
   let _, va = v in
-  let b = 
+  let b =
     match Basetype.case va with
     | Basetype.Sgn (Basetype.BoxB(b)) -> b
     | _ -> failwith "unbox" in
   let w = primop (Ssa.Cload(b)) v in
-  ignore (primop (Ssa.Cfree(b)) v);
+  (*  ignore (primop (Ssa.Cfree(b)) v);*)
   w
-           
+
 let project (v: value) (a: Basetype.t) : value =
   let _, va = v in
   (*

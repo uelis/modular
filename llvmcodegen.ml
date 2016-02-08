@@ -37,8 +37,8 @@ end
       match x, y with
       | Pointer, Pointer -> 0
       | Integer i, Integer j -> Int.compare i j
-      | Pointer, Integer _ -> -1
-      | Integer _, Pointer -> 1
+      | Pointer, Integer _ -> 1
+      | Integer _, Pointer -> -1
   end
   include T
   module Map = Map.Make(T)
@@ -278,12 +278,33 @@ struct
         ~f:(fun ~key:i ~data:n args ->
           args @ (List.init n ~f:(fun _ -> Lltype.to_lltype i)))
         ~init:[] in
-    Llvm.packed_struct_type context (Array.of_list struct_members)
+    let tags_and_members =
+      [ Llvm.integer_type context 32    (* size *)
+      ; Llvm.integer_type context 32]  (* number of pointers *)
+      @ struct_members in
+    Llvm.packed_struct_type context (Array.of_list tags_and_members)
 
   let pack x =
     let struct_type = to_profile x |> packing_type in
-    Lltype.Map.fold_right x.bits ~f:(fun ~key:_ ~data:xs vals -> vals @ xs) ~init:[]
-    |> List.foldi
+    let values =
+      Lltype.Map.fold_right x.bits
+        ~f:(fun ~key:_ ~data:xs vals -> vals @ xs)
+        ~init:[] in
+    let number_of_ptrs =
+      match Profile.find (to_profile x) Lltype.Pointer with
+      | Some n -> n
+      | None -> 0 in
+    let tags_and_values =
+      let i32 = Llvm.integer_type context 32 in
+      let ep = Llvm.build_gep
+          (Llvm.const_null (Llvm.pointer_type i32))
+          [| Llvm.const_int i32 1 |]
+           "ep" builder in
+      let size = Llvm.build_ptrtoint ep i32 "size" builder in
+      [ size
+      ; Llvm.const_int (Lltype.to_lltype (Lltype.Integer 32)) number_of_ptrs ]
+      @ values in
+    List.foldi tags_and_values
          ~f:(fun i s v -> Llvm.build_insertvalue s v i "pack" builder)
          ~init: (Llvm.undef struct_type)
 
@@ -297,7 +318,7 @@ struct
                              "unpack" builder) in
           Lltype.Map.add bits ~key:k ~data:bitsn,
           pos + n)
-        ~init:(Lltype.Map.empty, 0)
+        ~init:(Lltype.Map.empty, 2) (* 2 is tag size *)
     in {bits = bits}
 end
 
@@ -401,9 +422,10 @@ let rec build_value
 
 (** Encoding of terms *)
 let build_term
-      (the_module : Llvm.llmodule)
-      (ctx: (Ident.t * encoded_value) list)
-      (t: Ssa.term) : encoded_value =
+    (the_module : Llvm.llmodule)
+    (func : Llvm.llvalue)
+    (ctx: (Ident.t * encoded_value) list)
+    (t: Ssa.term) : encoded_value =
   match t with
   | Ssa.Val(v) -> build_value the_module ctx v
   | Ssa.Const(Ssa.Cpush(a), v) ->
@@ -413,10 +435,10 @@ let build_term
       | None -> assert false in
     let a_struct = packing_type a in
     let mem_i8ptr = Llvm.build_call salloc
-                      (Array.of_list [Llvm.size_of a_struct])
-                      "memi8" builder in
+        [| Llvm.size_of a_struct |]
+        "memi8" builder in
     let mem_ptr = Llvm.build_bitcast mem_i8ptr (Llvm.pointer_type a_struct)
-                    "memstruct" builder in
+        "memstruct" builder in
     let venc = build_value the_module ctx v in
     let v_packed = pack_encoded_value (build_truncate_extend venc a) a in
     ignore (Llvm.build_store v_packed mem_ptr builder);
@@ -427,24 +449,25 @@ let build_term
       | Some spop -> spop
       | None -> assert false in
     let a_struct = packing_type a in
-    let mem_i8ptr = Llvm.build_call spop (Array.of_list [Llvm.size_of a_struct])
-                      "memi8" builder in
+    let mem_i8ptr = Llvm.build_call spop [| Llvm.size_of a_struct |]
+        "memi8" builder in
     let mem_ptr = Llvm.build_bitcast mem_i8ptr (Llvm.pointer_type a_struct)
-                    "memstruct" builder in
+        "memstruct" builder in
     let lstruct = Llvm.build_load mem_ptr "lstruct" builder in
     unpack_encoded_value lstruct a
   | Ssa.Const(Ssa.Cprint(s), _) ->
     let str = Llvm.build_global_string s "s" builder in
     let strptr = Llvm.build_in_bounds_gep str
-                   (Array.create ~len:2 (Llvm.const_null int_lltype)) "strptr" builder in
+        [| Llvm.const_null int_lltype; Llvm.const_null int_lltype |]
+        "strptr" builder in
     let strptrint = Llvm.build_ptrtoint strptr int_lltype "strptrint" builder in
     let i8a = Llvm.pointer_type (Llvm.i8_type context) in
     let formatstr = Llvm.build_global_string "%s" "format" builder in
     let formatstrptr = Llvm.build_in_bounds_gep formatstr
-                         (Array.create ~len:2 (Llvm.const_null int_lltype))
-                         "forrmatptr" builder in
+        [| Llvm.const_null int_lltype; Llvm.const_null int_lltype |]
+        "forrmatptr" builder in
     let printftype = Llvm.function_type (int_lltype)
-                       (Array.of_list [i8a; int_lltype]) in
+        [| i8a; int_lltype |] in
     let printf = Llvm.declare_function "printf" printftype the_module in
     let args = Array.of_list [formatstrptr; strptrint] in
     ignore (Llvm.build_call printf args "i" builder);
@@ -473,6 +496,7 @@ let build_term
   | Ssa.Const(Ssa.Cintor as const, arg)
   | Ssa.Const(Ssa.Cintxor as const, arg)
   | Ssa.Const(Ssa.Cintprint as const, arg)
+  | Ssa.Const(Ssa.Cgcalloc _ as const, arg)
   | Ssa.Const(Ssa.Calloc _ as const, arg)
   | Ssa.Const(Ssa.Cfree _ as const, arg)
   | Ssa.Const(Ssa.Cload _ as const, arg)
@@ -495,16 +519,16 @@ let build_term
         Mixedvector.singleton Lltype.int_type (Llvm.build_sdiv x y "sdiv" builder)
       | Ssa.Cintdiv, _, _ -> failwith "internal: wrong argument to intdiv"
       | Ssa.Cinteq, [x; y], [] ->
-         Mixedvector.singleton (Lltype.Integer 1)
-           (Llvm.build_icmp Llvm.Icmp.Ne x y "eq" builder)
+        Mixedvector.singleton (Lltype.Integer 1)
+          (Llvm.build_icmp Llvm.Icmp.Ne x y "eq" builder)
       | Ssa.Cinteq, _, _ -> failwith "internal: wrong argument to inteq"
       | Ssa.Cintlt, [x; y], [] ->
-         Mixedvector.singleton (Lltype.Integer 1)
-           (Llvm.build_icmp Llvm.Icmp.Uge x y "lt" builder )
+        Mixedvector.singleton (Lltype.Integer 1)
+          (Llvm.build_icmp Llvm.Icmp.Uge x y "lt" builder )
       | Ssa.Cintlt, _, _ -> failwith "internal: wrong argument to intslt"
       | Ssa.Cintslt, [x; y], [] ->
-         Mixedvector.singleton (Lltype.Integer 1)
-           (Llvm.build_icmp Llvm.Icmp.Sge x y "slt" builder )
+        Mixedvector.singleton (Lltype.Integer 1)
+          (Llvm.build_icmp Llvm.Icmp.Sge x y "slt" builder )
       | Ssa.Cintslt, _, _ -> failwith "internal: wrong argument to intslt"
       | Ssa.Cintshl, [x; y], [] ->
         Mixedvector.singleton Lltype.int_type (Llvm.build_shl x y "shl" builder)
@@ -528,15 +552,45 @@ let build_term
         let i8a = Llvm.pointer_type (Llvm.i8_type context) in
         let formatstr = Llvm.build_global_string "%i" "format" builder in
         let formatstrptr = Llvm.build_in_bounds_gep formatstr
-                             (Array.create ~len:2 (Llvm.const_null int_lltype))
-                             "forrmatptr" builder in
+            [| Llvm.const_null int_lltype; Llvm.const_null int_lltype |]
+            "forrmatptr" builder in
         let printftype = Llvm.function_type (int_lltype)
-                           (Array.of_list [i8a; int_lltype]) in
+            [| i8a; int_lltype |] in
         let printf = Llvm.declare_function "printf" printftype the_module in
-        let args = Array.of_list [formatstrptr; x] in
+        let args = [| formatstrptr; x |] in
         ignore (Llvm.build_call printf args "i" builder);
         Mixedvector.null
       | Ssa.Cintprint, _, _ -> failwith "internal: wrong argument to intprint"
+      | Ssa.Cgcalloc(a), _, _ ->
+        let malloc =
+          match Llvm.lookup_function "gc_alloc" the_module with
+          | Some malloc -> malloc
+          | None -> assert false in
+        let a_struct = packing_type a in
+        let addr = Llvm.build_call malloc
+            [| Llvm.size_of a_struct |]
+            "addr" builder in
+        let oom_block = Llvm.append_block context "collect" func in
+        let ok_block = Llvm.append_block context "alloc_ok" func in
+        let nullptr = Llvm.const_null (Lltype.to_lltype Lltype.Pointer) in
+        let oom = Llvm.build_icmp (Llvm.Icmp.Eq) addr nullptr "oom" builder in
+        ignore (Llvm.build_cond_br oom oom_block ok_block builder);
+        Llvm.position_at_end oom_block builder;
+        let local_roots =
+          let roots e =
+            Mixedvector.llvalues_at_key e Lltype.Pointer in
+          List.concat_map ctx ~f:(fun (_, e) -> roots e) in
+        let collect =
+          match Llvm.lookup_function "gc_collect" the_module with
+          | Some collect -> collect
+          | None -> assert false in
+        if (local_roots <> []) then
+          ignore (Llvm.build_call collect
+                    (Array.of_list local_roots)
+                    "" builder);
+        ignore (Llvm.build_br ok_block builder);
+        Llvm.position_at_end ok_block builder;
+        Mixedvector.singleton Lltype.Pointer addr
       | Ssa.Calloc(a), _, _ ->
         let malloc =
           match Llvm.lookup_function "malloc" the_module with
@@ -544,32 +598,32 @@ let build_term
           | None -> assert false in
         let a_struct = packing_type a in
         let addr = Llvm.build_call malloc
-                          (Array.of_list [Llvm.size_of a_struct])
-                          "addr" builder in
+            [| Llvm.size_of a_struct |]
+            "addr" builder in
         Mixedvector.singleton Lltype.Pointer addr
       | Ssa.Cfree _, [], [addr] ->
         let free =
           match Llvm.lookup_function "free" the_module with
           | Some free -> free
           | None -> assert false in
-        ignore (Llvm.build_call free (Array.of_list [addr]) "free" builder);
+        ignore (Llvm.build_call free [| addr |] "free" builder);
         Mixedvector.null
       | Ssa.Cfree _, _, _ -> failwith "internal: wrong argument to free"
       | Ssa.Cload a, [], [addr] ->
         let a_struct = packing_type a in
         let mem_ptr = Llvm.build_bitcast addr
-                        (Llvm.pointer_type a_struct) "memptr" builder in
+            (Llvm.pointer_type a_struct) "memptr" builder in
         let lstruct = Llvm.build_load mem_ptr "lstruct" builder in
         unpack_encoded_value lstruct a
       | Ssa.Cload _, _, _ -> failwith "internal: wrong argument to load"
       | Ssa.Cstore a, _, (addr :: _)  ->
         let a_struct = packing_type a in
         let mem_ptr = Llvm.build_bitcast addr
-                        (Llvm.pointer_type a_struct) "memptr" builder in
+            (Llvm.pointer_type a_struct) "memptr" builder in
         (* The following depends on the encoding of box and pairs and
          * is probably fragile! *)
         let _, venc = Mixedvector.takedrop argenc
-                        (Profile.singleton Lltype.Pointer) in
+            (Profile.singleton Lltype.Pointer) in
         let v_packed = pack_encoded_value (build_truncate_extend venc a) a in
         ignore (Llvm.build_store v_packed mem_ptr builder);
         Mixedvector.null
@@ -582,40 +636,44 @@ let build_term
     end
 
 let rec build_letbindings
-      (the_module : Llvm.llmodule)
-          (ctx: (Ident.t * encoded_value) list)
-          (l: Ssa.let_bindings)
+    (the_module : Llvm.llmodule)
+    (func : Llvm.llvalue)
+    (ctx: (Ident.t * encoded_value) list)
+    (l: Ssa.let_bindings)
   : (Ident.t * encoded_value) list =
   match l with
   | [] -> ctx
   | Ssa.Let((x, a), t) :: lets ->
-    let ctx1 = build_letbindings the_module ctx lets in
-    let tenc = build_term the_module ctx1 t in
+    let ctx1 = build_letbindings the_module func ctx lets in
+    let tenc = build_term the_module func ctx1 t in
     assert_type tenc a;
     (x, tenc) :: ctx1
 
 let build_body
-      (the_module : Llvm.llmodule)
-      (ctx: (Ident.t * encoded_value) list)
-      (l: Ssa.let_bindings)
-      (v: Ssa.value)
+    (the_module : Llvm.llmodule)
+    (func : Llvm.llvalue)
+    (ctx: (Ident.t * encoded_value) list)
+    (l: Ssa.let_bindings)
+    (v: Ssa.value)
   : encoded_value =
-  let ctx1 = build_letbindings the_module ctx l in
+  let ctx1 = build_letbindings the_module func ctx l in
   build_value the_module ctx1 v
 
-let build_ssa_blocks (the_module : Llvm.llmodule) (func : Llvm.llvalue)
-      (ssa_func : Ssa.t) : unit =
+let build_ssa_blocks
+    (the_module : Llvm.llmodule)
+    (func : Llvm.llvalue)
+    (ssa_func : Ssa.t) : unit =
   let label_types = Ident.Table.create () in
   let predecessors = Ident.Table.create () in
   List.iter ssa_func.Ssa.blocks
     ~f:(fun b ->
-      let l = Ssa.label_of_block b in
-      Ident.Table.replace label_types ~key:l.Ssa.name ~data:l.Ssa.message_type;
-      List.iter (Ssa.targets_of_block b)
-        ~f:(fun p -> Ident.Table.change predecessors p.Ssa.name
-                       (function None -> Some 1
-                               | Some i -> Some (i+1)))
-    );
+        let l = Ssa.label_of_block b in
+        Ident.Table.replace label_types ~key:l.Ssa.name ~data:l.Ssa.message_type;
+        List.iter (Ssa.targets_of_block b)
+          ~f:(fun p -> Ident.Table.change predecessors p.Ssa.name
+                 (function None -> Some 1
+                         | Some i -> Some (i+1)))
+      );
 
   let blocks = Ident.Table.create () in
   let phi_nodes = Ident.Table.create () in
@@ -642,7 +700,7 @@ let build_ssa_blocks (the_module : Llvm.llmodule) (func : Llvm.llvalue)
           begin
             position_at_start (get_block dst) builder;
             let phi = Mixedvector.build_phi
-                        (encoded_value, src_block) builder in
+                (encoded_value, src_block) builder in
             Ident.Table.replace phi_nodes ~key:dst ~data:phi
           end
       end
@@ -653,96 +711,99 @@ let build_ssa_blocks (the_module : Llvm.llmodule) (func : Llvm.llvalue)
   Llvm.set_value_name "packed_arg" packed_arg;
   Llvm.position_at_end entry_block builder;
   let arg = unpack_encoded_value packed_arg
-              ssa_func.Ssa.entry_label.Ssa.message_type in
+      ssa_func.Ssa.entry_label.Ssa.message_type in
   ignore (Llvm.build_br (get_block ssa_func.Ssa.entry_label.Ssa.name) builder);
   connect_to entry_block arg ssa_func.Ssa.entry_label.Ssa.name;
   (* build unconnected blocks *)
   let open Ssa in
   List.iter ssa_func.blocks
     ~f:(fun block ->
-      flush stdout;
-      match block with
-      | Unreachable(src) ->
-        Llvm.position_at_end (get_block src.name) builder;
-        ignore (Llvm.build_unreachable builder)
-      | Direct(src, x, lets, body, dst) ->
-        Llvm.position_at_end (get_block src.name) builder;
-        let senc = Ident.Table.find_exn phi_nodes src.name in
-        assert_type senc src.message_type;
-        let ev = build_body the_module [(x, senc)] lets body in
-        let src_block = Llvm.insertion_block builder in
-        ignore (Llvm.build_br (get_block dst.name) builder);
-        connect_to src_block ev dst.name
-      | Branch(src, x, lets, (id, params, body, cases)) ->
-        begin
+        flush stdout;
+        match block with
+        | Unreachable(src) ->
+          Llvm.position_at_end (get_block src.name) builder;
+          ignore (Llvm.build_unreachable builder)
+        | Direct(src, x, lets, body, dst) ->
+          Llvm.position_at_end (get_block src.name) builder;
+          let senc = Ident.Table.find_exn phi_nodes src.name in
+          assert_type senc src.message_type;
+          let ev = build_body the_module func [(x, senc)] lets body in
+          let src_block = Llvm.insertion_block builder in
+          ignore (Llvm.build_br (get_block dst.name) builder);
+          connect_to src_block ev dst.name
+        | Branch(src, x, lets, (id, params, body, cases)) ->
+          begin
+            Llvm.position_at_end (get_block src.name) builder;
+            let xenc = Ident.Table.find_exn phi_nodes src.name in
+            assert_type xenc src.message_type;
+            let ctx = build_letbindings the_module func [(x, xenc)] lets in
+            let ebody = build_value the_module ctx body in
+            let n = List.length cases in
+            assert (n > 0);
+            match cases with
+            | [(y, v, dst)] ->
+              let venc =
+                build_value the_module ((y, ebody)::ctx) v in
+              let this_block = Llvm.insertion_block builder in
+              ignore (Llvm.build_br (get_block dst.name) builder);
+              connect_to this_block venc dst.name
+            | _ ->
+              let cond, yenc =
+                let ienc, ya = Mixedvector.takedrop ebody
+                    (Profile.singleton (Lltype.Integer (log n))) in
+                let cond = Mixedvector.llvalue_of_singleton ienc in
+                cond, ya in
+              let case_types = Basetype.Data.constructor_types id params in
+              let jump_targets =
+                List.map2_exn cases case_types
+                  ~f:(fun (y, v, dst) a ->
+                      (y, build_truncate_extend yenc a), v, dst) in
+              let func = Llvm.block_parent (Llvm.insertion_block builder) in
+              let case_blocks =
+                List.init n
+                  ~f:(fun i -> Llvm.append_block context
+                         ("case" ^ (string_of_int i)) func) in
+              let default_block = List.hd_exn case_blocks in
+              let switch =
+                Llvm.build_switch cond default_block (n-1) builder in
+              (* build case blocks *)
+              List.iteri (List.zip_exn case_blocks jump_targets)
+                ~f:(fun i (block, ((y, yenc), v, dst)) ->
+                    if i > 0 then
+                      Llvm.add_case switch
+                        (Llvm.const_int (Llvm.integer_type context (log n)) i)
+                        block;
+                    Llvm.position_at_end block builder;
+                    let venc = build_value the_module ((y, yenc)::ctx) v in
+                    let this_block = Llvm.insertion_block builder in
+                    ignore (Llvm.build_br (get_block dst.name) builder);
+                    connect_to this_block venc dst.name
+                  )
+          end
+        | Return(src, x, lets, body, return_type) ->
           Llvm.position_at_end (get_block src.name) builder;
           let xenc = Ident.Table.find_exn phi_nodes src.name in
-          assert_type xenc src.message_type;
-          let ctx = build_letbindings the_module [(x, xenc)] lets in
-          let ebody = build_value the_module ctx body in
-          let n = List.length cases in
-          assert (n > 0);
-          match cases with
-          | [(y, v, dst)] ->
-            let venc =
-              build_value the_module ((y, ebody)::ctx) v in
-            let this_block = Llvm.insertion_block builder in
-            ignore (Llvm.build_br (get_block dst.name) builder);
-            connect_to this_block venc dst.name
-          | _ ->
-            let cond, yenc =
-              let ienc, ya = Mixedvector.takedrop ebody
-                               (Profile.singleton (Lltype.Integer (log n))) in
-              let cond = Mixedvector.llvalue_of_singleton ienc in
-              cond, ya in
-            let case_types = Basetype.Data.constructor_types id params in
-            let jump_targets =
-              List.map2_exn cases case_types
-                ~f:(fun (y, v, dst) a ->
-                  (y, build_truncate_extend yenc a), v, dst) in
-            let func = Llvm.block_parent (Llvm.insertion_block builder) in
-            let case_blocks =
-              List.init n
-                ~f:(fun i -> Llvm.append_block context
-                               ("case" ^ (string_of_int i)) func) in
-            let default_block = List.hd_exn case_blocks in
-            let switch =
-              Llvm.build_switch cond default_block (n-1) builder in
-            (* build case blocks *)
-            List.iteri (List.zip_exn case_blocks jump_targets)
-              ~f:(fun i (block, ((y, yenc), v, dst)) ->
-                 if i > 0 then
-                   Llvm.add_case switch
-                     (Llvm.const_int (Llvm.integer_type context (log n)) i)
-                     block;
-                 Llvm.position_at_end block builder;
-                 let venc = build_value the_module ((y, yenc)::ctx) v in
-                 let this_block = Llvm.insertion_block builder in
-                 ignore (Llvm.build_br (get_block dst.name) builder);
-                 connect_to this_block venc dst.name
-              )
-        end
-      | Return(src, x, lets, body, return_type) ->
-        Llvm.position_at_end (get_block src.name) builder;
-        let xenc = Ident.Table.find_exn phi_nodes src.name in
-        let ev = build_body the_module [(x, xenc)] lets body in
-        let pev = pack_encoded_value ev return_type in
-        ignore (Llvm.build_ret pev builder)
-    )
+          let ev = build_body the_module func [(x, xenc)] lets body in
+          let pev = pack_encoded_value ev return_type in
+          ignore (Llvm.build_ret pev builder)
+      )
 
 let llvm_compile (ssa_func : Ssa.t) : Llvm.llmodule =
   let the_module = Llvm.create_module context "int" in
 
   (* General function declarations *)
+  let voidtype = Llvm.void_type context in
   let ptrtype = Llvm.pointer_type (Llvm.i8_type context) in
   let size_lltype =  Llvm.i64_type context in
   let size_to_ptrtype =
-    Llvm.function_type ptrtype (Array.of_list [size_lltype]) in
+    Llvm.function_type ptrtype [| size_lltype |] in
   ignore (Llvm.declare_function "salloc" size_to_ptrtype the_module);
   ignore (Llvm.declare_function "spop" size_to_ptrtype the_module);
-  ignore (Llvm.declare_function "malloc" size_to_ptrtype the_module);
+  ignore (Llvm.declare_function "gc_alloc" size_to_ptrtype the_module);
+  let collect_type = Llvm.var_arg_function_type voidtype [| ptrtype |] in
+  ignore (Llvm.declare_function "gc_collect" collect_type the_module);
   let freetype =
-    Llvm.function_type ptrtype (Array.of_list [ptrtype]) in
+    Llvm.function_type ptrtype [| ptrtype |] in
   ignore (Llvm.declare_function "free" freetype the_module);
 
   (* Main function *)
@@ -755,13 +816,13 @@ let llvm_compile (ssa_func : Ssa.t) : Llvm.llmodule =
   (* make main function *)
   if ssa_func.Ssa.func_name = "main" then
     begin
-      let main_ty = Llvm.function_type int_lltype (Array.of_list []) in
+      let main_ty = Llvm.function_type int_lltype [| |] in
       let main = Llvm.declare_function "main" main_ty the_module in
       let start_block = Llvm.append_block context "start" main in
-      let args = Array.of_list [Llvm.undef arg_ty] in
+      let args = [| Llvm.undef arg_ty |] in
       Llvm.position_at_end start_block builder;
       ignore (Llvm.build_call func args "ret" builder);
       ignore (Llvm.build_ret (Llvm.const_int int_lltype 0) builder)
     end;
-  (* Llvm.dump_module the_module; *)
+  (*  Llvm.dump_module the_module; *)
   the_module
