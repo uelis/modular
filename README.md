@@ -95,8 +95,9 @@ Terms can be formed using the following concrete syntax:
 
 ```
   s,t  ::=  x  |  let x = s in t  |  \x -> t  |  s t  |  fix f x -> t
+         |  if s = t then t1 else t2
          |  0  |  -1  |  1  |  -2  |  2  | ...
-         |  intadd(s, t)  |  print(t)
+         |  s + t  |  s - t  |  s * t  |  s / t  |  print(t)
 ```
 
 The concrete syntax for types is
@@ -112,11 +113,11 @@ For example, the following program prints the 20-th Fibonacci number
 
 ```
   let fib =
-    fix fib x -> let x1 = intadd(x, -1) in
-                 let x2 = intadd(x, -2) in
-                 if0 x1 then 1 else
-                 if0 x2 then 1 else
-                 intadd(fib x1, fib x2)
+    fix fib x -> let x1 = x - 1 in
+                 let x2 = x - 2 in
+                 if x1 = 0 then 1 else
+                 if x2 = 0 then 1 else
+                 (fib x1) +  (fib x2)
   let main =
     print (fib 20)
 ```
