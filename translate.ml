@@ -167,6 +167,7 @@ let rec build_context_lookup
       let v' = Builder.fst v in
       build_context_lookup delta x v'
 
+(* TODO: need to clone values with heap pointers *)
 let build_context_map
     (gamma: Cbvtype.t Typing.context)
     (delta: Cbvtype.t Typing.context)

@@ -21,6 +21,7 @@ type op_const =
   | Cintor
   | Cintxor
   | Cintprint
+  | Cgcalloc of Basetype.t
   | Calloc of Basetype.t
   | Cfree of Basetype.t
   | Cload of Basetype.t
