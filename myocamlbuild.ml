@@ -638,7 +638,9 @@ let js_hacks = function
     pflag ["ocaml"; "ocamldep"] "predicate" (fun s -> S [A "-predicates"; A s])
   | _ -> ()
 
+
 let () =
+  mark_tag_used("tests");
   Ocamlbuild_plugin.dispatch (fun hook ->
     js_hacks hook;
     Ppx_driver_ocamlbuild.dispatch hook;
