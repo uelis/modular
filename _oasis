@@ -1,0 +1,36 @@
+Name: Modular
+Version: 0.1
+Synopsis: A small experimental compiler.
+Authors: Ulrich Schoepp <schoepp@tcs.ifi.lmu.de>
+License: LGPL with OCaml linking exception
+
+Description: A small compiler to test the approach of small-scale modularity.
+Homepage: http://ulrichschoepp.de
+OASISFormat: 0.4
+OCamlVersion: >= 4.02.3
+FindlibVersion: >= 1.3.2
+BuildTools: ocamlbuild
+Plugins: META (0.4), DevFiles (0.4), StdFiles (0.4)
+AlphaFeatures: ocamlbuild_more_args
+XOCamlbuildPluginTags: package(ppx_driver.ocamlbuild)
+
+Executable "modular"
+  Path: src
+  MainIs: modular.ml
+  CompiledObject: native
+  BuildDepends:
+    core_kernel (>= 113.24.00),
+    sexplib,
+    llvm,
+    llvm.bitwriter
+
+Executable "test"
+  Path: src
+  MainIs: test.ml
+  CompiledObject: native
+  BuildDepends:
+    core,
+    sexplib,
+    llvm,
+    llvm.bitwriter,
+    oUnit

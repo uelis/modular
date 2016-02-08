@@ -1,17 +1,41 @@
-CFLAGS = -cflags "-g"  -cflags "-w A-4-33-40-41-42-43-34-44" -cflags -strict-sequence
-OCAMLBUILD = ocamlbuild -j 0 -use-ocamlfind -tag thread -syntax camlp4o -pkg sexplib.syntax ${CFLAGS}
+# OASIS_START
+# DO NOT EDIT (digest: a3c674b4239234cbbe53afe090018954)
 
-all: native
+SETUP = ocaml setup.ml
 
-native:
-	${OCAMLBUILD} modular.native
+build: setup.data
+	$(SETUP) -build $(BUILDFLAGS)
 
-test:
-	${OCAMLBUILD} test.native
-	./test.native
+doc: setup.data build
+	$(SETUP) -doc $(DOCFLAGS)
+
+test: setup.data build
+	$(SETUP) -test $(TESTFLAGS)
+
+all:
+	$(SETUP) -all $(ALLFLAGS)
+
+install: setup.data
+	$(SETUP) -install $(INSTALLFLAGS)
+
+uninstall: setup.data
+	$(SETUP) -uninstall $(UNINSTALLFLAGS)
+
+reinstall: setup.data
+	$(SETUP) -reinstall $(REINSTALLFLAGS)
 
 clean:
-	rm -rf *.cmo *.cmx *.cmi parser.ml lexer.ml parser.mli _build *.byte *.native
+	$(SETUP) -clean $(CLEANFLAGS)
 
-veryclean:
-	rm -f *.ssa *.ssa.traced *.ssa.shortcut *.ll *.bc
+distclean:
+	$(SETUP) -distclean $(DISTCLEANFLAGS)
+
+setup.data:
+	$(SETUP) -configure $(CONFIGUREFLAGS)
+
+configure:
+	$(SETUP) -configure $(CONFIGUREFLAGS)
+
+.PHONY: build doc test all install uninstall reinstall clean distclean configure
+
+# OASIS_STOP

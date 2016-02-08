@@ -18,7 +18,7 @@ module Lltype: sig
   type t =
     | Integer of int
     | Pointer (* void pointer *)
-  with sexp
+    [@@deriving sexp]
 
   module Map: Map.S with type Key.t = t
 
@@ -31,7 +31,7 @@ end
     type t =
       | Integer of int
       | Pointer
-    with sexp
+    [@@deriving sexp]
 
     let compare (x: t) (y: t) =
       match x, y with
@@ -668,7 +668,7 @@ let build_ssa_blocks
   List.iter ssa_func.Ssa.blocks
     ~f:(fun b ->
         let l = Ssa.label_of_block b in
-        Ident.Table.replace label_types ~key:l.Ssa.name ~data:l.Ssa.message_type;
+        Ident.Table.set label_types ~key:l.Ssa.name ~data:l.Ssa.message_type;
         List.iter (Ssa.targets_of_block b)
           ~f:(fun p -> Ident.Table.change predecessors p.Ssa.name
                  (function None -> Some 1
@@ -683,7 +683,7 @@ let build_ssa_blocks
     | None ->
       let label = "L" ^ (Ident.to_string name) in
       let block = Llvm.append_block context label func in
-      Ident.Table.replace blocks ~key:name ~data:block;
+      Ident.Table.set blocks ~key:name ~data:block;
       block in
   let connect_to src_block encoded_value dst =
     try
@@ -695,13 +695,13 @@ let build_ssa_blocks
       begin
         (* Insert phi node if block has more than one predecessor. *)
         if Ident.Table.find predecessors dst = Some 1 then
-          Ident.Table.replace phi_nodes ~key:dst ~data:encoded_value
+          Ident.Table.set phi_nodes ~key:dst ~data:encoded_value
         else
           begin
             position_at_start (get_block dst) builder;
             let phi = Mixedvector.build_phi
                 (encoded_value, src_block) builder in
-            Ident.Table.replace phi_nodes ~key:dst ~data:phi
+            Ident.Table.set phi_nodes ~key:dst ~data:phi
           end
       end
   in
