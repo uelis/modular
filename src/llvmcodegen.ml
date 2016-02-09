@@ -279,8 +279,7 @@ struct
           args @ (List.init n ~f:(fun _ -> Lltype.to_lltype i)))
         ~init:[] in
     let tags_and_members =
-      [ Llvm.integer_type context 32    (* size *)
-      ; Llvm.integer_type context 32]  (* number of pointers *)
+      [ Llvm.integer_type context 64 ]   (* tag *)
       @ struct_members in
     Llvm.packed_struct_type context (Array.of_list tags_and_members)
 
@@ -294,16 +293,20 @@ struct
       match Profile.find (to_profile x) Lltype.Pointer with
       | Some n -> n
       | None -> 0 in
-    let tags_and_values =
-      let i32 = Llvm.integer_type context 32 in
-      let ep = Llvm.build_gep
-          (Llvm.const_null (Llvm.pointer_type i32))
-          [| Llvm.const_int i32 1 |]
-           "ep" builder in
-      let size = Llvm.build_ptrtoint ep i32 "size" builder in
-      [ size
-      ; Llvm.const_int (Lltype.to_lltype (Lltype.Integer 32)) number_of_ptrs ]
-      @ values in
+    let tag =
+        let i64 = Llvm.integer_type context 64 in
+        let ep = Llvm.build_gep
+            (Llvm.const_null (Llvm.pointer_type struct_type))
+            [| Llvm.const_int i64 1 |]
+            "ep" builder in
+        let size = Llvm.build_ptrtoint ep i64 "size" builder in
+        let nptrs = Llvm.const_int i64 number_of_ptrs in
+        let nofwd = Llvm.const_int i64 1 in
+        let t1 = Llvm.build_shl size (Llvm.const_int i64 32) "size" builder in
+        let t2 = Llvm.build_shl nptrs (Llvm.const_int i64 1) "nnptrs" builder in
+        let t3 = Llvm.build_add t1 t2 "t3" builder in
+        Llvm.build_add t3 nofwd "tag" builder in
+    let tags_and_values = tag :: values in
     List.foldi tags_and_values
          ~f:(fun i s v -> Llvm.build_insertvalue s v i "pack" builder)
          ~init: (Llvm.undef struct_type)
@@ -318,7 +321,7 @@ struct
                              "unpack" builder) in
           Lltype.Map.add bits ~key:k ~data:bitsn,
           pos + n)
-        ~init:(Lltype.Map.empty, 2) (* 2 is tag size *)
+        ~init:(Lltype.Map.empty, 1) (* first item is the tag *)
     in {bits = bits}
 end
 
@@ -586,7 +589,8 @@ let build_term
           | None -> assert false in
         if (local_roots <> []) then
           ignore (Llvm.build_call collect
-                    (Array.of_list local_roots)
+                    (Array.of_list (Llvm.const_int (Llvm.i64_type context) (List.length local_roots) ::
+                                    local_roots))
                     "" builder);
         ignore (Llvm.build_br ok_block builder);
         Llvm.position_at_end ok_block builder;
@@ -800,7 +804,8 @@ let llvm_compile (ssa_func : Ssa.t) : Llvm.llmodule =
   ignore (Llvm.declare_function "salloc" size_to_ptrtype the_module);
   ignore (Llvm.declare_function "spop" size_to_ptrtype the_module);
   ignore (Llvm.declare_function "gc_alloc" size_to_ptrtype the_module);
-  let collect_type = Llvm.var_arg_function_type voidtype [| ptrtype |] in
+  let collect_type =
+    Llvm.var_arg_function_type voidtype [| Llvm.i64_type context; ptrtype |] in
   ignore (Llvm.declare_function "gc_collect" collect_type the_module);
   let freetype =
     Llvm.function_type ptrtype [| ptrtype |] in
