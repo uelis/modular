@@ -12,10 +12,10 @@
 static int8_t from_space_mem[MEM_SIZE];
 static int8_t to_space_mem[MEM_SIZE];
 
-static int8_t *from_space = from_space_mem;
-static int8_t *to_space = to_space_mem;
+int8_t *from_space = from_space_mem;
+int8_t *to_space = to_space_mem;
 
-static int next_free = 0;
+int next_free = 0;
 
 void
 raise_out_of_memory()
@@ -24,14 +24,14 @@ raise_out_of_memory()
   exit(-1);
 }
 
-__attribute__((always_inline))
+static inline
 bool
 in_from_space(int8_t *p)
 {
   return (from_space <= p) && (p < from_space + MEM_SIZE);
 }
 
-__attribute__((always_inline))
+static inline
 bool
 in_to_space(int8_t *p)
 {
@@ -77,7 +77,7 @@ gc_alloc(size_t size)
  * Copy record to address next and replace its tag with a forward pointer.
  * Assumes that record points to from_space and next points to to_space
  */
-void
+static void
 copy_record(void *record, void *next)
 {
   assert( in_from_space(record) );
