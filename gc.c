@@ -12,37 +12,41 @@
 static int8_t from_space_mem[MEM_SIZE];
 static int8_t to_space_mem[MEM_SIZE];
 
-static int8_t* from_space = from_space_mem;
-static int8_t* to_space = to_space_mem;
+static int8_t *from_space = from_space_mem;
+static int8_t *to_space = to_space_mem;
 
 static int next_free = 0;
 
 void
-raise_out_of_memory() {
+raise_out_of_memory()
+{
   fprintf(stderr, "out of memory\n");
   exit(-1);
 }
 
 bool
-in_from_space(int8_t* p) {
+in_from_space(int8_t *p)
+{
   return (from_space <= p) && (p < from_space + MEM_SIZE);
 }
 
 bool
-in_to_space(int8_t* p) {
+in_to_space(int8_t *p)
+{
   return (to_space <= p) && (p < to_space + MEM_SIZE);
 }
 
-/* Record organisation:
-   +----------------+---------------------+-----+-----------+------+
-   | tag (64 bits)  | pointer 1 (int8_t*) | ... | pointer n | data |
-   +----------------+---------------------+-----+-----------+------+
-
-   If the last bit of the tag is 1, then it contains the following data:
-   - higher most 32 bits: record size (including tag)
-   - next 31 bits: number of pointers, i.e. n
-   If the last bit of the tag is 0, then it is a forward pointer.
-*/
+/* 
+ *  Record organisation:
+ *  +----------------+---------------------+-----+-----------+------+
+ *  | tag (64 bits)  | pointer 1 (int8_t*) | ... | pointer n | data |
+ *  +----------------+---------------------+-----+-----------+------+
+ *
+ *  If the last bit of the tag is 1, then it contains the following data:
+ *  - higher most 32 bits: record size (including tag)
+ *  - next 31 bits: number of pointers, i.e. n
+ *  If the last bit of the tag is 0, then it is a forward pointer.
+ */
 
 #define TAG(r)       *((int64_t*)r)
 #define SIZE(r)      (TAG(r) >> 32)
@@ -51,11 +55,13 @@ in_to_space(int8_t* p) {
 #define FWD_PTR(r)   *((int8_t**)r)
 #define PTR(r, i)    *((int8_t**)((int64_t*)r + 1) + i)
 
-/* Allocate size bytes.
-   Returns NULL if memory is full.
-*/
+/* 
+ * Allocate size bytes.
+ * Returns NULL if memory is full.
+ */
 void*
-gc_alloc(size_t size) {
+gc_alloc(size_t size)
+{
   int8_t* chunk = from_space + next_free;
   next_free += size;
   if (next_free >= MEM_SIZE) {
@@ -64,37 +70,41 @@ gc_alloc(size_t size) {
   return chunk;
 }
 
-/* Copy record to address next and replace its tag with a forward pointer.
-   Assumes that record points to from_space and next points to to_space
-*/
+/* 
+ * Copy record to address next and replace its tag with a forward pointer.
+ * Assumes that record points to from_space and next points to to_space
+ */
 void
-copy_record(void* record, void* next) {
+copy_record(void *record, void *next)
+{
   assert( in_from_space(record) );
   assert( in_to_space(next) );
   int size = SIZE(record);
   memcpy(next, record, size);
-  // forward pointer
-  TAG(record) = 0; // make sure the last bit of tag is 0
+  /* forward pointer */
+  TAG(record) = 0; /* make sure the last bit of tag is 0 */
   FWD_PTR(record) = (void*)next;
 }
 
-/* Perform garbage collection with the given local roots.
+/* 
+ * Perform garbage collection with the given local roots.
  * bytes_needed is the number of bytes that are needed after collection.
  * rootc is the number of root arguments that follow.
  * The following arguments must be pointers into from_space.
  */
 void
-gc_collect(size_t bytes_needed, int64_t rootc, ...) {
+gc_collect(size_t bytes_needed, int64_t rootc, ...)
+{
 
-  int8_t* next;
+  int8_t *next;
   next = to_space;
 
-  // copy roots
-
+  /* copy roots */
+  
   va_list roots;
   va_start(roots, rootc);
   for (int i = 0; i < rootc; i++) {
-    int8_t* root = va_arg(roots, int8_t*);
+    int8_t *root = va_arg(roots, int8_t*);
     assert( root != NULL && in_from_space(root) );
     int size = SIZE(root);
     copy_record(root, next);
@@ -102,9 +112,9 @@ gc_collect(size_t bytes_needed, int64_t rootc, ...) {
   }
   va_end(roots);
 
-  // copy reachable
-
-  int8_t* scan;
+  /* copy reachable */
+  
+  int8_t *scan;
   scan = to_space;
 
   while (scan < next) {
@@ -112,7 +122,7 @@ gc_collect(size_t bytes_needed, int64_t rootc, ...) {
     int ptr_count = PTR_COUNT(scan);
 
     for (int i = 0; i < ptr_count; i++) {
-      int8_t* p = PTR(scan, i);
+      int8_t *p = PTR(scan, i);
       if (p != NULL && in_from_space(p)) {
 
         if (NO_FWD(p)) {
