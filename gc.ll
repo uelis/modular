@@ -1,4 +1,4 @@
-; ModuleID = 'gc.c'
+; ModuleID = 'src/gc.c'
 target datalayout = "e-m:e-i64:64-f80:128-n8:16:32:64-S128"
 target triple = "x86_64-redhat-linux-gnu"
 
@@ -14,7 +14,7 @@ target triple = "x86_64-redhat-linux-gnu"
 @stderr = external global %struct._IO_FILE*, align 8
 @.str = private unnamed_addr constant [15 x i8] c"out of memory\0A\00", align 1
 @.str.1 = private unnamed_addr constant [42 x i8] c"root != ((void*)0) && in_from_space(root)\00", align 1
-@.str.2 = private unnamed_addr constant [5 x i8] c"gc.c\00", align 1
+@.str.2 = private unnamed_addr constant [9 x i8] c"src/gc.c\00", align 1
 @__PRETTY_FUNCTION__.gc_collect = private unnamed_addr constant [38 x i8] c"void gc_collect(size_t, int64_t, ...)\00", align 1
 @.str.3 = private unnamed_addr constant [22 x i8] c"in_from_space(record)\00", align 1
 @__PRETTY_FUNCTION__.copy_record = private unnamed_addr constant [33 x i8] c"void copy_record(void *, void *)\00", align 1
@@ -138,7 +138,7 @@ define void @gc_collect(i64 %bytes_needed, i64 %rootc, ...) #0 {
   br label %38
 
 ; <label>:36                                      ; preds = %32, %27
-  call void @__assert_fail(i8* getelementptr inbounds ([42 x i8], [42 x i8]* @.str.1, i32 0, i32 0), i8* getelementptr inbounds ([5 x i8], [5 x i8]* @.str.2, i32 0, i32 0), i32 111, i8* getelementptr inbounds ([38 x i8], [38 x i8]* @__PRETTY_FUNCTION__.gc_collect, i32 0, i32 0)) #6
+  call void @__assert_fail(i8* getelementptr inbounds ([42 x i8], [42 x i8]* @.str.1, i32 0, i32 0), i8* getelementptr inbounds ([9 x i8], [9 x i8]* @.str.2, i32 0, i32 0), i32 111, i8* getelementptr inbounds ([38 x i8], [38 x i8]* @__PRETTY_FUNCTION__.gc_collect, i32 0, i32 0)) #6
   unreachable
                                                   ; No predecessors!
   br label %38
@@ -361,7 +361,7 @@ define internal void @copy_record(i8* %record, i8* %next) #0 {
   br label %8
 
 ; <label>:6                                       ; preds = %0
-  call void @__assert_fail(i8* getelementptr inbounds ([22 x i8], [22 x i8]* @.str.3, i32 0, i32 0), i8* getelementptr inbounds ([5 x i8], [5 x i8]* @.str.2, i32 0, i32 0), i32 83, i8* getelementptr inbounds ([33 x i8], [33 x i8]* @__PRETTY_FUNCTION__.copy_record, i32 0, i32 0)) #6
+  call void @__assert_fail(i8* getelementptr inbounds ([22 x i8], [22 x i8]* @.str.3, i32 0, i32 0), i8* getelementptr inbounds ([9 x i8], [9 x i8]* @.str.2, i32 0, i32 0), i32 83, i8* getelementptr inbounds ([33 x i8], [33 x i8]* @__PRETTY_FUNCTION__.copy_record, i32 0, i32 0)) #6
   unreachable
                                                   ; No predecessors!
   br label %8
@@ -375,7 +375,7 @@ define internal void @copy_record(i8* %record, i8* %next) #0 {
   br label %14
 
 ; <label>:12                                      ; preds = %8
-  call void @__assert_fail(i8* getelementptr inbounds ([18 x i8], [18 x i8]* @.str.4, i32 0, i32 0), i8* getelementptr inbounds ([5 x i8], [5 x i8]* @.str.2, i32 0, i32 0), i32 84, i8* getelementptr inbounds ([33 x i8], [33 x i8]* @__PRETTY_FUNCTION__.copy_record, i32 0, i32 0)) #6
+  call void @__assert_fail(i8* getelementptr inbounds ([18 x i8], [18 x i8]* @.str.4, i32 0, i32 0), i8* getelementptr inbounds ([9 x i8], [9 x i8]* @.str.2, i32 0, i32 0), i32 84, i8* getelementptr inbounds ([33 x i8], [33 x i8]* @__PRETTY_FUNCTION__.copy_record, i32 0, i32 0)) #6
   unreachable
                                                   ; No predecessors!
   br label %14

@@ -40,5 +40,5 @@ configure:
 
 # OASIS_STOP
 
-gc.ll: gc.c
-	clang -S -emit-llvm gc.c
+gc.ll: src/gc.c
+	clang -S -emit-llvm src/gc.c
