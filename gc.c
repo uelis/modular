@@ -5,7 +5,7 @@
 #include <inttypes.h>
 #include <string.h>
 
-#define MEM_SIZE 1024
+#define MEM_SIZE 1024*10
 
 int8_t from_space_mem[MEM_SIZE];
 int8_t to_space_mem[MEM_SIZE];
@@ -22,13 +22,12 @@ void init() {
    Returns NULL if memory is full.
 */
 void* gc_alloc(size_t size) {
-  printf("h\n");
-  int8_t* chunk = &from_space[next_free];
+  int8_t* chunk = from_space + next_free;
   next_free += size;
   if (next_free >= MEM_SIZE) {
     chunk = NULL;    
   }
-  printf("chunk: %p\n", chunk);  
+  // fprintf(stderr, "chunk: %p\n", chunk);  
   return chunk;
 }
 
@@ -36,7 +35,7 @@ void* gc_alloc(size_t size) {
 #define SIZE(r) ((TAG(r) >> 32))
 #define PTR_COUNT(r) ((TAG(r)& 0xFFFFFFFF) >> 1)
 #define NO_FWD(r) (TAG(r) & 0x1)
-#define FWD_PTR(r) ((void**)r)
+#define FWD_PTR(r) *((void**)r)
 #define PTR(r, i) ((void**)((int64_t*)r + 1) + i)
 
 void* copy_record(void* r, int8_t* next) {
@@ -44,7 +43,7 @@ void* copy_record(void* r, int8_t* next) {
   memcpy((void*)next, (void*)r, size);
   void* copy = (void*)next;
   // forward pointer
-  *FWD_PTR(r) = (void*)copy;
+  FWD_PTR(r) = (void*)copy;
   return copy;
 }
 
@@ -61,12 +60,12 @@ void gc_collect(int64_t rootc, ...) {
 
     int size = SIZE(root);
     int ptr_count = PTR_COUNT(root);
-/*
+    /*
     printf("%p (%i, %i)\n", root, size, ptr_count);
     for (int i = 0; i < ptr_count; i++) {
       printf("- p: %p\n", *PTR(root, i));
     }
-*/
+    */
     copy_record(root, next);
     next += size;
   }
@@ -79,6 +78,7 @@ void gc_collect(int64_t rootc, ...) {
     void* r = (void*)scan;
     int size = SIZE(r);
     int ptr_count = PTR_COUNT(r);
+    //    printf("%i\n", (int)(next - to_space));
 
     for (int i = 0; i < ptr_count; i++) {
       void* p = *PTR(r, i);
@@ -90,18 +90,18 @@ void gc_collect(int64_t rootc, ...) {
             printf("oom\n");
             exit(-1);
           }
-          *PTR(r, i) = copy_record(p, next);
+          copy_record(p, next);
           next += p_size;
-        } else {
-          *PTR(r, i) = FWD_PTR(p);
-        }
+        } 
+        *PTR(r, i) = FWD_PTR(p);
       }
     }
     scan += size;
   }
 
+  next_free = next - to_space;
+  fprintf(stderr, "Collection finished: %i free\n", MEM_SIZE - next_free);
   void *tmp = from_space;
   from_space = to_space;
   to_space = tmp;
-  next_free = 0;
 }

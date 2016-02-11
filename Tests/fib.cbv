@@ -5,4 +5,4 @@ let fib =
                if x2 = 0 then 1 else
                fib x1 + fib x2
 let main =
-  print (fib 20)
+  print (fib 30)

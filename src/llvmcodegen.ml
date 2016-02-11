@@ -172,6 +172,9 @@ sig
   (** Takes the prefix vector specified by profile and returns also the rest. *)
   val takedrop : t -> Profile.t -> t * t
 
+  (** Map the entries. Returns a vector with the same profile. *)
+  val mapi : t -> f:( key:Lltype.t -> data:Llvm.llvalue -> Llvm.llvalue) -> t
+
   (** Take prefix or fill up with undefs so that value fits the profile. *)
   val coerce : t -> Profile.t -> t
 
@@ -231,13 +234,17 @@ struct
                  else v2)
                ~init:Lltype.Map.empty}
 
+  let mapi v ~f:(f) =
+    { bits = Lltype.Map.mapi v.bits
+          ~f:(fun ~key:i ~data:d ->
+              List.map d ~f:(fun x -> f ~key:i ~data:x)) }
 
   let coerce v profile =
     let rec fill_cut i l n =
       if n = 0 then [] else
         match l with
         | [] ->
-          Llvm.undef (Lltype.to_lltype i) :: (fill_cut i [] (n-1))
+          Llvm.const_null (Lltype.to_lltype i) :: (fill_cut i [] (n-1))
         | x::xs -> x :: (fill_cut i xs (n-1)) in
     { bits = Profile.mapi profile
                ~f:(fun ~key:i ~data:n ->
@@ -309,7 +316,7 @@ struct
     let tags_and_values = tag :: values in
     List.foldi tags_and_values
          ~f:(fun i s v -> Llvm.build_insertvalue s v i "pack" builder)
-         ~init: (Llvm.undef struct_type)
+         ~init: (Llvm.const_null struct_type)
 
   let unpack profile v =
     let bits, _ =
@@ -639,6 +646,84 @@ let build_term
         -> assert false
     end
 
+let build_letbinding
+    (the_module : Llvm.llmodule)
+    (func : Llvm.llvalue)
+    (ctx: (Ident.t * encoded_value) list)
+    (l: Ssa.let_binding) :
+  (Ident.t * encoded_value) list =
+  match l with
+  | Ssa.Let((x, _), Ssa.Const(Ssa.Cgcalloc a, _)) ->
+    let alloc_block = Llvm.append_block context "gcalloc" func in
+    let ok_block = Llvm.append_block context "gc_end" func in
+    let oom_block = Llvm.append_block context "gccollect" func in
+    ignore (Llvm.build_br alloc_block builder);
+
+    (* alloc block*)
+    Llvm.position_at_end alloc_block builder;
+    let gcalloc =
+      match Llvm.lookup_function "gc_alloc" the_module with
+      | Some gcalloc -> gcalloc
+      | None -> assert false in
+    let a_struct = packing_type a in
+    let addr = Llvm.build_call gcalloc [| Llvm.size_of a_struct |]
+        "addr" builder in
+    let nullptr = Llvm.const_null (Lltype.to_lltype Lltype.Pointer) in
+    let oom = Llvm.build_icmp (Llvm.Icmp.Eq) addr nullptr "oom" builder in
+    ignore (Llvm.build_cond_br oom oom_block ok_block builder);
+
+    (* collect block *)
+    Llvm.position_at_end oom_block builder;
+    let local_roots =
+      let roots e = Mixedvector.llvalues_at_key e Lltype.Pointer in
+      List.concat_map ctx ~f:(fun (_, e) -> roots e) in
+    let collect =
+      match Llvm.lookup_function "gc_collect" the_module with
+      | Some collect -> collect
+      | None -> assert false in
+    let nr = Llvm.const_int (Llvm.i64_type context) (List.length local_roots) in
+    let roots_arg =
+      if local_roots = [] then
+        [Llvm.undef (Lltype.to_lltype Lltype.Pointer)] (* can't omit varargs *)
+      else
+        local_roots in
+    ignore (Llvm.build_call collect (Array.of_list (nr :: roots_arg)) "" builder);
+    let addr1 = Llvm.build_call gcalloc [| Llvm.size_of a_struct |] "addr1" builder in
+    (* reload all pointers by following forward pointers *)
+    let ctx1 =
+      List.map ctx
+        ~f:(fun (x, xenc) ->
+            (x, Mixedvector.mapi xenc
+               ~f:(fun ~key:t ~data:v ->
+                   match t with
+                   | Lltype.Integer _ -> v
+                   | Lltype.Pointer -> (* TODO *)
+                     let mem_ptr = Llvm.build_bitcast v
+                         (Llvm.pointer_type (Lltype.to_lltype Lltype.Pointer))
+                         "fwdptr" builder in
+                     Llvm.build_load mem_ptr "fwd" builder
+                 )
+            )
+          ) in
+    ignore (Llvm.build_br ok_block builder);
+
+    (* ok block *)
+    Llvm.position_at_end ok_block builder;
+    let ctx_phi = List.map ctx
+        ~f:(fun (x, xenc) ->
+            let phi = Mixedvector.build_phi (xenc, alloc_block) builder in
+            let xenc' = List.Assoc.find_exn ctx1 x in
+            Mixedvector.add_incoming (xenc', oom_block) phi;
+            (x, phi)
+          ) in
+    let addr_phi = Llvm.build_phi [(addr, alloc_block); (addr1, oom_block)] "addr" builder in
+    let tenc = Mixedvector.singleton Lltype.Pointer addr_phi in
+    (x, tenc) :: ctx_phi
+  | Ssa.Let((x, a), t) ->
+    let tenc = build_term the_module func ctx t in
+    assert_type tenc a;
+    (x, tenc) :: ctx
+
 let rec build_letbindings
     (the_module : Llvm.llmodule)
     (func : Llvm.llvalue)
@@ -647,11 +732,9 @@ let rec build_letbindings
   : (Ident.t * encoded_value) list =
   match l with
   | [] -> ctx
-  | Ssa.Let((x, a), t) :: lets ->
+  | l :: lets ->
     let ctx1 = build_letbindings the_module func ctx lets in
-    let tenc = build_term the_module func ctx1 t in
-    assert_type tenc a;
-    (x, tenc) :: ctx1
+    build_letbinding the_module func ctx1 l
 
 let build_body
     (the_module : Llvm.llmodule)

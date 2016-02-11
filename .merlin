@@ -1,3 +1,3 @@
 S src
 B _build/src
-PKG core_kernel core sexplib oUnit llvm
+PKG core_kernel core sexplib oUnit llvm ppx_sexp_conv
