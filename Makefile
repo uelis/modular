@@ -39,3 +39,6 @@ configure:
 .PHONY: build doc test all install uninstall reinstall clean distclean configure
 
 # OASIS_STOP
+
+gc.ll: gc.c
+	clang -S -emit-llvm gc.c

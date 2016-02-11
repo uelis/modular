@@ -24,12 +24,14 @@ raise_out_of_memory()
   exit(-1);
 }
 
+__attribute__((always_inline))
 bool
 in_from_space(int8_t *p)
 {
   return (from_space <= p) && (p < from_space + MEM_SIZE);
 }
 
+__attribute__((always_inline))
 bool
 in_to_space(int8_t *p)
 {
@@ -59,6 +61,7 @@ in_to_space(int8_t *p)
  * Allocate size bytes.
  * Returns NULL if memory is full.
  */
+__attribute__((always_inline))
 void*
 gc_alloc(size_t size)
 {

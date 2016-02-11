@@ -46,10 +46,10 @@ let run_llvm test_ctx llvm =
   let res =
     let open Result in
     Unix.system
-      ("llvm-link " ^ bc ^ " " ^
+      ("llvm-link " ^ bc ^ " gc.ll " ^
        "| opt -always-inline -O3 " ^
        "| llc -O3 " ^
-       "| gcc -x assembler - -x c gc.c -o " ^ exe) >>= fun () ->
+       "| gcc -x assembler - -o " ^ exe) >>= fun () ->
     Unix.system ("./" ^ exe ^ " > " ^ out) >>| fun () ->
     let output = In_channel.read_all out in
     logf test_ctx `Info "Output: \n%s" output;
