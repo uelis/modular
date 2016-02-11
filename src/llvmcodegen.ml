@@ -571,37 +571,7 @@ let build_term
         ignore (Llvm.build_call printf args "i" builder);
         Mixedvector.null
       | Ssa.Cintprint, _, _ -> failwith "internal: wrong argument to intprint"
-      | Ssa.Cgcalloc(a), _, _ ->
-        let malloc =
-          match Llvm.lookup_function "gc_alloc" the_module with
-          | Some malloc -> malloc
-          | None -> assert false in
-        let a_struct = packing_type a in
-        let addr = Llvm.build_call malloc
-            [| Llvm.size_of a_struct |]
-            "addr" builder in
-        let oom_block = Llvm.append_block context "collect" func in
-        let ok_block = Llvm.append_block context "alloc_ok" func in
-        let nullptr = Llvm.const_null (Lltype.to_lltype Lltype.Pointer) in
-        let oom = Llvm.build_icmp (Llvm.Icmp.Eq) addr nullptr "oom" builder in
-        ignore (Llvm.build_cond_br oom oom_block ok_block builder);
-        Llvm.position_at_end oom_block builder;
-        let local_roots =
-          let roots e =
-            Mixedvector.llvalues_at_key e Lltype.Pointer in
-          List.concat_map ctx ~f:(fun (_, e) -> roots e) in
-        let collect =
-          match Llvm.lookup_function "gc_collect" the_module with
-          | Some collect -> collect
-          | None -> assert false in
-        if (local_roots <> []) then
-          ignore (Llvm.build_call collect
-                    (Array.of_list (Llvm.const_int (Llvm.i64_type context) (List.length local_roots) ::
-                                    local_roots))
-                    "" builder);
-        ignore (Llvm.build_br ok_block builder);
-        Llvm.position_at_end ok_block builder;
-        Mixedvector.singleton Lltype.Pointer addr
+      | Ssa.Cgcalloc(a), _, _ -> assert false
       | Ssa.Calloc(a), _, _ ->
         let malloc =
           match Llvm.lookup_function "malloc" the_module with
@@ -655,8 +625,8 @@ let build_letbinding
   match l with
   | Ssa.Let((x, _), Ssa.Const(Ssa.Cgcalloc a, _)) ->
     let alloc_block = Llvm.append_block context "gcalloc" func in
-    let ok_block = Llvm.append_block context "gc_end" func in
-    let oom_block = Llvm.append_block context "gccollect" func in
+    let collect_block = Llvm.append_block context "gccollect" func in
+    let end_block = Llvm.append_block context "gc_end" func in
     ignore (Llvm.build_br alloc_block builder);
 
     (* alloc block*)
@@ -670,10 +640,10 @@ let build_letbinding
         "addr" builder in
     let nullptr = Llvm.const_null (Lltype.to_lltype Lltype.Pointer) in
     let oom = Llvm.build_icmp (Llvm.Icmp.Eq) addr nullptr "oom" builder in
-    ignore (Llvm.build_cond_br oom oom_block ok_block builder);
+    ignore (Llvm.build_cond_br oom collect_block end_block builder);
 
     (* collect block *)
-    Llvm.position_at_end oom_block builder;
+    Llvm.position_at_end collect_block builder;
     let local_roots =
       let roots e = Mixedvector.llvalues_at_key e Lltype.Pointer in
       List.concat_map ctx ~f:(fun (_, e) -> roots e) in
@@ -681,14 +651,15 @@ let build_letbinding
       match Llvm.lookup_function "gc_collect" the_module with
       | Some collect -> collect
       | None -> assert false in
-    let nr = Llvm.const_int (Llvm.i64_type context) (List.length local_roots) in
-    let roots_arg =
-      if local_roots = [] then
-        [Llvm.undef (Lltype.to_lltype Lltype.Pointer)] (* can't omit varargs *)
-      else
-        local_roots in
-    ignore (Llvm.build_call collect (Array.of_list (nr :: roots_arg)) "" builder);
-    let addr1 = Llvm.build_call gcalloc [| Llvm.size_of a_struct |] "addr1" builder in
+    let collect_args =
+      [ Llvm.size_of a_struct (* bytes_needed *)
+      ; Llvm.const_int (Llvm.i64_type context) (List.length local_roots) ]
+      @ local_roots
+      @ [ Llvm.undef (Lltype.to_lltype Lltype.Pointer) ]
+          (* can't omit varargs, so add dummy *) in
+    ignore (Llvm.build_call collect (Array.of_list collect_args) "" builder);
+    let addr1 = Llvm.build_call gcalloc [| Llvm.size_of a_struct |]
+                  "addr1" builder in
     (* reload all pointers by following forward pointers *)
     let ctx1 =
       List.map ctx
@@ -705,18 +676,19 @@ let build_letbinding
                  )
             )
           ) in
-    ignore (Llvm.build_br ok_block builder);
+    ignore (Llvm.build_br end_block builder);
 
-    (* ok block *)
-    Llvm.position_at_end ok_block builder;
+    (* end block *)
+    Llvm.position_at_end end_block builder;
     let ctx_phi = List.map ctx
         ~f:(fun (x, xenc) ->
             let phi = Mixedvector.build_phi (xenc, alloc_block) builder in
             let xenc' = List.Assoc.find_exn ctx1 x in
-            Mixedvector.add_incoming (xenc', oom_block) phi;
+            Mixedvector.add_incoming (xenc', collect_block) phi;
             (x, phi)
           ) in
-    let addr_phi = Llvm.build_phi [(addr, alloc_block); (addr1, oom_block)] "addr" builder in
+    let addr_phi = Llvm.build_phi [(addr, alloc_block); (addr1, collect_block)]
+                     "addr" builder in
     let tenc = Mixedvector.singleton Lltype.Pointer addr_phi in
     (x, tenc) :: ctx_phi
   | Ssa.Let((x, a), t) ->
@@ -888,7 +860,8 @@ let llvm_compile (ssa_func : Ssa.t) : Llvm.llmodule =
   ignore (Llvm.declare_function "spop" size_to_ptrtype the_module);
   ignore (Llvm.declare_function "gc_alloc" size_to_ptrtype the_module);
   let collect_type =
-    Llvm.var_arg_function_type voidtype [| Llvm.i64_type context; ptrtype |] in
+    Llvm.var_arg_function_type voidtype
+      [| Llvm.i64_type context; Llvm.i64_type context; ptrtype |] in
   ignore (Llvm.declare_function "gc_collect" collect_type the_module);
   let freetype =
     Llvm.function_type ptrtype [| ptrtype |] in
