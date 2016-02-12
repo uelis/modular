@@ -96,8 +96,9 @@ Terms can be formed using the following concrete syntax:
 ```sml
   s,t  ::=  x  |  let x = s in t  |  \x -> t  |  s t  |  fix f x -> t
          |  if s = t then t1 else t2
-         |  0  |  -1  |  1  |  -2  |  2  | ...
-         |  s + t  |  s - t  |  s * t  |  s / t  |  print(t)
+         |  0  |  ~1  |  1  |  ~2  |  2  | ...
+         |  s + t  |  s - t  |  s * t  |  s / t
+         |  print(t)
 ```
 
 The concrete syntax for types is
