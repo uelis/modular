@@ -45,7 +45,7 @@ in_to_space(int8_t *p)
  *  +----------------+---------------------+-----+-----------+------+
  *
  *  If the last bit of the tag is 1, then it contains the following data:
- *  - higher most 32 bits: record size (including tag)
+ *  - highermost 32 bits: record size (including tag)
  *  - next 31 bits: number of pointers, i.e. n
  *  If the last bit of the tag is 0, then it is a forward pointer.
  */

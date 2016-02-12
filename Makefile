@@ -42,3 +42,6 @@ configure:
 
 gc.ll: src/gc.c
 	clang -S -emit-llvm src/gc.c
+
+stack.ll: src/stack.c
+	clang -S -emit-llvm src/stack.c

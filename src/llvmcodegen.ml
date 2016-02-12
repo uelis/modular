@@ -439,12 +439,12 @@ let build_term
   match t with
   | Ssa.Val(v) -> build_value the_module ctx v
   | Ssa.Const(Ssa.Cpush(a), v) ->
-    let salloc =
-      match Llvm.lookup_function "salloc" the_module with
-      | Some salloc -> salloc
+    let stack_alloc =
+      match Llvm.lookup_function "stack_alloc" the_module with
+      | Some stack_alloc -> stack_alloc
       | None -> assert false in
     let a_struct = packing_type a in
-    let mem_i8ptr = Llvm.build_call salloc
+    let mem_i8ptr = Llvm.build_call stack_alloc
         [| Llvm.size_of a_struct |]
         "memi8" builder in
     let mem_ptr = Llvm.build_bitcast mem_i8ptr (Llvm.pointer_type a_struct)
@@ -454,12 +454,12 @@ let build_term
     ignore (Llvm.build_store v_packed mem_ptr builder);
     Mixedvector.null
   | Ssa.Const(Ssa.Cpop(a), _) ->
-    let spop =
-      match Llvm.lookup_function "spop" the_module with
-      | Some spop -> spop
+    let stack_pop =
+      match Llvm.lookup_function "stack_pop" the_module with
+      | Some stack_pop -> stack_pop
       | None -> assert false in
     let a_struct = packing_type a in
-    let mem_i8ptr = Llvm.build_call spop [| Llvm.size_of a_struct |]
+    let mem_i8ptr = Llvm.build_call stack_pop [| Llvm.size_of a_struct |]
         "memi8" builder in
     let mem_ptr = Llvm.build_bitcast mem_i8ptr (Llvm.pointer_type a_struct)
         "memstruct" builder in
@@ -856,8 +856,8 @@ let llvm_compile (ssa_func : Ssa.t) : Llvm.llmodule =
   let size_lltype =  Llvm.i64_type context in
   let size_to_ptrtype =
     Llvm.function_type ptrtype [| size_lltype |] in
-  ignore (Llvm.declare_function "salloc" size_to_ptrtype the_module);
-  ignore (Llvm.declare_function "spop" size_to_ptrtype the_module);
+  ignore (Llvm.declare_function "stack_alloc" size_to_ptrtype the_module);
+  ignore (Llvm.declare_function "stack_pop" size_to_ptrtype the_module);
   ignore (Llvm.declare_function "gc_alloc" size_to_ptrtype the_module);
   let collect_type =
     Llvm.var_arg_function_type voidtype

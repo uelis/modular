@@ -1,6 +1,6 @@
 open Core.Std
 open OUnit2
-  
+
 let files_in_dir dir_name extension =
   let files = ref [] in
   let dir = Unix.opendir dir_name in
@@ -46,7 +46,7 @@ let run_llvm test_ctx llvm =
   let res =
     let open Result in
     Unix.system
-      ("llvm-link " ^ bc ^ " gc.ll " ^
+      ("llvm-link " ^ bc ^ " stack.ll gc.ll " ^
        "| opt -always-inline -O3 " ^
        "| llc -O3 " ^
        "| gcc -x assembler - -o " ^ exe) >>= fun () ->
@@ -64,7 +64,7 @@ let run_int_main test_ctx filename =
   |> read_decls
   |> List.filter ~f:(function Decl.TermDecl(f, _) -> Ident.to_string f = "main")
   |> List.map ~f:(fun d -> d |> compile |> run_llvm test_ctx)
-       
+
 let test_of_file filename =
   filename >::
   (fun test_ctx ->
@@ -74,7 +74,7 @@ let test_of_file filename =
        assert_equal actual expected
      | _ ->
        assert_failure "compilation error or more than one main definition")
-  
+
 let test_fail_file filename =
   filename >::
   ( fun _ ->
@@ -93,7 +93,7 @@ let test_fail_file filename =
 
 let success_tests = files_in_dir "Tests" ".cbv"
 let fail_tests = files_in_dir "Tests/Should_fail" ".cbv"
-    
+
 let suite =
   "modular tests" >:::
     ["success tests" >:::
