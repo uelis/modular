@@ -7,7 +7,7 @@
 #include <string.h>
 #include <assert.h>
 
-#define MEM_SIZE 1024*10
+#define MEM_SIZE 1024*1024
 
 static int8_t from_space_mem[MEM_SIZE];
 static int8_t to_space_mem[MEM_SIZE];
