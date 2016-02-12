@@ -90,7 +90,7 @@ let to_string ?concise:(concise=true) (ty: t): string =
   let rec str (t: t) l =
     let rec s l =
       match l with
-      | `Type -> 
+      | `Type ->
         begin
           match case t with
           | Var -> s `Atom

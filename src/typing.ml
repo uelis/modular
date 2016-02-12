@@ -1,4 +1,5 @@
 (** Type inference *)
+(* TODO: write down typing invariants *)
 open Core_kernel.Std
 
 type 'a context = (Ident.t * 'a) list
@@ -223,6 +224,14 @@ let rec fresh_annotations_term (t: Simpletype.t Cbvterm.term) : Cbvterm.t =
   | Fix((_, f, x, a), s) ->
     { t_desc = Cbvterm.Fix((Basetype.newvar (), f, x, fresh_annotations_type a),
                            fresh_annotations_term s);
+      t_ann = t.t_ann;
+      t_type =  fresh_annotations_type t.t_type;
+      t_context = [];
+      t_loc = t.t_loc
+    }
+  | Tailfix((_, f, x, a), s) ->
+    { t_desc = Cbvterm.Tailfix((Basetype.newvar (), f, x, fresh_annotations_type a),
+                               fresh_annotations_term s);
       t_ann = t.t_ann;
       t_type =  fresh_annotations_type t.t_type;
       t_context = [];
@@ -494,6 +503,55 @@ let infer_annotations (t: Cbvterm.t) : Cbvterm.t =
                               [e; Basetype.newty (Basetype.PairB(h, g))]));
           upper = h;
           reason = "fix: call stack"
+        }
+      ]
+      @ cs1 @ context_cs
+    | Tailfix((h, f, v, va), s) ->
+      (* TODO: alles nur kopiert! *)
+      (* note: the bound variable cannot appear in t.t_context *)
+      let as1, cs1 = constraints s in
+      let e, (x, a, d, y) = selectfunty t.t_type in
+      let g, (x', _, d', y') = selectfunty (List.Assoc.find_exn as1.t_context f) in
+      Basetype.unify_exn (code_of_context as1.t_context) d'; (* TODO: ok? *)
+      Cbvtype.unify_exn x x';
+      Cbvtype.unify_exn x va;
+      Cbvtype.unify_exn x (List.Assoc.find_exn as1.t_context v);
+      Cbvtype.unify_exn y y';
+      Cbvtype.unify_exn y s.t_type;
+      let outer_context =
+        List.filter_map as1.t_context
+          ~f:(fun (y, a) ->
+              if y = v then None else Some (y, freshen_multiplicity a)) in
+      let context_cs =
+        List.map outer_context
+          ~f:(fun (y, a) ->
+              let a' = List.Assoc.find_exn as1.t_context y in
+              let m' = Cbvtype.multiplicity a' in
+              Cbvtype.unify_exn a (freshen_multiplicity a');
+              { lower = Basetype.newty (Basetype.PairB(h, m'));
+                upper = Cbvtype.multiplicity a;
+                reason =
+                  Printf.sprintf "tailfix: context (%s)" (Ident.to_string v)
+              }) in
+      { t with
+        t_desc = Tailfix((h, f, v, va), as1);
+        t_context = outer_context
+      },
+      [ { lower = code_of_context as1.t_context;
+          upper = d;
+          reason = "tailfix: closure"
+        }
+      ; { lower = e;
+          upper = h;
+          reason = "tailfix: call stack1"
+        }
+      ; { lower = a;
+          upper = h;
+          reason = "tailfix: call stack2"
+        }
+      ; { lower = Basetype.newty (Basetype.UnitB);
+          upper = s.t_ann;
+          reason = "tailfix: inner stack"
         }
       ]
       @ cs1 @ context_cs
