@@ -310,7 +310,7 @@ struct
         let nptrs = Llvm.const_int i64 number_of_ptrs in
         let nofwd = Llvm.const_int i64 1 in
         let t1 = Llvm.build_shl size (Llvm.const_int i64 32) "size" builder in
-        let t2 = Llvm.build_shl nptrs (Llvm.const_int i64 1) "nnptrs" builder in
+        let t2 = Llvm.build_shl nptrs (Llvm.const_int i64 1) "nptrs" builder in
         let t3 = Llvm.build_add t1 t2 "t3" builder in
         Llvm.build_add t3 nofwd "tag" builder in
     let tags_and_values = tag :: values in
@@ -629,15 +629,15 @@ let build_letbinding
     let end_block = Llvm.append_block context "gc_end" func in
     ignore (Llvm.build_br alloc_block builder);
 
-    (* alloc block*)
+    (* alloc block *)
     Llvm.position_at_end alloc_block builder;
     let gcalloc =
       match Llvm.lookup_function "gc_alloc" the_module with
       | Some gcalloc -> gcalloc
       | None -> assert false in
     let a_struct = packing_type a in
-    let addr = Llvm.build_call gcalloc [| Llvm.size_of a_struct |]
-        "addr" builder in
+    let addr =
+      Llvm.build_call gcalloc [| Llvm.size_of a_struct |] "addr" builder in
     let nullptr = Llvm.const_null (Lltype.to_lltype Lltype.Pointer) in
     let oom = Llvm.build_icmp (Llvm.Icmp.Eq) addr nullptr "oom" builder in
     ignore (Llvm.build_cond_br oom collect_block end_block builder);
@@ -658,8 +658,8 @@ let build_letbinding
       @ [ Llvm.undef (Lltype.to_lltype Lltype.Pointer) ]
           (* can't omit varargs, so add dummy *) in
     ignore (Llvm.build_call collect (Array.of_list collect_args) "" builder);
-    let addr1 = Llvm.build_call gcalloc [| Llvm.size_of a_struct |]
-                  "addr1" builder in
+    let addr1 =
+      Llvm.build_call gcalloc [| Llvm.size_of a_struct |] "addr1" builder in
     (* reload all pointers by following forward pointers *)
     let ctx1 =
       List.map ctx
@@ -668,10 +668,11 @@ let build_letbinding
                ~f:(fun ~key:t ~data:v ->
                    match t with
                    | Lltype.Integer _ -> v
-                   | Lltype.Pointer -> (* TODO *)
-                     let mem_ptr = Llvm.build_bitcast v
-                         (Llvm.pointer_type (Lltype.to_lltype Lltype.Pointer))
-                         "fwdptr" builder in
+                   | Lltype.Pointer ->
+                     let ptr_type =
+                       Llvm.pointer_type (Lltype.to_lltype Lltype.Pointer) in
+                     let mem_ptr =
+                       Llvm.build_bitcast v ptr_type "fwdptr" builder in
                      Llvm.build_load mem_ptr "fwd" builder
                  )
             )
