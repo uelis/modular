@@ -247,6 +247,14 @@ let fprint_annotated_term (f: Format.formatter) (term: Cbvterm.t) : unit =
         (string_of_cbvtype ~concise:false a);
       s_term t1;
       fprintf f "@]"
+    | Tailfix((_, y, x, a), t1) ->
+      fprintf f "@[<hv 1>tailfix (%s : %s) (%s : %s) ->@;"
+        (Ident.to_string y)
+        (string_of_cbvtype ~concise:false t.t_type)
+        (Ident.to_string x)
+        (string_of_cbvtype ~concise:false a);
+      s_term t1;
+      fprintf f "@]"
     | Ifz(t1, t2, t3) ->
       fprintf f "@[<hv>if ";
       s_term t1;
@@ -301,7 +309,7 @@ let fprint_annotated_term (f: Format.formatter) (term: Cbvterm.t) : unit =
       fprintf f " / ";
       s_term_app t2
     | Const(Ast.Cintdiv, _) -> assert false
-    | Fun _ | Fix _ | App _ | Var _
+    | Fun _ | Fix _ | Tailfix _ | App _ | Var _
     | Const(Ast.Cintprint, _) | Const(Ast.Cintconst _, _)
     | Pair _ | Fst _ | Snd _ | Contr _ | Ifz _
       -> s_term_app t
@@ -343,7 +351,7 @@ let fprint_annotated_term (f: Format.formatter) (term: Cbvterm.t) : unit =
       fprintf f "@[#2 ";
       s_term t1;
       fprintf f "@]"
-    | App _ | Fun _ | Fix _ | Ifz _ | Contr _
+    | App _ | Fun _ | Fix _ | Tailfix _ | Ifz _ | Contr _
     | Const(Ast.Cinteq, _)
     | Const(Ast.Cintlt, _)
     | Const(Ast.Cintadd, _)
