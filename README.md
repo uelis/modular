@@ -60,12 +60,12 @@ which can be obtained from (http://opam.ocamlpro.com). On Ubuntu, OPAM can be
 installed with `apt-get install opam`.
 
 ```
-  opam install core_kernel
+  opam install core oasis ounit
   opam install llvm
 ```
 
 It may be necessary to pin the LLVM binding to the version of LLVM that is
-installed on the system. For example, pinning the LLVM binding to version 3.6
+installed on the system (see `llc -version`). For example, pinning the LLVM binding to version 3.6
 may be done as follows:
 
 ```
@@ -76,7 +76,7 @@ Having installed these dependencies, the translation may be compiled and invoked
 
 ```
   make
-  ./modular.native test17fib.cbv
+  ./modular.native Test/fib.cbv
 ```
 
 ## Source Language
@@ -129,7 +129,7 @@ in the input file. If the file `fib.cbv` has the content of the Fibonacci
 example above, then the call
 
 ```
-  > ./modular.native fib.cbv
+  > ./modular.native Test/fib.cbv
 ```
 
 prints the types of `fib` and `main` (namely `Nat -> Nat` and `Nat`
@@ -160,7 +160,7 @@ shown using the command-line argument `--type-details`. The concrete syntax for
 annotated types is as follows:
 
 ```
-  X, Y  ::=  Nat[A] | X -{A, C}-> Y
+  X, Y  ::=  Nat[A] | [A](X -{B, C}-> Y)
 ```
 
 For example,
