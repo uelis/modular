@@ -38,7 +38,7 @@ in_to_space(int8_t *p)
   return (to_space <= p) && (p < to_space + MEM_SIZE);
 }
 
-/* 
+/*
  *  Record organisation:
  *  +----------------+---------------------+-----+-----------+------+
  *  | tag (64 bits)  | pointer 1 (int8_t*) | ... | pointer n | data |
@@ -57,7 +57,7 @@ in_to_space(int8_t *p)
 #define FWD_PTR(r)   *((int8_t**)r)
 #define PTR(r, i)    *((int8_t**)((int64_t*)r + 1) + i)
 
-/* 
+/*
  * Allocate size bytes.
  * Returns NULL if memory is full.
  */
@@ -73,7 +73,7 @@ gc_alloc(size_t size)
   return chunk;
 }
 
-/* 
+/*
  * Copy record to address next and replace its tag with a forward pointer.
  * Assumes that record points to from_space and next points to to_space
  */
@@ -89,7 +89,7 @@ copy_record(void *record, void *next)
   FWD_PTR(record) = (void*)next;
 }
 
-/* 
+/*
  * Perform garbage collection with the given local roots.
  * bytes_needed is the number of bytes that are needed after collection.
  * rootc is the number of root arguments that follow.
@@ -103,7 +103,7 @@ gc_collect(size_t bytes_needed, int64_t rootc, ...)
   next = to_space;
 
   /* copy roots */
-  
+
   va_list roots;
   va_start(roots, rootc);
   for (int i = 0; i < rootc; i++) {
@@ -116,7 +116,7 @@ gc_collect(size_t bytes_needed, int64_t rootc, ...)
   va_end(roots);
 
   /* copy reachable */
-  
+
   int8_t *scan;
   scan = to_space;
 
