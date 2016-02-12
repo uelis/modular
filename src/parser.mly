@@ -32,9 +32,10 @@ let mkAst d : Ast.t =
 %token EOF
 
 %nonassoc THEN
-%left EQUAL
+%left EQUALS LT
 %left PLUS MINUS
-%left TIMES
+%left STAR SLASH
+%nonassoc TILDE
 
 %start decls
 %type <Decl.t list> decls
@@ -71,17 +72,17 @@ term:
 term_inf:
     | term_app
        { $1 }
-    | term_app EQUALS term_app
+    | term_inf EQUALS term_inf
        { mkAst (Const(Cinteq, [$1; $3]))}
-    | term_app LT term_app
+    | term_inf LT term_inf
        { mkAst (Const(Cintlt, [$1; $3]))}
-    | term_app PLUS term_app
+    | term_inf PLUS term_inf
        { mkAst (Const(Cintadd, [$1; $3]))}
-    | term_app MINUS term_app
+    | term_inf MINUS term_inf
        { mkAst (Const(Cintsub, [$1; $3]))}
-    | term_app STAR term_app
+    | term_inf STAR term_inf
        { mkAst (Const(Cintmul, [$1; $3]))}
-    | term_app SLASH term_app
+    | term_inf SLASH term_inf
        { mkAst (Const(Cintdiv, [$1; $3]))}
 
 term_app:
