@@ -84,7 +84,7 @@ Having installed these dependencies, the translation may be compiled and invoked
 The input language is currently a simple version of PCF. Input files are
 expected to have the form
 
-```
+```sml
   let x1 = t1
   let x2 = t2
   ...
@@ -93,7 +93,7 @@ expected to have the form
 
 Terms can be formed using the following concrete syntax:
 
-```
+```sml
   s,t  ::=  x  |  let x = s in t  |  \x -> t  |  s t  |  fix f x -> t
          |  if s = t then t1 else t2
          |  0  |  -1  |  1  |  -2  |  2  | ...
@@ -111,7 +111,7 @@ The value of `print(t)` is that of `t`.
 
 For example, the following program prints the 20-th Fibonacci number
 
-```
+```sml
   let fib =
     fix fib x -> let x1 = x - 1 in
                  let x2 = x - 2 in
