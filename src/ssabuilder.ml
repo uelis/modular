@@ -46,6 +46,11 @@ let intconst (i: int) =
   Ssa.IntConst(i),
   Basetype.newty (Basetype.IntB)
 
+let boolconst (b: bool) =
+  let i = if b then 0 else 1 in
+  Ssa.In((Basetype.Data.boolid, i, Ssa.Unit), Basetype.boolB),
+  Basetype.boolB
+
 let primop (c: Ssa.op_const) (v: value) : value =
   let vv, va = v in
   let prim = Ident.fresh "prim" in

@@ -311,6 +311,7 @@ let fprint_annotated_term (f: Format.formatter) (term: Cbvterm.t) : unit =
     | Const(Ast.Cintdiv, _) -> assert false
     | Fun _ | Fix _ | Tailfix _ | App _ | Var _
     | Const(Ast.Cintprint, _) | Const(Ast.Cintconst _, _)
+    | Const(Ast.Cboolconst _, _)
     | Pair _ | Fst _ | Snd _ | Contr _ | Ifz _
       -> s_term_app t
   and s_term_app (t: Cbvterm.t) =
@@ -327,6 +328,12 @@ let fprint_annotated_term (f: Format.formatter) (term: Cbvterm.t) : unit =
     match t.t_desc with
     | Var(x) ->
       fprintf f "%s" (Ident.to_string x)
+    | Const(Ast.Cboolconst(b), []) ->
+      if b then
+        fprintf f "true"
+      else
+        fprintf f "false"
+    | Const(Ast.Cboolconst(_), _) -> assert false
     | Const(Ast.Cintconst(i), []) ->
       if i >= 0 then
         fprintf f "%i" i

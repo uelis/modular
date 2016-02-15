@@ -23,7 +23,7 @@ let mkAst d : Ast.t =
 %token COMMA EQUALS LT GT TO
 %token LAMBDA
 %token FST SND
-%token INTADD
+%token TRUE FALSE
 %token IF THEN ELSE PRINT LET IN
 %token FIX TAILFIX
 %token <int> NUM
@@ -104,6 +104,10 @@ term_atom:
        { mkAst (Const(Cintconst(-$2), [])) }
     | NUM
        { mkAst (Const(Cintconst($1), [])) }
+    | TRUE
+       { mkAst (Const(Cboolconst(true), [])) }
+    | FALSE
+       { mkAst (Const(Cboolconst(false), [])) }
     | PRINT term_atom
        { mkAst (Const(Cintprint, [$2])) }
     | FST term_atom

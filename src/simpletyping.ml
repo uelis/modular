@@ -52,6 +52,7 @@ let contract_instances
 
 let arg_types c =
   match c with
+  | Ast.Cboolconst _
   | Ast.Cintconst _ -> []
   | Ast.Cinteq
   | Ast.Cintlt
@@ -74,6 +75,7 @@ let ret_type c =
   | Ast.Cintdiv
   | Ast.Cintprint ->
     Simpletype.newty Simpletype.Nat
+  | Ast.Cboolconst _
   | Ast.Cinteq
   | Ast.Cintlt ->
     Simpletype.newty Simpletype.Bool

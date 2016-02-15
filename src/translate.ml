@@ -323,6 +323,24 @@ let rec translate (t: Cbvterm.t) : fragment =
                 (List.filter s_fragment.context
                    ~f:(fun (x, _) -> not (List.mem xs x)))
     }
+  | Const(Ast.Cboolconst b, []) ->
+    let id = "boolconst" in
+    let eval = fresh_eval id t in
+    let access = fresh_access id t.t_type in
+    let eval_block =
+      let arg = Builder.begin_block eval.entry in
+      let vstack = Builder.fst arg in
+      let vi = Builder.boolconst b in
+      let v = Builder.pair vstack vi in
+      Builder.end_block_jump eval.exit v in
+    let access_block =
+      let arg = Builder.begin_block access.entry in
+      Builder.end_block_jump access.exit arg in
+    { eval = eval;
+      access = access;
+      blocks = [eval_block; access_block];
+      context = []
+    }
   | Const(Ast.Cintconst i, []) ->
     let id = "intconst" in
     let eval = fresh_eval id t in
@@ -380,6 +398,7 @@ let rec translate (t: Cbvterm.t) : fragment =
       | Ast.Cintdiv -> "intdiv", Ssa.Cintdiv
       | Ast.Cinteq -> "inteq", Ssa.Cinteq
       | Ast.Cintlt -> "intlt", Ssa.Cintlt
+      | Ast.Cboolconst _ -> assert false
       | Ast.Cintconst _ -> assert false
       | Ast.Cintprint -> assert false in
     let s1_fragment = translate s1 in

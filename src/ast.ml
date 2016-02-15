@@ -9,6 +9,7 @@ module Location = struct
 end
 
 type const =
+  | Cboolconst of bool
   | Cintconst of int
   | Cinteq
   | Cintlt

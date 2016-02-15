@@ -45,7 +45,6 @@ rule main = parse
   | "#1"         { FST }
   | "#2"         { SND }
   | "print"      { PRINT }
-  | "intadd"     { INTADD }
   | "if"         { IF }
   | "if0"        { IF }
   | "then"       { THEN }
@@ -54,6 +53,8 @@ rule main = parse
   | "tailfix"    { TAILFIX }
   | "let"        { LET }
   | "in"         { IN }
+  | "true"       { TRUE }
+  | "false"      { FALSE }
   | "->"         { TO }
   | nat          { NUM (int_of_string (Lexing.lexeme lexbuf)) }
   | ident        { IDENT (Lexing.lexeme lexbuf) }
