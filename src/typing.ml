@@ -418,6 +418,13 @@ let infer_annotations (t: Cbvterm.t) : Cbvterm.t =
         | Cbvtype.Sgn (Cbvtype.Nat _), Cbvtype.Sgn (Cbvtype.Nat _) ->
           Cbvtype.newty (Cbvtype.Nat (Basetype.newvar ())),
           []
+        | Cbvtype.Sgn (Cbvtype.Pair (m1, (x1, y1))),
+          Cbvtype.Sgn (Cbvtype.Pair (m2, (x2, y2))) ->
+          Basetype.unify_exn m1 m2; (* TODO ?? *)
+          let x, csx = join x1 x2 in
+          let y, csy = join y1 y2 in
+          Cbvtype.newty (Cbvtype.Pair (m1, (x, y))),
+          csx @ csy
         | Cbvtype.Sgn (Cbvtype.Fun (m1, (x1, c1, d1, y1))),
           Cbvtype.Sgn (Cbvtype.Fun (m2, (x2, c2, d2, y2))) ->
           Basetype.unify_exn m1 m2; (* TODO ?? *)
@@ -437,7 +444,12 @@ let infer_annotations (t: Cbvterm.t) : Cbvterm.t =
               reason = "if: join argument multiplicity"
             }
           ] @ csy
-        | _, _ -> assert false in
+        | Cbvtype.Var, _ 
+        | Cbvtype.Sgn (Cbvtype.Bool _), _ 
+        | Cbvtype.Sgn (Cbvtype.Nat _), _ 
+        | Cbvtype.Sgn (Cbvtype.Pair _), _
+        | Cbvtype.Sgn (Cbvtype.Fun _), _ ->
+          assert false in
       let y, csy = join st.t_type sf.t_type in
       Cbvtype.unify_exn t.t_type y;
       { t with
