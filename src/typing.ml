@@ -507,6 +507,7 @@ let infer_annotations (t: Cbvterm.t) : Cbvterm.t =
       Cbvtype.unify_exn x (List.Assoc.find_exn as1.t_context v);
       Cbvtype.unify_exn y y';
       Cbvtype.unify_exn y s.t_type;
+      Basetype.unify_exn as1.t_ann (Basetype.newty (Basetype.UnitB));
       let outer_context =
         List.filter_map as1.t_context
           ~f:(fun (y, a) ->
@@ -533,10 +534,6 @@ let infer_annotations (t: Cbvterm.t) : Cbvterm.t =
       ; { lower =  Basetype.newty (Basetype.PairB(e, a));
           upper = h;
           reason = "tailfix: eval stack"
-        }
-      ; { lower = Basetype.newty (Basetype.UnitB);
-          upper = as1.t_ann;
-          reason = "tailfix: inner stack"
         }
       ]
       @ cs1 @ context_cs
