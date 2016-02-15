@@ -986,6 +986,7 @@ let rec translate (t: Cbvterm.t) : fragment =
         let d = Cbvtype.code a in
         let vi = Builder.inj i v (Basetype.sumB [d1; d2]) in
         Builder.embed vi d
+      (* TODO: pair types are missing *)
       | _ -> assert false in
     let rec join (access1, a1) (access2, a2) a : int_interface * (Ssa.block list) =
         match Cbvtype.case a1, Cbvtype.case a2, Cbvtype.case a with
