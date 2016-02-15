@@ -1,0 +1,2 @@
+let main =
+  if 1 = 0 then (1, 2) else (3, 4)
