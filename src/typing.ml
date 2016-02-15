@@ -4,16 +4,6 @@ open Core_kernel.Std
 
 type 'a context = (Ident.t * 'a) list
 
-let selectfunty a =
-  match Cbvtype.case a with
-  | Cbvtype.Sgn (Cbvtype.Fun(m, x)) -> m, x
-  | _ -> assert false
-
-let selectpairty a =
-  match Cbvtype.case a with
-  | Cbvtype.Sgn (Cbvtype.Pair(m, x)) -> m, x
-  | _ -> assert false
-
 type lhd_constraint = {
   lower: Basetype.t;
   upper: Basetype.t;
@@ -298,7 +288,7 @@ let infer_annotations (t: Cbvterm.t) : Cbvterm.t =
     | Pair(s1, s2) ->
       let as1, cs1 = constraints s1 in
       let as2, cs2 = constraints s2 in
-      let (a, (x, y)) = selectpairty t.t_type in
+      let (a, (x, y)) = Cbvtype.unPair t.t_type in
       Cbvtype.unify_exn x (freshen_multiplicity s1.t_type);
       Cbvtype.unify_exn y (freshen_multiplicity s2.t_type);
       { t with
@@ -324,7 +314,7 @@ let infer_annotations (t: Cbvterm.t) : Cbvterm.t =
       ] @ cs1 @ cs2
     | Fst(s1) ->
       let as1, cs1 = constraints s1 in
-      let (a, (x, _)) = selectpairty s1.t_type in
+      let (a, (x, _)) = Cbvtype.unPair s1.t_type in
       Cbvtype.unify_exn x t.t_type;
       Basetype.unify_exn t.t_ann s1.t_ann;
       { t with
@@ -338,7 +328,7 @@ let infer_annotations (t: Cbvterm.t) : Cbvterm.t =
       ] @ cs1
     | Snd(s1) ->
       let as1, cs1 = constraints s1 in
-      let (a, (_, y)) = selectpairty s1.t_type in
+      let (a, (_, y)) = Cbvtype.unPair s1.t_type in
       Cbvtype.unify_exn y t.t_type;
       Basetype.unify_exn t.t_ann s1.t_ann;
       { t with
@@ -353,7 +343,7 @@ let infer_annotations (t: Cbvterm.t) : Cbvterm.t =
     | App(s1, s2) ->
       let as1, cs1 = constraints s1 in
       let as2, cs2 = constraints s2 in
-      let c, (x, a, d, y) = selectfunty s1.t_type in
+      let c, (x, a, d, y) = Cbvtype.unFun s1.t_type in
       Cbvtype.unify_exn x s2.t_type;
       Cbvtype.unify_exn y t.t_type;
       { t with
@@ -380,7 +370,7 @@ let infer_annotations (t: Cbvterm.t) : Cbvterm.t =
       @ cs1 @ cs2
     | Fun((v, xa), s) ->
       let as1, cs1 = constraints s in
-      let e, (x, a, d, y) = selectfunty t.t_type in
+      let e, (x, a, d, y) = Cbvtype.unFun t.t_type in
       (* note: the bound variable cannot appear in t.t_context *)
       Cbvtype.unify_exn x xa;
       Cbvtype.unify_exn x (List.Assoc.find_exn as1.t_context v);
@@ -466,8 +456,8 @@ let infer_annotations (t: Cbvterm.t) : Cbvterm.t =
       @ csc @ cst @ csf @ csy
     | Fix((h, f, v, va), s) ->
       let as1, cs1 = constraints s in
-      let e, (x, a, d, y) = selectfunty t.t_type in
-      let g, (x', a', d', y') = selectfunty (List.Assoc.find_exn as1.t_context f) in
+      let e, (x, a, d, y) = Cbvtype.unFun t.t_type in
+      let g, (x', a', d', y') = Cbvtype.unFun (List.Assoc.find_exn as1.t_context f) in
       Basetype.unify_exn a a';
       Basetype.unify_exn d d';
       Cbvtype.unify_exn x x';
@@ -509,8 +499,8 @@ let infer_annotations (t: Cbvterm.t) : Cbvterm.t =
     | Tailfix((h, f, v, va), s) ->
       (* TODO: verify tail position and that x and y are first-order types. *)
       let as1, cs1 = constraints s in
-      let e, (x, a, d, y) = selectfunty t.t_type in
-      let g, (x', _, d', y') = selectfunty (List.Assoc.find_exn as1.t_context f) in
+      let e, (x, a, d, y) = Cbvtype.unFun t.t_type in
+      let g, (x', _, d', y') = Cbvtype.unFun (List.Assoc.find_exn as1.t_context f) in
       Basetype.unify_exn d d';
       Cbvtype.unify_exn x x';
       Cbvtype.unify_exn x va;
@@ -579,7 +569,7 @@ let infer_annotations (t: Cbvterm.t) : Cbvterm.t =
   as1
 
 let check_term (t: Ast.t) : Cbvterm.t =
-  let lt = Simpletyping.linearize [] t in
+  let lt = Simpletyping.check t in
   assert (lt.Simpletyping.subst = []);
   let lt1 = fresh_annotations_term lt.Simpletyping.linear_term in
   infer_annotations lt1

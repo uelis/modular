@@ -34,11 +34,6 @@ let unPairB a =
   | Basetype.Sgn (Basetype.PairB(a1, a2)) -> a1, a2
   | _ -> assert false
 
-let selectfunty a =
-  match Cbvtype.case a with
-  | Cbvtype.Sgn (Cbvtype.Fun(m, x)) -> m, x
-  | _ -> assert false
-
 let fresh_ssa_name =
   let next_name = ref 0 in
   fun () ->
@@ -637,7 +632,7 @@ let rec translate (t: Cbvterm.t) : fragment =
     let access = fresh_access id t.t_type in
     let x_access = List.Assoc.find_exn s_fragment.context x in
     let f_access = List.Assoc.find_exn s_fragment.context f in
-    let te, (_, ta, td, _) = selectfunty t.t_type in
+    let te, (_, ta, td, _) = Cbvtype.unFun t.t_type in
     let tea = pairB te ta in
     let dummy_block =
       let l = fresh_label (id ^ "dummy") unitB in
@@ -929,7 +924,7 @@ let rec translate (t: Cbvterm.t) : fragment =
       let ve, vx = Builder.unpair arg in
       let vu_f = Builder.project ve (pairB t.t_ann (Cbvtype.code t1.t_type)) in
       let vu, vf = Builder.unpair vu_f in
-      let _, (_, tv, _, _) = selectfunty t1.t_type in
+      let _, (_, tv, _, _) = Cbvtype.unFun t1.t_type in
       let vv = Builder.embed vu tv in
       let vvfx = Builder.pair vv (Builder.pair vf vx) in
       let td, tfunacc = unPairB t1_fragment.access.entry.Ssa.message_type in
@@ -950,7 +945,7 @@ let rec translate (t: Cbvterm.t) : fragment =
       let v = Builder.pair vd (Builder.inj 2 arg tfunacc) in
       Builder.end_block_jump t1_fragment.access.entry v in
     let block8 =
-      let _, (_, tv, _, _) = selectfunty t1.t_type in
+      let _, (_, tv, _, _) = Cbvtype.unFun t1.t_type in
       let _, tres = unPairB eval.exit.Ssa.message_type in
       let arg = Builder.begin_block (fresh_label "decode_stack" (pairB tv tres)) in
       let vv, vres = Builder.unpair arg in

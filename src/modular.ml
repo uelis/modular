@@ -25,13 +25,13 @@ let parse (s: string) : Decl.t list =
     exit_with_error (line_column_loc l c) ("Syntax error. " ^ msg)
 
 (* For error reporting: compute a string of where the error occurred *)
-let term_loc (s : Ast.t option) =
+let term_loc (s : Ast.Location.t option) =
   match s with
   | None -> ""
   | Some s ->
     let open Ast in
     let open Ast.Location in
-    match s.loc with
+    match s with
     | Some(loc) when loc.start_pos.line = loc.end_pos.line ->
       Printf.sprintf "line %i, columns %i-%i:"
         loc.start_pos.line loc.start_pos.column loc.end_pos.column

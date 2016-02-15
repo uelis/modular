@@ -69,22 +69,32 @@ end
 module Cbvtype = Uftype.Make(Sig)
 include Cbvtype
 
-let rec code (a : Cbvtype.t) : Basetype.t =
-  match Cbvtype.case a with
-  | Cbvtype.Var -> failwith "code"
-  | Cbvtype.Sgn s ->
+let rec code (a : t) : Basetype.t =
+  match case a with
+  | Var -> failwith "code"
+  | Sgn s ->
      match s with
      | Bool _ -> Basetype.boolB
      | Nat _ -> Basetype.newty Basetype.IntB
      | Pair (_, (x, y)) -> Basetype.newty (Basetype.PairB(code x, code y))
      | Fun(_, (_, _, d, _)) -> d
 
-let multiplicity (a : Cbvtype.t) : Basetype.t =
-  match Cbvtype.case a with
-  | Cbvtype.Var -> failwith "multiplicity"
-  | Cbvtype.Sgn s ->
+let multiplicity (a : t) : Basetype.t =
+  match case a with
+  | Var -> failwith "multiplicity"
+  | Sgn s ->
     match s with
     | Bool(c)
     | Nat(c)
     | Pair(c, _)
     | Fun(c, _) -> c
+
+let unFun a =
+  match case a with
+  | Sgn (Fun(m, x)) -> m, x
+  | _ -> assert false
+
+let unPair a =
+  match case a with
+  | Sgn (Pair(m, x)) -> m, x
+  | _ -> assert false

@@ -3,7 +3,7 @@ open Core_kernel.Std
 
 type 'a context = (Ident.t * 'a) list
 
-exception Typing_error of Ast.t option * string
+exception Typing_error of Ast.Location.t option * string
 
 let eq_constraint t ~expected:expected_ty ~actual:actual_ty =
   try
@@ -11,13 +11,13 @@ let eq_constraint t ~expected:expected_ty ~actual:actual_ty =
   with
   | Uftype.Cyclic_type ->
     let msg = "Unification leads to cyclic type." in
-    raise (Typing_error(None, msg)) 
+    raise (Typing_error(None, msg))
   | Uftype.Constructor_mismatch ->
     let msg = Printf.sprintf
         "Term has type %s, but a term of type %s is expected."
         (Simpletype.to_string actual_ty)
         (Simpletype.to_string expected_ty) in
-    raise (Typing_error(Some t, msg))
+    raise (Typing_error(Some t.Ast.loc, msg))
 
 (* Invariant: All variables defined in subst have a free occurrence
    in the term. *)
@@ -64,17 +64,17 @@ let arg_types c =
   | Ast.Cintprint ->
     let nat = Simpletype.newty Simpletype.Nat in
     [nat]
-    
+
 let ret_type c =
   match c with
-  | Ast.Cintconst _ 
+  | Ast.Cintconst _
   | Ast.Cintadd
   | Ast.Cintsub
   | Ast.Cintmul
-  | Ast.Cintdiv 
+  | Ast.Cintdiv
   | Ast.Cintprint ->
-    Simpletype.newty Simpletype.Nat 
-  | Ast.Cinteq 
+    Simpletype.newty Simpletype.Nat
+  | Ast.Cinteq
   | Ast.Cintlt ->
     Simpletype.newty Simpletype.Bool
 
@@ -88,7 +88,7 @@ let rec linearize (phi: Simpletype.t context) (t: Ast.t)
       | Some a -> a
       | None ->
         let msg = "Variable '" ^ (Ident.to_string v) ^ "' not bound." in
-        raise (Typing_error (Some t, msg)) in
+        raise (Typing_error (Some t.Ast.loc, msg)) in
     let v' = Ident.variant v in
     { linear_term = {
           t_desc = Cbvterm.Var(v');
@@ -103,9 +103,9 @@ let rec linearize (phi: Simpletype.t context) (t: Ast.t)
     let args_with_expected_types =
       match List.zip args (arg_types c) with
       | Some a -> a
-      | None -> 
+      | None ->
         let msg = "Wrong number of arguments to primitive operation." in
-        raise (Typing_error (Some t, msg))
+        raise (Typing_error (Some t.Ast.loc, msg))
     in
     let linearized_args = List.map ~f:(linearize phi) args in
     List.iter2_exn args_with_expected_types linearized_args
@@ -220,7 +220,7 @@ let rec linearize (phi: Simpletype.t context) (t: Ast.t)
         };
       subst = sigma
     }
-  | Ast.Tailfix(f, x, s) ->    
+  | Ast.Tailfix(f, x, s) ->
     (* TODO: verify that f appears in tail position *)
     let alpha = Simpletype.newvar() in
     let beta = Simpletype.newvar() in
@@ -262,3 +262,56 @@ let rec linearize (phi: Simpletype.t context) (t: Ast.t)
         };
       subst = sl.subst @ ttl.subst @ tfl.subst
     }
+
+let rec is_first_order (t: Simpletype.t) : bool =
+  let open Simpletype in
+  match case t with
+  | Var -> false
+  | Sgn a ->
+    match a with
+    | Bool | Nat -> true
+    | Pair(b, c) -> is_first_order b && is_first_order c
+    | Fun _ -> false
+
+let rec check_term (t: Simpletype.t Cbvterm.term) : unit =
+  let open Cbvterm in
+  match t.t_desc with
+  | Var _
+  | Const _ ->
+    ()
+  | Fst(t)
+  | Snd(t)
+  | Fun(_, t)
+  | Fix(_, t)
+  | Contr(_, t) ->
+    check_term t
+  | Pair(s, t)
+  | App(s, t) ->
+    check_term s;
+    check_term t
+  | Ifz(s, tt, tf) ->
+    check_term s;
+    check_term tt;
+    check_term tf
+  | Tailfix((_, f, x, tx), s) ->
+    check_term s;
+    (* TODO: check that applications of f appear in tail position *)
+    match Simpletype.case t.t_type with
+    | Simpletype.Var -> assert false
+    | Simpletype.Sgn a ->
+      match a with
+      | Simpletype.Bool
+      | Simpletype.Nat
+      | Simpletype.Pair _ ->
+        assert false
+      | Simpletype.Fun(tx, ty) ->
+        if not (is_first_order tx && is_first_order ty) then
+          begin
+            let msg = "tailfix is restricted to first-order types." in
+            raise (Typing_error (Some t.Cbvterm.t_loc, msg))
+          end
+
+let check (t: Ast.t) : linearized_term =
+  let l = linearize [] t in
+  check_term l.linear_term;
+  l
