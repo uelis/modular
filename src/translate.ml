@@ -545,7 +545,7 @@ let rec translate (t: Cbvterm.t) : fragment =
       let vgamma = Builder.project vd (code_context t.t_context) in
       let vgammadx = Builder.pair (Builder.pair vgamma vd) vx in
       let vdelta = build_context_map
-          ((x, xty)::(f, t.t_type)::t.t_context) s.t_context vgammadx in
+          ((x, xty) :: (f, t.t_type) :: t.t_context) s.t_context vgammadx in
       let v = Builder.pair vh (Builder.pair va vdelta) in
       Builder.end_block_jump s_fragment.eval.entry v in
     let access_block =
@@ -626,6 +626,91 @@ let rec translate (t: Cbvterm.t) : fragment =
       blocks = [eval_block; access_block; eval_body_block; invoke_rec_block;
                 s_eval_exit_block; s_access_exit_block; x_access_entry_block;
                 f_access_entry_block]
+               @ context_blocks
+               @ s_fragment.blocks;
+      context = context
+    }
+  | Tailfix((th, f, x, xty), s) ->
+    let s_fragment = lift th (translate s) in
+    let id = "tailfix" in
+    let eval = fresh_eval id t in
+    let access = fresh_access id t.t_type in
+    let x_access = List.Assoc.find_exn s_fragment.context x in
+    let f_access = List.Assoc.find_exn s_fragment.context f in
+    let te, (_, ta, td, _) = selectfunty t.t_type in
+    let tea = pairB te ta in
+    let dummy_block =
+      let l = fresh_label (id ^ "dummy") unitB in
+      let arg = Builder.begin_block l in
+      Builder.end_block_jump l arg in
+    let eval_block =
+      let arg = Builder.begin_block eval.entry in
+      let vstack, vgamma = Builder.unpair arg in
+      let vclosure = Builder.embed vgamma (Cbvtype.code t.t_type) in
+      let v = Builder.pair vstack vclosure in
+      Builder.end_block_jump eval.exit v in
+    let eval_body_block =
+      let tx = Cbvtype.code xty in
+      let arg = Builder.begin_block
+          (fresh_label (id ^ "eval_body")
+             (pairB te (pairB ta (pairB td tx)))) in
+      let ve, vadx = Builder.unpair arg in
+      let va, vdx = Builder.unpair vadx in
+      let vd, vx = Builder.unpair vdx in
+      let vgamma = Builder.project vd (code_context t.t_context) in
+      let vgammadx = Builder.pair (Builder.pair vgamma vd) vx in
+      let vdelta = build_context_map
+          ((x, xty) :: (f, t.t_type) :: t.t_context) s.t_context vgammadx in
+      let vh = Builder.embed (Builder.pair ve va) th in
+      let vu = Builder.embed Builder.unit s.t_ann in
+      let v = Builder.pair vh (Builder.pair vu vdelta) in
+      Builder.end_block_jump s_fragment.eval.entry v in
+    let access_block =
+      let arg = Builder.begin_block access.entry in
+      let ve, vreq = Builder.unpair arg in
+      Builder.end_block_case
+        vreq
+        [ (fun c -> Ssa.label_of_block eval_body_block, Builder.pair ve c);
+          (fun c -> Ssa.label_of_block dummy_block, Builder.unit);
+          (fun c -> Ssa.label_of_block dummy_block, Builder.unit) ] in
+    let s_eval_exit_block =
+      let arg = Builder.begin_block s_fragment.eval.exit in
+      let vh, vum = Builder.unpair arg in
+      let vm = Builder.snd vum in
+      let vea = Builder.project vh tea in
+      let ve = Builder.fst vea in
+      let va = Builder.snd vea in
+      let _, tans = unPairB access.exit.Ssa.message_type in
+      let vm0 = Builder.inj 0 (Builder.pair va vm) tans in
+      Builder.end_block_jump access.exit (Builder.pair ve vm0) in
+    let s_access_exit_block =
+      let _ = Builder.begin_block s_fragment.access.exit in
+      Builder.end_block_jump (Ssa.label_of_block dummy_block) Builder.unit in
+    let x_access_entry_block =
+      let _ = Builder.begin_block x_access.entry in
+      Builder.end_block_jump (Ssa.label_of_block dummy_block) Builder.unit in
+    let f_access_entry_block =
+      let arg = Builder.begin_block f_access.entry in
+      let vh, vgm = Builder.unpair arg in
+      let vea = Builder.project vh tea in
+      let ve = Builder.fst vea in
+      let va = Builder.snd vea in
+      let _, vm = Builder.unpair vgm in
+      Builder.end_block_case
+        vm
+        [ (fun c -> Ssa.label_of_block eval_body_block,
+                    Builder.pair ve (Builder.pair va (Builder.snd c)));
+          (fun c -> Ssa.label_of_block dummy_block, Builder.unit);
+          (fun c -> Ssa.label_of_block dummy_block, Builder.unit) ] in
+    let context, context_blocks =
+      let gamma = List.filter s_fragment.context
+          ~f:(fun (y, _) -> y <> x && y <> f) in
+      embed_context t.t_context gamma in
+    { eval = eval;
+      access = access;
+      blocks = [eval_block; access_block; eval_body_block;
+                s_eval_exit_block; s_access_exit_block; x_access_entry_block;
+                f_access_entry_block; dummy_block]
                @ context_blocks
                @ s_fragment.blocks;
       context = context

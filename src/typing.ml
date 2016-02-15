@@ -507,12 +507,11 @@ let infer_annotations (t: Cbvterm.t) : Cbvterm.t =
       ]
       @ cs1 @ context_cs
     | Tailfix((h, f, v, va), s) ->
-      (* TODO: alles nur kopiert! *)
-      (* note: the bound variable cannot appear in t.t_context *)
+      (* TODO: verify tail position and that x and y are first-order types. *)
       let as1, cs1 = constraints s in
       let e, (x, a, d, y) = selectfunty t.t_type in
       let g, (x', _, d', y') = selectfunty (List.Assoc.find_exn as1.t_context f) in
-      Basetype.unify_exn (code_of_context as1.t_context) d'; (* TODO: ok? *)
+      Basetype.unify_exn d d';
       Cbvtype.unify_exn x x';
       Cbvtype.unify_exn x va;
       Cbvtype.unify_exn x (List.Assoc.find_exn as1.t_context v);
@@ -537,20 +536,16 @@ let infer_annotations (t: Cbvterm.t) : Cbvterm.t =
         t_desc = Tailfix((h, f, v, va), as1);
         t_context = outer_context
       },
-      [ { lower = code_of_context as1.t_context;
+      [ { lower = code_of_context outer_context;
           upper = d;
           reason = "tailfix: closure"
         }
-      ; { lower = e;
+      ; { lower =  Basetype.newty (Basetype.PairB(e, a));
           upper = h;
-          reason = "tailfix: call stack1"
-        }
-      ; { lower = a;
-          upper = h;
-          reason = "tailfix: call stack2"
+          reason = "tailfix: eval stack"
         }
       ; { lower = Basetype.newty (Basetype.UnitB);
-          upper = s.t_ann;
+          upper = as1.t_ann;
           reason = "tailfix: inner stack"
         }
       ]

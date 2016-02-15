@@ -1,0 +1,10 @@
+let f =
+    tailfix f x ->
+      let x1 = #1 x in
+      let x2 = #2 x in
+      if x1 = 0 then
+        print x2
+      else
+        f (x1 - 1, x2 + 1)
+let main =
+    f (10, 1)
