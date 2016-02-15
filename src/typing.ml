@@ -520,7 +520,7 @@ let infer_annotations (t: Cbvterm.t) : Cbvterm.t =
       let outer_context =
         List.filter_map as1.t_context
           ~f:(fun (y, a) ->
-              if y = v then None else Some (y, freshen_multiplicity a)) in
+              if y = v || y = f then None else Some (y, freshen_multiplicity a)) in
       let context_cs =
         List.map outer_context
           ~f:(fun (y, a) ->
