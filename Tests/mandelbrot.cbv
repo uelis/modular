@@ -1,0 +1,74 @@
+let main =
+  /* TODO: printing of strings not implemented
+  print "P3\n400\n400\n256\n";
+  */
+  let z0r = ~600 in
+  let z0i = 0 in
+  let d = 7 in
+  let u = print 3 in
+  let u = print 400 in
+  let u = print 400 in
+  let u = print 60 in
+  let printdot = \n ->
+    let h = 6*n*1024/60 in
+    let i = 6*n/60 in
+    let t = h - i*1024 in
+    let q = 1024 - t in
+    if (59 < n) then
+      let u = print 0 in
+      let u = print 0 in
+      print 0
+    else if (i < 1) then
+      let u = print 60 in
+      let u = print (60*t/1024) in
+      print 0
+    else if (i < 2) then
+      let u = print (60*q/1024) in
+      let u = print 60 in
+      print 0
+    else if (i < 3) then
+      let u = print 0 in
+      let u = print 60 in
+      print (60*t/1024)
+    else if (i < 4) then
+      let u = print 60 in
+      let u = print (60*q/1024) in
+      print 60
+    else if (i < 5) then
+      let u = print (60*t/1024) in
+      let u = print 0 in
+      print 60
+    else 
+      let u = print 60 in
+      let u = print 0 in
+      print (60*q/1024) in
+  let y_loop = tailfix y_loop y -> 
+                 if y < 400 then
+                   let ci = z0i + (y - 200) * d in
+                   let x_loop = tailfix x_loop x -> 
+                                  if x < 400 then
+                                    let cr = z0r + (x - 200) * d in
+                                    let loop = tailfix loop v -> 
+                                                 let zr = #1 v in
+                                                 let zi = #1 (#2 v) in
+                                                 let n = #2 (#2 v) in
+                                                 let absz = zr * zr + zi * zi in
+                                                 if absz < 4194304 then
+                                                   (if n < 60 then
+                                                     let t = zr in
+                                                     let zr' = ((zr*zr)/1024) - ((zi*zi)/1024) + cr in
+                                                     let zi' = 2 * (t * zi)/1024 + ci in
+                                                     let n' = n + 1 in
+                                                     loop (zr', (zi', n'))
+                                                   else n)
+                                                 else n in
+                                    let n = loop (0, (0, 0)) in
+                                    let p = printdot n in
+                                    x_loop (x+1)
+                                  else
+                                    42 in
+                   let u = x_loop 0 in
+                   y_loop (y+1)
+                 else
+                   42 in
+  y_loop 0
