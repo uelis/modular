@@ -1018,7 +1018,7 @@ let rec translate (t: Cbvterm.t) : fragment =
         match Cbvtype.case a1, Cbvtype.case a2, Cbvtype.case a with
           | Cbvtype.Sgn (Cbvtype.Bool _),
             Cbvtype.Sgn (Cbvtype.Bool _),
-            Cbvtype.Sgn (Cbvtype.Bool _) 
+            Cbvtype.Sgn (Cbvtype.Bool _)
           | Cbvtype.Sgn (Cbvtype.Nat _),
             Cbvtype.Sgn (Cbvtype.Nat _),
             Cbvtype.Sgn (Cbvtype.Nat _) ->
@@ -1038,8 +1038,8 @@ let rec translate (t: Cbvterm.t) : fragment =
             Cbvtype.Sgn (Cbvtype.Pair (m , (x , y ))) ->
             assert (Basetype.equals m m1);
             assert (Basetype.equals m m2);
-            (* Entry block *)
             let access = fresh_access "joinPair" a in
+            (* Entry block *)
             let lift_x1_access, lift_x2_access, lift_x_access, join_x_blocks =
               let a1 = fresh_access "pairx1" x1 in
               let a2 = fresh_access "pairx2" x2 in
@@ -1058,8 +1058,9 @@ let rec translate (t: Cbvterm.t) : fragment =
               List.map bs ~f:(lift_block m) in
             let inject kind vm i v =
               let label = match kind with
-                | `Pair1 -> access1.entry
-                | `Pair2 -> access2.entry in
+                | `Entry1 -> access1.entry
+                | `Entry2 -> access2.entry
+                | `Exit -> access.exit in
               let _, t = unPairB label.Ssa.message_type in
               let j = match i with
                 | `X -> 0
@@ -1068,27 +1069,27 @@ let rec translate (t: Cbvterm.t) : fragment =
             let x1_entry_block =
               let arg = Builder.begin_block lift_x1_access.entry in
               let vm, _(*vx*) = Builder.unpair arg in
-              let v = inject `Pair1 vm `X arg in
+              let v = inject `Entry1 vm `X arg in
               Builder.end_block_jump access1.entry v in
             let y1_entry_block =
               let arg = Builder.begin_block lift_y1_access.entry in
-              let vm, _(*vx*) = Builder.unpair arg in
-              let v = inject `Pair1 vm `Y arg in
+              let vm, _(*vy*) = Builder.unpair arg in
+              let v = inject `Entry1 vm `Y arg in
               Builder.end_block_jump access1.entry v in
             let x2_entry_block =
-              let arg = Builder.begin_block lift_x1_access.entry in
+              let arg = Builder.begin_block lift_x2_access.entry in
               let vm, _(*vx*) = Builder.unpair arg in
-              let v = inject `Pair2 vm `X arg in
+              let v = inject `Entry2 vm `X arg in
               Builder.end_block_jump access2.entry v in
             let y2_entry_block =
               let arg = Builder.begin_block lift_y2_access.entry in
-              let vm, _(*vx*) = Builder.unpair arg in
-              let v = inject `Pair2 vm `Y arg in
+              let vm, _(*vy*) = Builder.unpair arg in
+              let v = inject `Entry2 vm `Y arg in
               Builder.end_block_jump access2.entry v in
             let entry_block =
               let arg = Builder.begin_block access.entry in
-              let vm, v12 = Builder.unpair arg in
-              Builder.end_block_case v12
+              let vm, vxy = Builder.unpair arg in
+              Builder.end_block_case vxy
                 [(fun c -> lift_x_access.entry, Builder.pair vm c);
                  (fun c -> lift_y_access.entry, Builder.pair vm c)
                 ] in
@@ -1101,13 +1102,27 @@ let rec translate (t: Cbvterm.t) : fragment =
                  (fun c -> lift_y1_access.exit, Builder.pair vm c)
                 ] in
             let exit_block2 =
-              let arg = Builder.begin_block access1.exit in
+              let arg = Builder.begin_block access2.exit in
               let vm, vxy = Builder.unpair arg in
               Builder.end_block_case vxy
                 [(fun c -> lift_x2_access.exit, Builder.pair vm c);
                  (fun c -> lift_y2_access.exit, Builder.pair vm c)
                 ] in
-            failwith "TODO"
+            let res_x_block =
+              let arg = Builder.begin_block lift_x_access.exit in
+              let vm, _(*vx*) = Builder.unpair arg in
+              let v = inject `Exit vm `X arg in
+              Builder.end_block_jump access.exit v in
+            let res_y_block =
+              let arg = Builder.begin_block lift_y_access.exit in
+              let vm, _(*vy*) = Builder.unpair arg in
+              let v = inject `Exit vm `Y arg in
+              Builder.end_block_jump access.exit v in
+            access,
+            [x1_entry_block; x2_entry_block; y1_entry_block; y2_entry_block;
+             entry_block; exit_block1; exit_block2; res_x_block; res_y_block]
+            @ join_x_blocks
+            @ join_y_blocks
           | Cbvtype.Sgn (Cbvtype.Fun (m1, (x1, c1, d1, y1))),
             Cbvtype.Sgn (Cbvtype.Fun (m2, (x2, c2, d2, y2))),
             Cbvtype.Sgn (Cbvtype.Fun (m , (x , c , d , y ))) ->
@@ -1253,9 +1268,9 @@ let rec translate (t: Cbvterm.t) : fragment =
              fun_arg_entry_block; fun_arg_exit_block;
              entry_block; exit_block1; exit_block2]
             @ join_y_blocks
-          | Cbvtype.Var, _, _ 
+          | Cbvtype.Var, _, _
           | Cbvtype.Sgn (Cbvtype.Bool _), _, _
-          | Cbvtype.Sgn (Cbvtype.Nat _), _, _ 
+          | Cbvtype.Sgn (Cbvtype.Nat _), _, _
           | Cbvtype.Sgn (Cbvtype.Pair _), _, _
           | Cbvtype.Sgn (Cbvtype.Fun _), _, _ ->
             assert false in
