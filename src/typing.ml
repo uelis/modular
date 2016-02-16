@@ -250,6 +250,9 @@ let infer_annotations (t: Cbvterm.t) : Cbvterm.t =
     | Const(Ast.Cintconst _, []) ->
       t,
       []
+    | Const(Ast.Cboolconst _, []) ->
+      t,
+      []
     | Const(Ast.Cinteq as c, [s1; s2])
     | Const(Ast.Cintlt as c, [s1; s2])
     | Const(Ast.Cintadd as c, [s1; s2])
@@ -283,7 +286,15 @@ let infer_annotations (t: Cbvterm.t) : Cbvterm.t =
         t_context = as1.t_context
       },
       cs1
-    | Const _ ->
+    | Const(Ast.Cintconst _, _)
+    | Const(Ast.Cboolconst _, _)
+    | Const(Ast.Cinteq, _)
+    | Const(Ast.Cintlt, _)
+    | Const(Ast.Cintadd, _)
+    | Const(Ast.Cintsub, _)
+    | Const(Ast.Cintmul, _)
+    | Const(Ast.Cintdiv, _)
+    | Const(Ast.Cintprint, _) ->
       assert false
     | Pair(s1, s2) ->
       let as1, cs1 = constraints s1 in
@@ -444,9 +455,9 @@ let infer_annotations (t: Cbvterm.t) : Cbvterm.t =
               reason = "if: join argument multiplicity"
             }
           ] @ csy
-        | Cbvtype.Var, _ 
-        | Cbvtype.Sgn (Cbvtype.Bool _), _ 
-        | Cbvtype.Sgn (Cbvtype.Nat _), _ 
+        | Cbvtype.Var, _
+        | Cbvtype.Sgn (Cbvtype.Bool _), _
+        | Cbvtype.Sgn (Cbvtype.Nat _), _
         | Cbvtype.Sgn (Cbvtype.Pair _), _
         | Cbvtype.Sgn (Cbvtype.Fun _), _ ->
           assert false in
