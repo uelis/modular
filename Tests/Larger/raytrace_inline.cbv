@@ -1,0 +1,280 @@
+let factor = 4096 
+let sqrfactor = 64
+let mul = \xy -> ((#1 xy) * (#2 xy))/factor
+
+let getX = \xyz -> #1 xyz
+let getY = \xyz -> #1 (#2 xyz)
+let getZ = \xyz -> #2 (#2 xyz)
+
+let lightX = factor*20 / 10 
+let lightY = 0 - factor*30 /10
+let lightZ = 0 - factor*50 /10 
+
+
+let sphereCount = 4
+let sphereX = \i ->
+   if i = 0 then factor*~7/10
+   else if i = 1 then factor*12/10
+   else if i = 2 then factor*5/10
+   else 0
+let sphereY = \i ->   
+   if i = 0 then 0
+   else if i = 1 then factor*0/10
+   else if i = 2 then factor*7/10
+   else factor*50/10
+let sphereZ = \i ->
+   if i = 0 then 0
+   else if i = 1 then factor*3/10
+   else if i = 2 then factor*(0-4)/10
+   else factor*20/10
+let sphereR = \i ->
+   if i = 0 then factor*11/10
+   else if i = 1 then factor*6/10
+   else if i = 2 then factor*5/10
+   else factor*40/10
+let sphereRed = \i ->
+   if i = 0 then factor*5/10
+   else if i = 1 then factor*0/10
+   else if i = 2 then factor*0/10
+   else factor*3/10
+let sphereGreen = \i ->
+   if i = 0 then factor*1/10
+   else if i = 1 then factor*0/10
+   else if i = 2 then factor*5/10
+   else factor*3/10
+let sphereBlue = \i ->
+   if i = 0 then 0
+   else if i = 1 then factor*4/10
+   else if i = 2 then factor*0/10
+   else factor*3/10
+let sphereRefl = \i ->
+   if i = 0 then factor*2/10
+   else if i = 1 then factor*3/10
+   else if i = 2 then factor*1/10
+   else factor*2/10
+
+let sqrt = \x ->
+  let sqrt' =
+    tailfix sqrt' v ->
+      let i0 = #1 v in
+      let i = #2 v in
+      if 0 < i then
+        if i < i0 then sqrt' (i, (i + x/i)/2) else i
+      else i in
+  sqrt' (x, (x+1)/2)
+
+let andalso = \bc ->
+   if #1 bc then #2 bc else false
+
+let closestIntersection = \v ->
+  let base = #1 v in
+  let dir = #2 v in
+  let loop =
+    tailfix closestIntersection v ->
+    let i = #1 v in
+    let intersectionTime = #1 (#2 v) in
+    let intersectionSphere = #2 (#2 v) in
+    if i < sphereCount then
+      let a = mul(getX dir, getX dir) + mul(getY dir, getY dir) +
+              mul(getZ dir, getZ dir) in
+      let b = 2 * (  (mul(getX dir, (getX base) - (sphereX i)))
+                   + (mul(getY dir, (getY base) - (sphereY i)))
+                   + (mul(getZ dir, (getZ base) - (sphereZ i)))) in
+      let c = mul((getX base) - (sphereX i), (getX base) - (sphereX i))
+              + mul((getY base) - (sphereY i), (getY base) - (sphereY i))
+              + mul((getZ base) - (sphereZ i), (getZ base) - (sphereZ i))
+              - mul(sphereR(i), sphereR(i)) in
+      let discriminant = mul(b,b) - 4 * mul(a,c) in
+      let iTS =
+        if (discriminant < 0) then
+          (intersectionTime, intersectionSphere)
+        else
+          let t1 = (0 - b + sqrfactor * sqrt(discriminant)) / 2 in
+          if andalso(280 < t1, t1 < intersectionTime) then
+            let t2 = (0 - b - sqrfactor * sqrt(discriminant)) / 2 in
+            if andalso(280 < t2, t2 < t1) then (t2, i)
+            else (t1, i)
+          else
+            let t2 = (0 - b - sqrfactor * sqrt(discriminant)) / 2 in
+            if andalso(280 < t2, t2 < intersectionTime) then (t2, i)
+            else (intersectionTime, intersectionSphere) in
+      closestIntersection (i+1, iTS)
+   else
+     (intersectionTime, intersectionSphere) in
+  loop (0, (10000 * factor, 0-1))
+
+let normalise = \v ->
+  let x = #1 v in
+  let y = #1 (#2 v) in
+  let z = #2 (#2 v) in
+  let mag = sqrfactor * sqrt(mul(x,x) + mul(y,y) + mul(z,z)) in
+  if 0 < mag then
+    (mag, (factor*x/mag, (factor*y/mag, factor*z/mag)))
+  else
+    (0, (0, (0, 0)))
+
+let dot = \vv1 ->
+  let v = #1 vv1 in
+  let v1 = #2 vv1 in
+  let x = #1 v in
+  let y = #1 (#2 v) in
+  let z = #2 (#2 v) in
+  let x1 = #1 v1 in
+  let y1 = #1 (#2 v1) in
+  let z1 = #2 (#2 v1) in
+  mul(x,x1) + mul(y,y1) + mul(z,z1)
+
+let reflectedRay = \v ->
+  let inBase = #1 (#1 v) in
+  let inDir = #2 (#1 v) in
+  let i = #2 v in
+  let normal = (getX inBase - (sphereX i),
+                (getY inBase - (sphereY i),
+                 getZ inBase - (sphereZ i))) in
+  let normal1 = #2 (normalise(normal)) in
+  let k = (0-2)*dot(normal1, inDir) in
+  let out = (mul(k, getX normal1) + (getX inDir),
+             (mul(k, getY normal1) + (getY inDir),
+              mul(k, getZ normal1) + (getZ inDir))) in
+  let out1 = #2 (normalise(out)) in
+  (out1, normal1)
+
+let main =
+  /* TODO: printing of strings not implemented
+  print "P3\n400\n400\n256\n";
+  */
+  let u = print 3 in
+  let u = print 400 in
+  let u = print 400 in
+  let u = print 256 in
+  let y_loop =
+    tailfix cy y -> 
+      if y < 400 then
+        let x_loop =
+          tailfix cx x -> 
+            if x < 400 then
+              let rayBase = ((x * factor) / 100 - 2 * factor,
+                             ((y * factor)/ 100 - 2 * factor,
+                              (0 - 2) * factor)) in
+              let rayDir = (0, (0, factor)) in
+              let ray = (rayBase, rayDir) in
+              let clevel =
+                tailfix clevel v -> 
+                  let level = #1 v in
+                  let v1 = #2 v in
+                  let red = #1 v1 in
+                  let v2 = #2 v1 in
+                  let green = #1 v2 in
+                  let v3 = #2 v2 in
+                  let blue = #1 v3 in
+                  let v4 = #2 v3 in
+                  let colourfactor = #1 v4 in
+                  let v5 = #2 v4 in
+                  let rayBase = #1 v5 in
+                  let rayDir = #2 v5 in
+                    if level < 10 then
+                      let v6 = closestIntersection ray in
+                      let intersectionTime = #1 v6 in
+                      let intersectionSphere = #2 v6 in
+                      if intersectionSphere < 0 then (
+                        let u1 = print (red* 256/ factor) in
+                        let u2 = print (green* 256/ factor) in
+                        print (blue* 256/ factor)
+                      ) else
+                        let red = red + mul(4*colourfactor/10,
+                                             sphereRed(intersectionSphere)) in
+                        let green = green + mul(4*colourfactor/10,
+                                                 sphereGreen(intersectionSphere)) in
+                        let blue = blue + mul(4*colourfactor/10,
+                                               sphereBlue(intersectionSphere)) in
+                        let intersectionBase =
+                              (getX rayBase + mul(intersectionTime, getX rayDir),
+                               (getY rayBase + mul(intersectionTime, getY rayDir),
+                                getZ rayBase + mul(intersectionTime, getZ rayDir))) in
+                        let intersectionDir = rayDir in
+                        let rayToViewerBase = intersectionBase in
+                        let rayToViewerDir =
+                             ((getX rayBase) - (getX intersectionBase),
+                              ((getY rayBase) - (getY intersectionBase),
+                               (getZ rayBase) - (getZ intersectionBase))) in
+                        let v7 = reflectedRay(
+                                   (intersectionBase, intersectionDir),
+                                   intersectionSphere) in
+                        let out = #1 v7 in
+                        let normal = #2 v7 in
+                        let rayBase1 = intersectionBase in
+                        let rayDir1 = out in
+                        let rayToLightBase = intersectionBase in
+                        let rayToLightDir =
+                             (lightX - (getX intersectionBase),
+                              (lightY - (getY intersectionBase),
+                               lightZ - (getZ intersectionBase))) in
+                        let v8 = normalise(rayToLightDir) in
+                        let mag = #1 v8 in
+                        let rayToLightDirNormalised = #2 v8 in
+                        let v9 =
+                          if 0 < mag then
+                            let v10 =
+                               closestIntersection(rayToLightBase,
+                                                   rayToLightDirNormalised) in
+                            let intersectionTime1 = #1 v10 in
+                            let intersectionSphere1 = #2 v10 in
+                            if intersectionSphere1 < 0 then
+                              let c = dot(rayToLightDirNormalised, normal) in
+                              let red = red +
+                                         mul(mul(c, colourfactor),
+                                             sphereRed(intersectionSphere)) in
+                              let green = green +
+                                         mul(mul(c, colourfactor),
+                                             sphereGreen(intersectionSphere)) in
+                              let blue = blue +
+                                         mul(mul(c, colourfactor),
+                                             sphereBlue(intersectionSphere)) in
+                              let rayFromLightBase = intersectionBase in
+                              let rayFromLightDir =
+                                   ((getX intersectionBase) - lightX,
+                                    ((getY intersectionBase) - lightY,
+                                     (getZ intersectionBase) - lightZ)) in
+                              let rayFromLightDirNormalised = #2 (normalise(rayFromLightDir)) in
+                              let out1 = #1 (
+                                    reflectedRay(
+                                      (rayFromLightBase, rayFromLightDirNormalised),
+                                      intersectionSphere)) in
+                              let rayToViewerDirNormalised = #2 (normalise(rayToViewerDir)) in
+                              let out1N = #2 (normalise(out1)) in
+                              let spec = dot(rayToViewerDirNormalised, out1N) in
+                              let spec1 = if (spec < 0) then 0 else spec in
+                              let spec2 = (spec1 * spec1) / factor in
+                              let spec3 = (spec2 * spec2) / factor in
+                              let spec4 = (spec3 * spec3) / factor in
+                              let red = red +
+                                         mul(mul(spec4, colourfactor),
+                                              sphereRefl(intersectionSphere)) in
+                              let green = green +
+                                           mul(mul(spec4, colourfactor),
+                                               sphereRefl(intersectionSphere)) in
+                              let blue = blue +
+                                           mul(mul(spec4, colourfactor),
+                                               sphereRefl(intersectionSphere)) in
+                              (red, (green, blue))
+                            else (red, (green, blue))
+                          else (red, (green, blue)) in
+                        let red = #1 v9 in
+                        let green = #1 (#2 v9) in
+                        let blue = #2 (#2 v9) in
+                        let colourfactor1 = mul(colourfactor,
+                                                sphereRefl(intersectionSphere)) in
+                        clevel (level + 1, (red, (green, (blue,
+                               (colourfactor1, (rayBase1, rayDir1))))))
+                    else
+                      let u1 = print (red* 256/ factor) in
+                      let u2 = print (green* 256/ factor) in
+                      print (blue* 256/ factor) in
+              let u = clevel (0, (0, (0, (0, (factor, (rayBase, rayDir)))))) in
+              cx (x+1)
+            else
+              42 in
+        let u = x_loop 0 in
+        cy (y+1)
+      else 42 in
+  y_loop 0
