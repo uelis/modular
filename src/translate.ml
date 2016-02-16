@@ -396,7 +396,7 @@ let rec translate (t: Cbvterm.t) : fragment =
       | Ast.Cintmul -> "intmul", Ssa.Cintmul
       | Ast.Cintdiv -> "intdiv", Ssa.Cintdiv
       | Ast.Cinteq -> "inteq", Ssa.Cinteq
-      | Ast.Cintlt -> "intlt", Ssa.Cintlt
+      | Ast.Cintlt -> "intlt", Ssa.Cintslt
       | Ast.Cboolconst _ -> assert false
       | Ast.Cintconst _ -> assert false
       | Ast.Cintprint -> assert false in
