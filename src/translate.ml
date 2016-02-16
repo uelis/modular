@@ -999,13 +999,13 @@ let rec translate (t: Cbvterm.t) : fragment =
       match Cbvtype.case a with
       | Cbvtype.Sgn (Cbvtype.Bool _) -> v
       | Cbvtype.Sgn (Cbvtype.Nat _) -> v
-      | Cbvtype.Sgn (Cbvtype.Pair (_, (a', a''))) ->
-        let _, (a1', a1'') = Cbvtype.unPair a1 in
-        let _, (a2', a2'') = Cbvtype.unPair a2 in
-        let v', v'' = Builder.unpair v in
-        let vi' = inject_code k v' a1' a2' a' in
-        let vi'' = inject_code k v'' a1'' a2'' a'' in
-        Builder.pair vi' vi''
+      | Cbvtype.Sgn (Cbvtype.Pair (_, (x, y))) ->
+        let _, (x1, y1) = Cbvtype.unPair a1 in
+        let _, (x2, y2) = Cbvtype.unPair a2 in
+        let vx, vy = Builder.unpair v in
+        let vx' = inject_code k vx x1 x2 x in
+        let vy' = inject_code k vy y1 y2 y in
+        Builder.pair vx' vy'
       | Cbvtype.Sgn (Cbvtype.Fun _) ->
         let d1 = Cbvtype.code a1 in
         let d2 = Cbvtype.code a2 in
