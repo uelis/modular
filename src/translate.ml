@@ -1061,30 +1061,30 @@ let rec translate (t: Cbvterm.t) : fragment =
                 | `Entry1 -> access1.entry
                 | `Entry2 -> access2.entry
                 | `Exit -> access.exit in
-              let _, t = unPairB label.Ssa.message_type in
               let j = match i with
                 | `X -> 0
                 | `Y -> 1 in
+              let _, t = unPairB label.Ssa.message_type in
               Builder.pair vm (Builder.inj j v t) in
             let x1_entry_block =
               let arg = Builder.begin_block lift_x1_access.entry in
-              let vm, _(*vx*) = Builder.unpair arg in
-              let v = inject `Entry1 vm `X arg in
+              let vm, vx = Builder.unpair arg in
+              let v = inject `Entry1 vm `X vx in
               Builder.end_block_jump access1.entry v in
             let y1_entry_block =
               let arg = Builder.begin_block lift_y1_access.entry in
-              let vm, _(*vy*) = Builder.unpair arg in
-              let v = inject `Entry1 vm `Y arg in
+              let vm, vy = Builder.unpair arg in
+              let v = inject `Entry1 vm `Y vy in
               Builder.end_block_jump access1.entry v in
             let x2_entry_block =
               let arg = Builder.begin_block lift_x2_access.entry in
-              let vm, _(*vx*) = Builder.unpair arg in
-              let v = inject `Entry2 vm `X arg in
+              let vm, vx = Builder.unpair arg in
+              let v = inject `Entry2 vm `X vx in
               Builder.end_block_jump access2.entry v in
             let y2_entry_block =
               let arg = Builder.begin_block lift_y2_access.entry in
-              let vm, _(*vy*) = Builder.unpair arg in
-              let v = inject `Entry2 vm `Y arg in
+              let vm, vy = Builder.unpair arg in
+              let v = inject `Entry2 vm `Y vy in
               Builder.end_block_jump access2.entry v in
             let entry_block =
               let arg = Builder.begin_block access.entry in
@@ -1110,13 +1110,13 @@ let rec translate (t: Cbvterm.t) : fragment =
                 ] in
             let res_x_block =
               let arg = Builder.begin_block lift_x_access.exit in
-              let vm, _(*vx*) = Builder.unpair arg in
-              let v = inject `Exit vm `X arg in
+              let vm, vx = Builder.unpair arg in
+              let v = inject `Exit vm `X vx in
               Builder.end_block_jump access.exit v in
             let res_y_block =
               let arg = Builder.begin_block lift_y_access.exit in
-              let vm, _(*vy*) = Builder.unpair arg in
-              let v = inject `Exit vm `Y arg in
+              let vm, vy = Builder.unpair arg in
+              let v = inject `Exit vm `Y vy in
               Builder.end_block_jump access.exit v in
             access,
             [x1_entry_block; x2_entry_block; y1_entry_block; y2_entry_block;

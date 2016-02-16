@@ -1,3 +1,4 @@
 let main =
   let y = 3 in
-  if 1 = 0 then (1, \x -> x + 5) else (3, \x -> x * y)
+  let f = if false then (1, \x -> x + 5) else (3, \x -> x * y) in
+  print ((#2 f) 4)
