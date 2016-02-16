@@ -347,16 +347,16 @@ let fprint_annotated_term (f: Format.formatter) (term: Cbvterm.t) : unit =
     | Pair(t1, t2) ->
       fprintf f "(@[";
       s_term t1;
-      fprintf f "@] #@ @[";
+      fprintf f "@] ,@ @[";
       s_term t2;
       fprintf f "@])"
     | Fst(t1) ->
       fprintf f "@[#1 ";
-      s_term t1;
+      s_term_atom t1;
       fprintf f "@]"
     | Snd(t1) ->
       fprintf f "@[#2 ";
-      s_term t1;
+      s_term_atom t1;
       fprintf f "@]"
     | App _ | Fun _ | Fix _ | Tailfix _ | Ifz _ | Contr _
     | Const(Ast.Cinteq, _)
