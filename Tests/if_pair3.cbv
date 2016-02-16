@@ -1,0 +1,4 @@
+let main =
+  let y = 3 in
+  let f = \b -> if b then (1, \x -> x + 5) else (3, \x -> x * y) in
+  print (((#2 (f true)) 4) + ((#2 (f false)) 4))
