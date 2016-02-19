@@ -29,10 +29,13 @@ let emit (l : Ssa.let_binding) : unit =
      builder_state := Some { s with cur_lets = l :: s.cur_lets }
 
 let begin_block (l: Ssa.label) : value =
+  let a =
+    match l.Ssa.arg_types with
+    | [a] -> a
+    | _ -> failwith "begin_block must be called with labels with one arg." in
   match !builder_state with
   | None ->
     let argid = Ident.fresh "arg" in
-    let [a] = l.Ssa.message_type in
     let v = Ssa.Var argid, a in
     builder_state := Some { cur_label = l; cur_arg = [argid]; cur_lets = [] };
     v
@@ -40,13 +43,16 @@ let begin_block (l: Ssa.label) : value =
      assert false
 
 let begin_block2 (l: Ssa.label) : value * value =
+  let a, b =
+    match l.Ssa.arg_types with
+    | [a; b] -> a, b
+    | _ -> failwith "begin_block2 must be called with labels with two args." in
   match !builder_state with
   | None ->
     let arg1 = Ident.fresh "arg" in
     let arg2 = Ident.fresh "arg" in
-    let [a; b] = l.Ssa.message_type in
     let v1 = Ssa.Var arg1, a in
-    let v2 = Ssa.Var arg2, a in
+    let v2 = Ssa.Var arg2, b in
     builder_state := Some { cur_label = l; cur_arg = [arg1; arg2]; cur_lets = [] };
     v1, v2
   | Some _ ->
@@ -264,17 +270,17 @@ let embed (v: value) (a: Basetype.t) : value =
       failwith "not_leq"
 
 (* TODO: add assertions to check types *)
-let end_block_jump (dst: Ssa.label) (v: value) : Ssa.block =
-  let vv, _ = v in
+let end_block_jump (dst: Ssa.label) (v: value list) : Ssa.block =
+  let vv = List.map ~f:(fun (vv, va) -> vv) v in
   match !builder_state with
   | None -> assert false
   | Some s ->
     builder_state := None;
-    Ssa.Direct(s.cur_label, s.cur_arg, s.cur_lets, [vv], dst)
+    Ssa.Direct(s.cur_label, s.cur_arg, s.cur_lets, vv, dst)
 
 (* TODO: add assertions to check types *)
 (* TODO: the functions in [targets] must not create new let-definitions *)
-let end_block_case (v: value) (targets: (value -> Ssa.label * value) list) : Ssa.block =
+let end_block_case (v: value) (targets: (value -> Ssa.label * (value list)) list) : Ssa.block =
   let vv, va = v in
   match !builder_state with
   | None -> assert false
@@ -303,12 +309,13 @@ let end_block_case (v: value) (targets: (value -> Ssa.label * value) list) : Ssa
                 ~f:(fun (t, a) ->
                     let x = Ident.fresh "x" in
                     let vx = Ssa.Var x, a in
-                    let dst, (arg, _) = t vx in
-                    x, [arg], dst
+                    let dst, arg = t vx in
+                    let argv = List.map ~f:(fun (vv, va) -> vv) arg in
+                    x, argv, dst
                 ) in
      builder_state := None;
      Ssa.Branch(s.cur_label, s.cur_arg, s.cur_lets,
-                (id, params, [vv], branches))
+                (id, params, vv, branches))
 
 let end_block_return (v: value) : Ssa.block =
   let vv, va = v in

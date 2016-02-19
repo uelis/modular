@@ -55,17 +55,17 @@ let compile (d: Decl.t) : unit =
       if !Opts.print_annotated_term then
         Printing.fprint_annotated_term Format.std_formatter t;
       let ssa = Translate.to_ssa t in
-      Out_channel.with_file
+(*      Out_channel.with_file
         (f_name ^ ".ssa")
-        ~f:(fun c -> Ssa.fprint_func c ssa)
-(*      let ssa_traced = Trace.trace ssa in
+        ~f:(fun c -> Ssa.fprint_func c ssa) *)
+      let ssa_traced = Trace.trace ssa in
       let ssa_shortcut = Trace.shortcut_jumps ssa_traced in
-      Out_channel.with_file
+(*      Out_channel.with_file
         (f_name ^ ".opt.ssa")
-        ~f:(fun c -> Ssa.fprint_func c ssa_shortcut);
+        ~f:(fun c -> Ssa.fprint_func c ssa_shortcut);*)
       let llvm_module = Llvmcodegen.llvm_compile ssa_shortcut in
       let target = Printf.sprintf "%s.bc" f_name in
-        ignore (Llvm_bitwriter.write_bitcode_file llvm_module target)*)
+      ignore (Llvm_bitwriter.write_bitcode_file llvm_module target)
     with Simpletyping.Typing_error(s, err) ->
       let msg = err ^ "\nIn declaration of '" ^ f_name ^ "'." in
       raise (Failure (error_msg (term_loc s) msg))

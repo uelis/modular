@@ -339,6 +339,10 @@ let assert_type tenc a =
   (*  assert (List.length tenc.payload = payload_size a); *)
   assert (Profile.equal (Profile.of_basetype a) (Mixedvector.to_profile tenc))
 
+(** Assertion to state that a list of encoded values has the given types. *)
+let assert_types tencs xs =
+  List.iter2_exn tencs xs ~f:assert_type
+
 (** Truncate or fill with undefs the vectors in [enc], so
     that it becomes a value of type [a]. *)
 let build_truncate_extend (enc : encoded_value) (a : Basetype.t)
@@ -714,10 +718,10 @@ let build_body
     (func : Llvm.llvalue)
     (ctx: (Ident.t * encoded_value) list)
     (l: Ssa.let_bindings)
-    (v: Ssa.value)
-  : encoded_value =
+    (vs: Ssa.value list)
+  : encoded_value list =
   let ctx1 = build_letbindings the_module func ctx l in
-  build_value the_module ctx1 v
+  List.map vs ~f:(fun v -> build_value the_module ctx1 v)
 
 let build_ssa_blocks
     (the_module : Llvm.llmodule)
@@ -728,7 +732,7 @@ let build_ssa_blocks
   List.iter ssa_func.Ssa.blocks
     ~f:(fun b ->
         let l = Ssa.label_of_block b in
-        Ident.Table.set label_types ~key:l.Ssa.name ~data:l.Ssa.message_type;
+        Ident.Table.set label_types ~key:l.Ssa.name ~data:l.Ssa.arg_types;
         List.iter (Ssa.targets_of_block b)
           ~f:(fun p -> Ident.Table.change predecessors p.Ssa.name
                  (function None -> Some 1
@@ -747,10 +751,11 @@ let build_ssa_blocks
       block in
   let connect_to src_block encoded_value dst =
     try
-      assert_type encoded_value (Ident.Table.find_exn label_types dst);
+      assert_types encoded_value (Ident.Table.find_exn label_types dst);
       let phi = Ident.Table.find_exn phi_nodes dst in
       (* add (encoded_value, source) to phi node *)
-      Mixedvector.add_incoming (encoded_value, src_block) phi
+      List.iter2_exn encoded_value phi
+        ~f:(fun e p -> Mixedvector.add_incoming (e, src_block) p)
     with Not_found ->
       begin
         (* Insert phi node if block has more than one predecessor. *)
@@ -759,21 +764,20 @@ let build_ssa_blocks
         else
           begin
             position_at_start (get_block dst) builder;
-            let phi = Mixedvector.build_phi
-                (encoded_value, src_block) builder in
+            let phi =
+              List.map encoded_value
+                ~f:(fun e -> Mixedvector.build_phi (e, src_block) builder) in
             Ident.Table.set phi_nodes ~key:dst ~data:phi
           end
       end
   in
   (* make entry block *)
   let entry_block = Llvm.append_block context "entry" func in
-  let packed_arg = Llvm.param func 0 in
-  Llvm.set_value_name "packed_arg" packed_arg;
+  let args = List.mapi ssa_func.Ssa.entry_label.Ssa.arg_types
+               ~f:(fun i a -> unpack_encoded_value (Llvm.param func i) a) in
   Llvm.position_at_end entry_block builder;
-  let arg = unpack_encoded_value packed_arg
-      ssa_func.Ssa.entry_label.Ssa.message_type in
   ignore (Llvm.build_br (get_block ssa_func.Ssa.entry_label.Ssa.name) builder);
-  connect_to entry_block arg ssa_func.Ssa.entry_label.Ssa.name;
+  connect_to entry_block args ssa_func.Ssa.entry_label.Ssa.name;
   (* build unconnected blocks *)
   let open Ssa in
   List.iter ssa_func.blocks
@@ -783,11 +787,12 @@ let build_ssa_blocks
         | Unreachable(src) ->
           Llvm.position_at_end (get_block src.name) builder;
           ignore (Llvm.build_unreachable builder)
-        | Direct(src, x, lets, body, dst) ->
+        | Direct(src, xs, lets, body, dst) ->
           Llvm.position_at_end (get_block src.name) builder;
           let senc = Ident.Table.find_exn phi_nodes src.name in
-          assert_type senc src.message_type;
-          let ev = build_body the_module func [(x, senc)] lets body in
+          assert_types senc src.arg_types;
+          let gamma = List.zip_exn xs senc in
+          let ev = build_body the_module func gamma lets body in
           let src_block = Llvm.insertion_block builder in
           ignore (Llvm.build_br (get_block dst.name) builder);
           connect_to src_block ev dst.name
@@ -795,15 +800,17 @@ let build_ssa_blocks
           begin
             Llvm.position_at_end (get_block src.name) builder;
             let xenc = Ident.Table.find_exn phi_nodes src.name in
-            assert_type xenc src.message_type;
-            let ctx = build_letbindings the_module func [(x, xenc)] lets in
+            assert_types xenc src.arg_types;
+            let gamma = List.zip_exn x xenc in
+            let ctx = build_letbindings the_module func gamma lets in
             let ebody = build_value the_module ctx body in
             let n = List.length cases in
             assert (n > 0);
             match cases with
-            | [(y, v, dst)] ->
+            | [(y, vs, dst)] ->
               let venc =
-                build_value the_module ((y, ebody)::ctx) v in
+                List.map vs
+                  ~f:(fun v -> build_value the_module ((y, ebody)::ctx) v) in
               let this_block = Llvm.insertion_block builder in
               ignore (Llvm.build_br (get_block dst.name) builder);
               connect_to this_block venc dst.name
@@ -828,13 +835,14 @@ let build_ssa_blocks
                 Llvm.build_switch cond default_block (n-1) builder in
               (* build case blocks *)
               List.iteri (List.zip_exn case_blocks jump_targets)
-                ~f:(fun i (block, ((y, yenc), v, dst)) ->
+                ~f:(fun i (block, ((y, yenc), vs, dst)) ->
                     if i > 0 then
                       Llvm.add_case switch
                         (Llvm.const_int (Llvm.integer_type context (log n)) i)
                         block;
                     Llvm.position_at_end block builder;
-                    let venc = build_value the_module ((y, yenc)::ctx) v in
+                    let venc = List.map vs
+                                 ~f:(fun v -> build_value the_module ((y, yenc)::ctx) v) in
                     let this_block = Llvm.insertion_block builder in
                     ignore (Llvm.build_br (get_block dst.name) builder);
                     connect_to this_block venc dst.name
@@ -843,14 +851,14 @@ let build_ssa_blocks
         | Return(src, x, lets, body, return_type) ->
           Llvm.position_at_end (get_block src.name) builder;
           let xenc = Ident.Table.find_exn phi_nodes src.name in
-          let ev = build_body the_module func [(x, xenc)] lets body in
+          let gamma = List.zip_exn x xenc in
+          let gamma1 = build_letbindings the_module func gamma lets in
+          let ev = build_value the_module gamma1 body in
           let pev = pack_encoded_value ev return_type in
           ignore (Llvm.build_ret pev builder)
       )
 
-let llvm_compile (ssa_func : Ssa.t) : Llvm.llmodule =
-  let the_module = Llvm.create_module context "int" in
-
+let declare_runtime the_module =
   (* General function declarations *)
   let voidtype = Llvm.void_type context in
   let ptrtype = Llvm.pointer_type (Llvm.i8_type context) in
@@ -866,14 +874,18 @@ let llvm_compile (ssa_func : Ssa.t) : Llvm.llmodule =
   ignore (Llvm.declare_function "gc_collect" collect_type the_module);
   let freetype =
     Llvm.function_type ptrtype [| ptrtype |] in
-  ignore (Llvm.declare_function "free" freetype the_module);
+  ignore (Llvm.declare_function "free" freetype the_module)
 
-  (* Main function *)
-  let arg_ty = packing_type ssa_func.Ssa.entry_label.Ssa.message_type in
-  let ret_ty = packing_type ssa_func.Ssa.return_type in
-  let ft = Llvm.function_type ret_ty (Array.create ~len:1 arg_ty) in
+
+let llvm_compile (ssa_func : Ssa.t) : Llvm.llmodule =
+  let the_module = Llvm.create_module context "modular" in
+  declare_runtime the_module;
+
+  let args_ty = List.map ~f:packing_type ssa_func.Ssa.entry_label.Ssa.arg_types in
+  let ret_ty = packing_type (ssa_func.Ssa.return_type) in
+  let ft = Llvm.function_type ret_ty (Array.of_list args_ty) in
   let func =
-    Llvm.declare_function ("Int" ^ ssa_func.Ssa.func_name) ft the_module in
+    Llvm.declare_function ("cbv" ^ ssa_func.Ssa.func_name) ft the_module in
   build_ssa_blocks the_module func ssa_func;
   (* make main function *)
   if ssa_func.Ssa.func_name = "main" then
@@ -881,7 +893,7 @@ let llvm_compile (ssa_func : Ssa.t) : Llvm.llmodule =
       let main_ty = Llvm.function_type int_lltype [| |] in
       let main = Llvm.declare_function "main" main_ty the_module in
       let start_block = Llvm.append_block context "start" main in
-      let args = [| Llvm.undef arg_ty |] in
+      let args = Array.of_list (List.map ~f:Llvm.undef args_ty) in
       Llvm.position_at_end start_block builder;
       ignore (Llvm.build_call func args "ret" builder);
       ignore (Llvm.build_ret (Llvm.const_int int_lltype 0) builder)

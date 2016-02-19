@@ -18,6 +18,7 @@ Executable "modular"
   Path: src
   MainIs: modular.ml
   CompiledObject: native
+  NativeOpt: -noassert
   BuildDepends:
     core_kernel (>= 113.24.00),
     sexplib,

@@ -164,14 +164,14 @@ type let_bindings = let_binding list
 
 type label = {
   name: Ident.t;
-  message_type: Basetype.t list
+  arg_types: Basetype.t list
 }
 
 type block =
     Unreachable of label
   | Direct of label * (Ident.t list) * let_bindings * (value list) * label
   | Branch of label * (Ident.t list) * let_bindings *
-              (Basetype.Data.id * Basetype.t list * (value list) *
+              (Basetype.Data.id * Basetype.t list * value *
                (Ident.t * (value list) * label) list)
   | Return of label * (Ident.t list) * let_bindings * value * Basetype.t
 
@@ -244,11 +244,11 @@ let fprint_block (oc: Out_channel.t) (b: block) : unit =
     | Unreachable(l) ->
       Printf.fprintf oc " l%s(%s) = unreachable"
         (Ident.to_string l.name)
-        (dummy_params l.message_type)
+        (dummy_params l.arg_types)
     | Direct(l, x, bndgs, body, goal) ->
       Printf.fprintf oc " l%s(%s) =\n"
         (Ident.to_string l.name)
-        (param_string x l.message_type);
+        (param_string x l.arg_types);
       fprint_letbndgs oc bndgs;
       Printf.fprintf oc "   l%s(" (Ident.to_string goal.name);
       fprint_values oc body;
@@ -257,10 +257,10 @@ let fprint_block (oc: Out_channel.t) (b: block) : unit =
       let constructor_names = Basetype.Data.constructor_names id in
       Printf.fprintf oc " l%s(%s) =\n"
         (Ident.to_string la.name)
-        (param_string x la.message_type);
+        (param_string x la.arg_types);
       fprint_letbndgs oc bndgs;
       Printf.fprintf oc "   case ";
-      fprint_values oc cond;
+      fprint_value oc cond;
       Printf.fprintf oc " of\n";
       List.iter2_exn constructor_names cases
         ~f:(fun cname (l, lb, lg) ->
@@ -271,7 +271,7 @@ let fprint_block (oc: Out_channel.t) (b: block) : unit =
     | Return(l, x, bndgs, body, _) ->
       Printf.fprintf oc " l%s(%s) =\n"
         (Ident.to_string l.name)
-        (param_string x l.message_type);
+        (param_string x l.arg_types);
       fprint_letbndgs oc bndgs;
       Printf.fprintf oc "   return ";
       fprint_value oc body;
@@ -281,7 +281,7 @@ let fprint_func (oc: Out_channel.t) (func: t) : unit =
   Printf.fprintf oc "%s(x: %s) : %s = l%s(x)\n\n"
     func.func_name
     "TODO"
-    (* (Printing.string_of_basetype func.entry_label.message_type) *)
+    (* (Printing.string_of_basetype func.entry_label.arg_types) *)
     (Printing.string_of_basetype func.return_type)
     (Ident.to_string func.entry_label.name);
   List.iter func.blocks
@@ -452,8 +452,7 @@ let rec typecheck_let_bindings
     typecheck_term gamma1 t a;
     (v, a) :: gamma1
 
-let typecheck_block (label_types: Basetype.t Ident.Table.t) (b: block) : unit =
-  () (* TODO
+let typecheck_block (label_types: (Basetype.t list) Ident.Table.t) (b: block) : unit =
   let equals_exn a1 a2 =
     if Basetype.equals a1 a2 then () else
       begin
@@ -466,15 +465,15 @@ let typecheck_block (label_types: Basetype.t Ident.Table.t) (b: block) : unit =
   let check_label_exn l a =
     match Ident.Table.find label_types l.name with
     | Some b ->
-      equals_exn a b;
-      equals_exn l.message_type b
+      List.iter2_exn ~f:equals_exn a b;
+      List.iter2_exn ~f:equals_exn a l.arg_types
     | None -> failwith "internal ssa.ml: wrong argument in jump" in
   match b with
   | Unreachable(_) -> ()
   | Direct(s, x, l, v, d) ->
-    let gamma0 = [(x, s.message_type)] in
+    let gamma0 = List.zip_exn x s.arg_types in
     let gamma = typecheck_let_bindings gamma0 l in
-    let a = typeof_value gamma v in
+    let a = List.map ~f:(typeof_value gamma) v in
     check_label_exn d a
   | Branch(s, x, l, (id, params, v, ds)) ->
     let constructor_types = Basetype.Data.constructor_types id params in
@@ -482,36 +481,33 @@ let typecheck_block (label_types: Basetype.t Ident.Table.t) (b: block) : unit =
     begin
       match bs with
       | Some bs ->
-        let gamma0 = [(x, s.message_type)] in
+        let gamma0 = List.zip_exn x s.arg_types in
         let gamma = typecheck_let_bindings gamma0 l in
         let va = typeof_value gamma v in
         equals_exn va (Basetype.newty
                          (Basetype.DataB(id, params)));
         List.iter bs
           ~f:(fun ((x, v, d), a) ->
-            let b = typeof_value ((x, a) :: gamma) v in
+            let b = List.map ~f:(typeof_value ((x, a) :: gamma)) v in
             check_label_exn d b)
       | None ->
         failwith "internal ssa.ml: wrong number of cases in branch"
     end
   | Return(s, x, l, v, a) ->
-    let gamma0 = [(x, s.message_type)] in
+    let gamma0 = List.zip_exn x s.arg_types in
     let gamma = typecheck_let_bindings gamma0 l in
     let b = typeof_value gamma v in
     equals_exn a b
-     *)
 
 let typecheck (blocks: block list) : unit =
-  () (* TODO
   let label_types = Ident.Table.create () in
   List.iter blocks ~f:(fun b ->
     let l = label_of_block b in
-    match Ident.Table.add label_types ~key:l.name ~data:l.message_type with
+    match Ident.Table.add label_types ~key:l.name ~data:l.arg_types with
     | `Duplicate -> failwith "internal ssa.ml: duplicte block"
     | `Ok -> ()
   );
   List.iter blocks ~f:(typecheck_block label_types)
-     *)
 
 let make ~func_name:(func_name: string)
       ~entry_label:(entry_label: label)

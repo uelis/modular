@@ -18,7 +18,7 @@ let block_table (func: Ssa.t) =
 let trace_block blocks i0 =
   let block = Ident.Table.find_exn blocks i0 in
   let l0 = label_of_block block in
-  let x0 = fresh_var () in
+  let x0 = List.map ~f:(fun _ -> fresh_var ()) l0.arg_types in
 
   (* substitution *)
   let rho = Ident.Table.create () in
@@ -80,13 +80,13 @@ let trace_block blocks i0 =
     ls in
 
   (* tracing of blocks*)
-  let rec trace_block i v =
+  let rec trace_block i vs =
     let block = Ident.Table.find_exn blocks i in
     match Ident.Table.find visited i with
     | Some i when i > !Opts.trace_loop_threshold ->
       let lets = flush_lets () in
       let dst = label_of_block block in
-      Direct(l0, x0, lets, v, dst)
+      Direct(l0, x0, lets, vs, dst)
     | _ ->
       begin
         Ident.Table.change visited i (function None -> Some 1
@@ -94,13 +94,15 @@ let trace_block blocks i0 =
         (* Printf.printf "%s\n" (string_of_letbndgs !lets); *)
         match block with
         | Unreachable(_) -> Unreachable(l0)
-        | Direct(_, x, lets, vr, dst) ->
-          Ident.Table.set rho ~key:x ~data:v;
+        | Direct(_, xs, lets, vr, dst) ->
+          List.iter2_exn xs vs
+            ~f:(fun x v -> Ident.Table.set rho ~key:x ~data:v);
           trace_lets lets;
-          let vr' = subst_value (Ident.Table.find_exn rho) vr in
+          let vr' = List.map vr ~f:(subst_value (Ident.Table.find_exn rho)) in
           trace_block dst.name vr'
-        | Branch(_, x, lets, (id, params, vc, cases)) ->
-          Ident.Table.set rho ~key:x ~data:v;
+        | Branch(_, xs, lets, (id, params, vc, cases)) ->
+          List.iter2_exn xs vs
+            ~f:(fun x v -> Ident.Table.set rho ~key:x ~data:v);
           trace_lets lets;
           let vc' = subst_value (Ident.Table.find_exn rho) vc in
           begin
@@ -108,7 +110,7 @@ let trace_block blocks i0 =
             | In((_, i, vi), _) ->
               let (y, vd, dst) = List.nth_exn cases i in
               Ident.Table.set rho ~key:y ~data:vi;
-              let vd' = subst_value (Ident.Table.find_exn rho) vd in
+              let vd' = List.map vd ~f:(subst_value (Ident.Table.find_exn rho)) in
               trace_block dst.name vd'
             | _ ->
               let lets = flush_lets () in
@@ -117,19 +119,21 @@ let trace_block blocks i0 =
                   ~f:(fun (y, vd, dst) ->
                     let y' = fresh_var () in
                     Ident.Table.set rho ~key:y ~data:(Var y');
-                    let vd' = subst_value (Ident.Table.find_exn rho) vd in
+                    let vd' = List.map vd ~f:(subst_value (Ident.Table.find_exn rho)) in
                     (y', vd', dst)) in
               Branch(l0, x0, lets, (id, params, vc', cases'))
           end
-        | Return(_, x, lets, vr, a) ->
-          Ident.Table.set rho ~key:x ~data:v;
+        | Return(_, xs, lets, vr, a) ->
+          List.iter2_exn xs vs
+            ~f:(fun x v -> Ident.Table.set rho ~key:x ~data:v);
           trace_lets lets;
           let vr' = subst_value (Ident.Table.find_exn rho) vr in
           let lets = flush_lets () in
           Return(l0, x0, lets, vr', a)
       end in
-  let v0 = Var x0 in
-  Ident.Table.set rho ~key:x0 ~data:v0;
+  let v0 = List.map x0 ~f:(fun x -> Var x) in
+  List.iter2_exn x0 v0
+    ~f:(fun x v -> Ident.Table.set rho ~key:x ~data:v);
   trace_block i0 v0
 
 let trace (func : Ssa.t) =
@@ -158,6 +162,10 @@ let trace (func : Ssa.t) =
 *)
 let shortcut_block blocks i0 =
   let block = Ident.Table.find_exn blocks i0 in
+  let subst xs vs =
+    let rho = List.zip_exn xs vs in
+    fun y -> List.Assoc.find rho y
+             |> Option.value ~default:(Var y) in
 
   let shortcut_value (i : label) v =
     let visited = Ident.Table.create () in
@@ -170,16 +178,17 @@ let shortcut_block blocks i0 =
           let block = Ident.Table.find_exn blocks i.name in
           match block with
           | Direct(_, x, [], vr, dst) ->
-            let vr' = subst_value (fun y -> if x = y then v else Var y) vr in
+            let vr' = List.map vr ~f:(subst_value (subst x v)) in
             shortcut_value dst vr'
           | Branch(_, x, [], (_, _, vc, cases)) ->
-            let vc' = subst_value (fun y -> if x = y then v else Var y) vc in
+            let vc' = subst_value (subst x v) vc in
             begin
               match vc' with
               | In((_, i, vi), _) ->
                 let (y, vd, dst) = List.nth_exn cases i in
-                let vd' = subst_value (fun z -> if y = z then vi else Var z)
-                            (subst_value (fun z -> if x = z then v else Var z ) vd) in
+                let vd' = List.map vd
+                            ~f:(fun w -> subst_value (fun z -> if y = z then vi else Var z)
+                                           (subst_value (subst x v) w)) in
                 shortcut_value dst vd'
               | _ ->
                 i, v
