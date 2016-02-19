@@ -15,7 +15,7 @@ type value = Ssa.value * Basetype.t
 
 type builder_state_type = {
     cur_label: Ssa.label;
-    cur_arg: Ident.t;
+    cur_arg: Ident.t list;
     cur_lets: Ssa.let_bindings
   }
 
@@ -31,10 +31,24 @@ let emit (l : Ssa.let_binding) : unit =
 let begin_block (l: Ssa.label) : value =
   match !builder_state with
   | None ->
-     let argid = Ident.fresh "arg" in
-     let v = Ssa.Var argid, l.Ssa.message_type in
-     builder_state := Some { cur_label = l; cur_arg = argid; cur_lets = [] };
-     v
+    let argid = Ident.fresh "arg" in
+    let [a] = l.Ssa.message_type in
+    let v = Ssa.Var argid, a in
+    builder_state := Some { cur_label = l; cur_arg = [argid]; cur_lets = [] };
+    v
+  | Some _ ->
+     assert false
+
+let begin_block2 (l: Ssa.label) : value * value =
+  match !builder_state with
+  | None ->
+    let arg1 = Ident.fresh "arg" in
+    let arg2 = Ident.fresh "arg" in
+    let [a; b] = l.Ssa.message_type in
+    let v1 = Ssa.Var arg1, a in
+    let v2 = Ssa.Var arg2, a in
+    builder_state := Some { cur_label = l; cur_arg = [arg1; arg2]; cur_lets = [] };
+    v1, v2
   | Some _ ->
      assert false
 
@@ -256,7 +270,7 @@ let end_block_jump (dst: Ssa.label) (v: value) : Ssa.block =
   | None -> assert false
   | Some s ->
     builder_state := None;
-    Ssa.Direct(s.cur_label, s.cur_arg, s.cur_lets, vv, dst)
+    Ssa.Direct(s.cur_label, s.cur_arg, s.cur_lets, [vv], dst)
 
 (* TODO: add assertions to check types *)
 (* TODO: the functions in [targets] must not create new let-definitions *)
@@ -290,11 +304,11 @@ let end_block_case (v: value) (targets: (value -> Ssa.label * value) list) : Ssa
                     let x = Ident.fresh "x" in
                     let vx = Ssa.Var x, a in
                     let dst, (arg, _) = t vx in
-                    x, arg, dst
+                    x, [arg], dst
                 ) in
      builder_state := None;
      Ssa.Branch(s.cur_label, s.cur_arg, s.cur_lets,
-                (id, params, vv, branches))
+                (id, params, [vv], branches))
 
 let end_block_return (v: value) : Ssa.block =
   let vv, va = v in

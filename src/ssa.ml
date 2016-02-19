@@ -164,16 +164,16 @@ type let_bindings = let_binding list
 
 type label = {
   name: Ident.t;
-  message_type: Basetype.t
+  message_type: Basetype.t list
 }
 
 type block =
     Unreachable of label
-  | Direct of label * Ident.t * let_bindings * value * label
-  | Branch of label * Ident.t * let_bindings *
-              (Basetype.Data.id * Basetype.t list * value *
-               (Ident.t * value * label) list)
-  | Return of label * Ident.t * let_bindings * value * Basetype.t
+  | Direct of label * (Ident.t list) * let_bindings * (value list) * label
+  | Branch of label * (Ident.t list) * let_bindings *
+              (Basetype.Data.id * Basetype.t list * (value list) *
+               (Ident.t * (value list) * label) list)
+  | Return of label * (Ident.t list) * let_bindings * value * Basetype.t
 
 (** Invariant: Any block [b] in the list of blocks must
     be reachable from the entry label by blocks appearing
@@ -222,40 +222,56 @@ let fprint_letbndgs (oc: Out_channel.t) (bndgs: let_bindings) : unit =
     )
 
 let fprint_block (oc: Out_channel.t) (b: block) : unit =
+  let param_string labels types =
+    List.zip_exn labels types
+    |> List.map ~f:(fun (l, t) ->
+        Printf.sprintf "%s : %s"
+          (Ident.to_string l)
+          (Printing.string_of_basetype t))
+    |> String.concat ~sep:", " in
+  let dummy_params types =
+    let n = List.length types in
+    let xs = List.init n ~f:(fun _ -> Ident.fresh "x") in
+    param_string xs types in
+  let rec fprint_values oc values =
+    match values with
+    | [] -> ()
+    | v::vs ->
+      fprint_value oc v;
+      if vs <> [] then Printf.fprintf oc ", ";
+      fprint_values oc vs in
   match b with
     | Unreachable(l) ->
-      Printf.fprintf oc " l%s(x : %s) = unreachable"
+      Printf.fprintf oc " l%s(%s) = unreachable"
         (Ident.to_string l.name)
-        (Printing.string_of_basetype l.message_type)
+        (dummy_params l.message_type)
     | Direct(l, x, bndgs, body, goal) ->
-      Printf.fprintf oc " l%s(%s : %s) =\n"
+      Printf.fprintf oc " l%s(%s) =\n"
         (Ident.to_string l.name)
-        (Ident.to_string x)
-        (Printing.string_of_basetype l.message_type);
+        (param_string x l.message_type);
       fprint_letbndgs oc bndgs;
       Printf.fprintf oc "   l%s(" (Ident.to_string goal.name);
-      fprint_value oc body;
+      fprint_values oc body;
       Printf.fprintf oc ")\n"
     | Branch(la, x, bndgs, (id, _, cond, cases)) ->
       let constructor_names = Basetype.Data.constructor_names id in
-      Printf.fprintf oc " l%s(%s : %s) =\n"
+      Printf.fprintf oc " l%s(%s) =\n"
         (Ident.to_string la.name)
-        (Ident.to_string x)
-        (Printing.string_of_basetype la.message_type);
+        (param_string x la.message_type);
       fprint_letbndgs oc bndgs;
       Printf.fprintf oc "   case ";
-      fprint_value oc cond;
+      fprint_values oc cond;
       Printf.fprintf oc " of\n";
       List.iter2_exn constructor_names cases
         ~f:(fun cname (l, lb, lg) ->
           Printf.fprintf oc "   | %s(%s) -> l%s(" cname
             (Ident.to_string l) (Ident.to_string lg.name);
-          fprint_value oc lb;
+          fprint_values oc lb;
           Printf.fprintf oc ")\n")
     | Return(l, x, bndgs, body, _) ->
-      Printf.fprintf oc " l%s(%s : %s) =\n"
-        (Ident.to_string l.name) (Ident.to_string x)
-        (Printing.string_of_basetype l.message_type);
+      Printf.fprintf oc " l%s(%s) =\n"
+        (Ident.to_string l.name)
+        (param_string x l.message_type);
       fprint_letbndgs oc bndgs;
       Printf.fprintf oc "   return ";
       fprint_value oc body;
@@ -264,7 +280,8 @@ let fprint_block (oc: Out_channel.t) (b: block) : unit =
 let fprint_func (oc: Out_channel.t) (func: t) : unit =
   Printf.fprintf oc "%s(x: %s) : %s = l%s(x)\n\n"
     func.func_name
-    (Printing.string_of_basetype func.entry_label.message_type)
+    "TODO"
+    (* (Printing.string_of_basetype func.entry_label.message_type) *)
     (Printing.string_of_basetype func.return_type)
     (Ident.to_string func.entry_label.name);
   List.iter func.blocks
@@ -436,6 +453,7 @@ let rec typecheck_let_bindings
     (v, a) :: gamma1
 
 let typecheck_block (label_types: Basetype.t Ident.Table.t) (b: block) : unit =
+  () (* TODO
   let equals_exn a1 a2 =
     if Basetype.equals a1 a2 then () else
       begin
@@ -481,8 +499,10 @@ let typecheck_block (label_types: Basetype.t Ident.Table.t) (b: block) : unit =
     let gamma = typecheck_let_bindings gamma0 l in
     let b = typeof_value gamma v in
     equals_exn a b
+     *)
 
 let typecheck (blocks: block list) : unit =
+  () (* TODO
   let label_types = Ident.Table.create () in
   List.iter blocks ~f:(fun b ->
     let l = label_of_block b in
@@ -491,7 +511,7 @@ let typecheck (blocks: block list) : unit =
     | `Ok -> ()
   );
   List.iter blocks ~f:(typecheck_block label_types)
-
+     *)
 
 let make ~func_name:(func_name: string)
       ~entry_label:(entry_label: label)

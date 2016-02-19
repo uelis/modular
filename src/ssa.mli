@@ -61,17 +61,17 @@ type let_bindings = let_binding list
 (** Programs consist of a list of blocks, which each defines a label.*)
 type label = {
   name: Ident.t;
-  message_type: Basetype.t
+  message_type: Basetype.t list
 }
 
 (** Program blocks *)
 type block =
-  | Unreachable of label
-  | Direct of label * Ident.t * let_bindings * value * label
-  | Branch of label * Ident.t * let_bindings *
-              (Basetype.Data.id * Basetype.t list * value *
-               (Ident.t * value * label) list)
-  | Return of label * Ident.t * let_bindings * value * Basetype.t
+    Unreachable of label
+  | Direct of label * (Ident.t list) * let_bindings * (value list) * label
+  | Branch of label * (Ident.t list) * let_bindings *
+              (Basetype.Data.id * Basetype.t list * (value list) *
+               (Ident.t * (value list) * label) list)
+  | Return of label * (Ident.t list) * let_bindings * value * Basetype.t
 
 (** Return the label defined by a block *)
 val label_of_block: block -> label

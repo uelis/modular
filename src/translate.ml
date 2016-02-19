@@ -34,6 +34,8 @@ let unPairB a =
   | Basetype.Sgn (Basetype.PairB(a1, a2)) -> a1, a2
   | _ -> assert false
 
+let unPairS x = unPairB (List.hd_exn x)
+
 let fresh_ssa_name =
   let next_name = ref 0 in
   fun () ->
@@ -86,7 +88,7 @@ and access_exit_type (a: Cbvtype.t): Basetype.t =
 
 let fresh_label (name: string) (a : Basetype.t): Ssa.label =
   { Ssa.name = Ident.fresh name;
-    Ssa.message_type = a }
+    Ssa.message_type = [a] }
 
 let fresh_eval (s: string) (t: Cbvterm.t) : int_interface =
   { entry = fresh_label (s ^ "_eval_entry") (pairB t.t_ann (code_context t.t_context));
@@ -99,7 +101,7 @@ let fresh_access (s: string) (a: Cbvtype.t) : int_interface =
 
 let lift_label a l =
   { Ssa.name = l.Ssa.name;
-    Ssa.message_type = pairB a (l.Ssa.message_type) }
+    Ssa.message_type = a :: l.Ssa.message_type }
 
 let lift_int_interface a i = {
   entry = lift_label a i.entry;
@@ -110,33 +112,20 @@ let lift_block (a: Basetype.t) (b: Ssa.block) : Ssa.block =
   match b with
   | Ssa.Direct(l, arg, lets, v, dst) ->
     let l' = lift_label a l in
-    let arg' = Ident.variant arg in
     let x = Ident.fresh "x" in
-    let lets' =
-      lets @
-      [Ssa.Let((x, a),
-               Ssa.Val(Ssa.Fst(Ssa.Var(arg'), a, l.Ssa.message_type)));
-       Ssa.Let((arg, l.Ssa.message_type),
-               Ssa.Val(Ssa.Snd(Ssa.Var(arg'), a, l.Ssa.message_type)))
-      ] in
-    let v' = Ssa.Pair(Ssa.Var(x), v) in
+    let arg' = x :: arg in
+    let v' = Ssa.Var(x) :: v in
     let dst' = lift_label a dst in
-    Ssa.Direct(l', arg', lets', v', dst')
+    Ssa.Direct(l', arg', lets, v', dst')
   | Ssa.Branch(l, arg, lets, (id, params, v, dsts)) ->
     let l' = lift_label a l in
-    let arg' = Ident.variant arg in
     let x = Ident.fresh "x" in
-    let lets' =
-      lets @
-      [Ssa.Let((x, a),
-               Ssa.Val(Ssa.Fst(Ssa.Var(arg'), a, l.Ssa.message_type)));
-       Ssa.Let((arg, l.Ssa.message_type),
-               Ssa.Val(Ssa.Snd(Ssa.Var(arg'), a, l.Ssa.message_type)))
-      ]  in
+    let arg' = x :: arg in
+    let x = Ident.fresh "x" in
     let dsts' = List.map dsts
         ~f:(fun (y, w, d) ->
-            (y, Ssa.Pair(Ssa.Var(x), w), lift_label a d)) in
-    Ssa.Branch(l', arg', lets', (id, params, v, dsts'))
+            (y, Ssa.Var(x) :: w, lift_label a d)) in
+    Ssa.Branch(l', arg', lets, (id, params, v, dsts'))
   | Ssa.Return _ -> assert false
   | Ssa.Unreachable _ -> assert false
 
@@ -182,7 +171,7 @@ let build_context_map
       ~init:Builder.unit
       ~f:(fun (_, vx) v -> Builder.pair v vx) in
   v
-
+(* TODO
 let print_context c =
   List.iter c
     ~f:(fun (x, a) ->
@@ -200,6 +189,7 @@ let print_fcontext c =
           (Printing.string_of_basetype a.exit.Ssa.message_type)
       );
   Printf.printf "\n"
+*)
 
 (** Embeds the multiplicities in the context of a fragment as
     specified by the context [outer].
@@ -227,7 +217,7 @@ let rec embed_context
     let exit_block =
       let arg = Builder.begin_block y_outer_access.exit in
       let vstack_outer, vm = Builder.unpair arg in
-      let te, tt = unPairB y_access.exit.Ssa.message_type in
+      let te, tt = unPairS y_access.exit.Ssa.message_type in
       let tstack_inner, _ = unPairB tt in
       let vstack_pair = Builder.project vstack_outer
           (pairB te tstack_inner) in
@@ -238,7 +228,7 @@ let rec embed_context
       let arg = Builder.begin_block y_access.entry in
       let ve, vpair = Builder.unpair arg in
       let vstack_inner, vm = Builder.unpair vpair in
-      let tstack_outer, _ = unPairB y_outer_access.entry.Ssa.message_type in
+      let tstack_outer, _ = unPairS y_outer_access.entry.Ssa.message_type in
       let vstack_outer = Builder.embed (Builder.pair ve vstack_inner) tstack_outer in
       let v = Builder.pair vstack_outer vm in
       Builder.end_block_jump y_outer_access.entry v in
@@ -311,7 +301,7 @@ let rec translate (t: Cbvterm.t) : fragment =
             let arg = Builder.begin_block y_access.entry in
             let vc, vx = Builder.unpair arg in
             let vin_c = Builder.inj i vc tsum in
-            let td, _ = unPairB x_access.entry.Ssa.message_type in
+            let td, _ = unPairS x_access.entry.Ssa.message_type in
             let vd = Builder.embed vin_c td in
             let v = Builder.pair vd vx in
             Builder.end_block_jump x_access.entry v) in
@@ -491,23 +481,20 @@ let rec translate (t: Cbvterm.t) : fragment =
          (fun c -> let v = Builder.pair ve c in
            x_access.exit, v)] in
     let s_eval_exit_block =
-      let arg = Builder.begin_block s_fragment.eval.exit in
-      let _, tf = unPairB access.exit.Ssa.message_type in
-      let ve, vv = Builder.unpair arg in
+      let ve, vv = Builder.begin_block2 s_fragment.eval.exit in
+      let _, tf = unPairS access.exit.Ssa.message_type in
       let vv0 = Builder.inj 0 vv tf in
       let v = Builder.pair ve vv0 in
       Builder.end_block_jump access.exit v in
     let s_access_exit_block =
-      let arg = Builder.begin_block s_fragment.access.exit in
-      let _(*te*), tf = unPairB access.exit.Ssa.message_type in
-      let ve, vy = Builder.unpair arg in
+      let ve, vy = Builder.begin_block2 s_fragment.access.exit in
+      let _(*te*), tf = unPairB (List.hd_exn access.exit.Ssa.message_type) in
       let vy1 = Builder.inj 1 vy tf in
       let v = Builder.pair ve vy1 in
       Builder.end_block_jump access.exit v in
     let s_x_access_entry_block =
-      let arg = Builder.begin_block x_access.entry in
-      let _(*te*), tf = unPairB access.exit.Ssa.message_type in
-      let ve, vy = Builder.unpair arg in
+      let ve, vy = Builder.begin_block2 x_access.entry in
+      let _(*te*), tf = unPairB (List.hd_exn access.exit.Ssa.message_type) in
       let vx2 = Builder.inj 2 vy tf in
       let v = Builder.pair ve vx2 in
       Builder.end_block_jump access.exit v in
@@ -571,7 +558,7 @@ let rec translate (t: Cbvterm.t) : fragment =
           (fun c -> s_fragment.access.entry, Builder.pair vh c);
           (fun c -> x_access.exit, Builder.pair vh c) ] in
     let invoke_rec_block =
-      let _(*th*), t1 = unPairB f_access.exit.Ssa.message_type in
+      let _(*th*), t1 = unPairB (List.hd_exn f_access.exit.Ssa.message_type) in
       let _(*tg*), tans = unPairB t1 in
       let arg = Builder.begin_block
           (fresh_label (id ^ "invoke_rec") (pairB thg tans)) in
@@ -582,7 +569,7 @@ let rec translate (t: Cbvterm.t) : fragment =
     let s_eval_exit_block =
       let arg = Builder.begin_block s_fragment.eval.exit in
       let vh, vm = Builder.unpair arg in
-      let _, ta = unPairB access.exit.Ssa.message_type in
+      let _, ta = unPairB (List.hd_exn access.exit.Ssa.message_type) in
       let vm0 = Builder.inj 0 vm ta in
       let vcons = Builder.project vh tcons in
       Builder.end_block_case
@@ -595,7 +582,7 @@ let rec translate (t: Cbvterm.t) : fragment =
     let s_access_exit_block =
       let arg = Builder.begin_block s_fragment.access.exit in
       let vh, vm = Builder.unpair arg in
-      let _, ta = unPairB access.exit.Ssa.message_type in
+      let _, ta = unPairB (List.hd_exn access.exit.Ssa.message_type) in
       let vm1 = Builder.inj 1 vm ta in
       let vcons = Builder.project vh tcons in
       Builder.end_block_case
@@ -609,7 +596,7 @@ let rec translate (t: Cbvterm.t) : fragment =
       let arg = Builder.begin_block x_access.entry in
       let vh = Builder.fst arg in
       let vm = Builder.snd arg in
-      let _, ta = unPairB access.exit.Ssa.message_type in
+      let _, ta = unPairS access.exit.Ssa.message_type in
       let vm2 = Builder.inj 2 vm ta in
       let vcons = Builder.project vh tcons in
       Builder.end_block_case
@@ -693,7 +680,7 @@ let rec translate (t: Cbvterm.t) : fragment =
       let vea = Builder.project vh tea in
       let ve = Builder.fst vea in
       let va = Builder.snd vea in
-      let _, tans = unPairB access.exit.Ssa.message_type in
+      let _, tans = unPairS access.exit.Ssa.message_type in
       let vm0 = Builder.inj 0 (Builder.pair va vm) tans in
       Builder.end_block_jump access.exit (Builder.pair ve vm0) in
     let s_access_exit_block =
@@ -760,7 +747,7 @@ let rec translate (t: Cbvterm.t) : fragment =
       let vu, v1 = Builder.unpair vu_f in
       let v = Builder.pair vu (Builder.pair v1 v2) in
       Builder.end_block_jump eval.exit v in
-    let outer_multiplicity, inner_access_entry = unPairB access.entry.Ssa.message_type in
+    let outer_multiplicity, inner_access_entry = unPairS access.entry.Ssa.message_type in
     let left_inner_access_entry, right_inner_access_entry =
         match Basetype.case inner_access_entry with
         | Basetype.Var -> assert false
@@ -777,7 +764,7 @@ let rec translate (t: Cbvterm.t) : fragment =
       let vq = Builder.snd arg in
       let v_inner_mult = Builder.fst vq in
       let v_inner_q = Builder.snd vq in
-      let t1_multiplicty, _ = unPairB t1_fragment.access.entry.Ssa.message_type in
+      let t1_multiplicty, _ = unPairS t1_fragment.access.entry.Ssa.message_type in
       let vm = Builder.embed (Builder.pair v_mult v_inner_mult) t1_multiplicty in
       let v = Builder.pair vm v_inner_q in
       Builder.end_block_jump t1_fragment.access.entry v in
@@ -790,7 +777,7 @@ let rec translate (t: Cbvterm.t) : fragment =
       let vq = Builder.snd arg in
       let v_inner_mult = Builder.fst vq in
       let v_inner_q = Builder.snd vq in
-      let t2_multiplicty, _ = unPairB t2_fragment.access.entry.Ssa.message_type in
+      let t2_multiplicty, _ = unPairS t2_fragment.access.entry.Ssa.message_type in
       let vm = Builder.embed (Builder.pair v_mult v_inner_mult) t2_multiplicty in
       let v = Builder.pair vm v_inner_q in
       Builder.end_block_jump t2_fragment.access.entry v in
@@ -802,7 +789,7 @@ let rec translate (t: Cbvterm.t) : fragment =
         vq
         [ (fun c -> Ssa.label_of_block access_entry1, Builder.pair vm c);
           (fun c -> Ssa.label_of_block access_entry2, Builder.pair vm c) ] in
-    let _, inner_access_exit = unPairB access.exit.Ssa.message_type in
+    let _, inner_access_exit = unPairS access.exit.Ssa.message_type in
     let access_exit1 =
       let arg = Builder.begin_block t1_fragment.access.exit in
       let tm, _ = unPairB left_inner_access_entry in
@@ -851,7 +838,7 @@ let rec translate (t: Cbvterm.t) : fragment =
     let access_entry =
       let arg = Builder.begin_block access.entry in
       let vu = Builder.unit in
-      let tm, tq = unPairB t1_fragment.access.entry.Ssa.message_type in
+      let tm, tq = unPairS t1_fragment.access.entry.Ssa.message_type in
       let vm = Builder.embed vu tm in
       let vq = Builder.inj 0 arg tq in
       let v = Builder.pair vm vq in
@@ -891,7 +878,7 @@ let rec translate (t: Cbvterm.t) : fragment =
     let access_entry =
       let arg = Builder.begin_block access.entry in
       let vu = Builder.unit in
-      let tm, tq = unPairB t1_fragment.access.entry.Ssa.message_type in
+      let tm, tq = unPairS t1_fragment.access.entry.Ssa.message_type in
       let vm = Builder.embed vu tm in
       let vq = Builder.inj 1 arg tq in
       let v = Builder.pair vm vq in
@@ -945,26 +932,26 @@ let rec translate (t: Cbvterm.t) : fragment =
       let _, (_, tv, _, _) = Cbvtype.unFun t1.t_type in
       let vv = Builder.embed vu tv in
       let vvfx = Builder.pair vv (Builder.pair vf vx) in
-      let td, tfunacc = unPairB t1_fragment.access.entry.Ssa.message_type in
+      let td, tfunacc = unPairS t1_fragment.access.entry.Ssa.message_type in
       let vfunacc = Builder.inj 0 vvfx tfunacc in
       let vd = Builder.embed Builder.unit td in
       let v = Builder.pair vd vfunacc in
       Builder.end_block_jump t1_fragment.access.entry v in
     let block5 =
       let arg = Builder.begin_block access.entry in
-      let td, tfunacc = unPairB t1_fragment.access.entry.Ssa.message_type in
+      let td, tfunacc = unPairS t1_fragment.access.entry.Ssa.message_type in
       let vd = Builder.embed Builder.unit td in
       let v = Builder.pair vd (Builder.inj 1 arg tfunacc) in
       Builder.end_block_jump t1_fragment.access.entry v in
     let block7 =
       let arg = Builder.begin_block t2_fragment.access.exit in
-      let td, tfunacc = unPairB t1_fragment.access.entry.Ssa.message_type in
+      let td, tfunacc = unPairS t1_fragment.access.entry.Ssa.message_type in
       let vd = Builder.embed Builder.unit td in
       let v = Builder.pair vd (Builder.inj 2 arg tfunacc) in
       Builder.end_block_jump t1_fragment.access.entry v in
     let block8 =
       let _, (_, tv, _, _) = Cbvtype.unFun t1.t_type in
-      let _, tres = unPairB eval.exit.Ssa.message_type in
+      let _, tres = unPairS eval.exit.Ssa.message_type in
       let arg = Builder.begin_block (fresh_label "decode_stack" (pairB tv tres)) in
       let vv, vres = Builder.unpair arg in
       let vu = Builder.project vv t.t_ann in
@@ -1064,7 +1051,7 @@ let rec translate (t: Cbvterm.t) : fragment =
               let j = match i with
                 | `X -> 0
                 | `Y -> 1 in
-              let _, t = unPairB label.Ssa.message_type in
+              let _, t = unPairS label.Ssa.message_type in
               Builder.pair vm (Builder.inj j v t) in
             let x1_entry_block =
               let arg = Builder.begin_block lift_x1_access.entry in
@@ -1144,7 +1131,7 @@ let rec translate (t: Cbvterm.t) : fragment =
                 | `Entry1 -> access1.entry
                 | `Entry2 -> access2.entry
                 | `Exit -> access.exit in
-              let _, t = unPairB label.Ssa.message_type in
+              let _, t = unPairS label.Ssa.message_type in
               let j = match i with
                 | `Eval -> 0
                 | `Res -> 1
@@ -1334,7 +1321,7 @@ let print_fragment f =
 
 let to_ssa t =
   let f = translate t in
-  let ret_ty = f.eval.exit.Ssa.message_type in
+  let [ret_ty] = f.eval.exit.Ssa.message_type in
   let return_block =
     let arg = Builder.begin_block f.eval.exit in
     Builder.end_block_return arg in
