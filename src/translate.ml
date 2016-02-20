@@ -270,11 +270,14 @@ let rec translate (t: Cbvterm.t) : fragment =
       exit = s_fragment.eval.exit
     } in
     let x_access = fresh_access "contr" a in
-    let tsum =
+    let tmult =
       let summands = List.map xs
           ~f:(fun x' -> Cbvtype.multiplicity
                           (List.Assoc.find_exn s.t_context x')) in
-      Basetype.sumB summands in
+      match summands with
+      | [] -> unitB
+      | [x] -> x
+      | xs -> Basetype.sumB xs in
     let eval_block =
       let arg = Builder.begin_block eval.entry in
       let vstack, vgamma = Builder.unpair arg in
@@ -285,26 +288,45 @@ let rec translate (t: Cbvterm.t) : fragment =
       let v = Builder.pair vstack vdelta in
       Builder.end_block_jump s_fragment.eval.entry [v] in
     let proj_block =
-      if xs = [] then
-        (* variable unused; dummy block *)
+      match xs with
+      | [] -> (* variable unused; dummy block *)
         let arg = Builder.begin_block x_access.exit in
         Builder.end_block_jump x_access.exit [arg]
-      else
+      | [y] -> (* singleton: no sum type *)
         let arg = Builder.begin_block x_access.exit in
         let vd, vx = Builder.unpair arg in
-        let vsum = Builder.project vd tsum in
+        let vc = Builder.project vd tmult in
+        let y_access = List.Assoc.find_exn s_fragment.context y in
+        let v = Builder.pair vc vx in
+        Builder.end_block_jump y_access.exit [v]
+      | _ -> (* general case *)
+        let arg = Builder.begin_block x_access.exit in
+        let vd, vx = Builder.unpair arg in
+        let vsum = Builder.project vd tmult in
         let target y =
-          fun c -> let y_access = List.Assoc.find_exn s_fragment.context y in
+          fun c ->
+            let y_access = List.Assoc.find_exn s_fragment.context y in
             let v = Builder.pair c vx in
             y_access.exit, [v] in
         Builder.end_block_case vsum (List.map xs ~f:target) in
     let inj_blocks =
-      List.mapi xs
-        ~f:(fun i y ->
+      match xs with
+      | [] -> [] (* no block needed *)
+      | [y] -> (* singleton, no injection *)
+        let y_access = List.Assoc.find_exn s_fragment.context y in
+        let arg = Builder.begin_block y_access.entry in
+        let vc, vx = Builder.unpair arg in
+        let td, _ = unPairB_singleton x_access.entry.Ssa.arg_types in
+        let vd = Builder.embed vc td in
+        let v = Builder.pair vd vx in
+        [Builder.end_block_jump x_access.entry [v]]
+      | _ ->
+        List.mapi xs
+          ~f:(fun i y ->
             let y_access = List.Assoc.find_exn s_fragment.context y in
             let arg = Builder.begin_block y_access.entry in
             let vc, vx = Builder.unpair arg in
-            let vin_c = Builder.inj i vc tsum in
+            let vin_c = Builder.inj i vc tmult in
             let td, _ = unPairB_singleton x_access.entry.Ssa.arg_types in
             let vd = Builder.embed vin_c td in
             let v = Builder.pair vd vx in
