@@ -29,31 +29,29 @@ let emit (l : Ssa.let_binding) : unit =
      builder_state := Some { s with cur_lets = l :: s.cur_lets }
 
 let begin_block (l: Ssa.label) : value =
-  let a =
-    match l.Ssa.arg_types with
-    | [a] -> a
-    | _ -> failwith "begin_block must be called with labels with one arg." in
+  assert (l.Ssa.arg_types <> []);
   match !builder_state with
   | None ->
-    let argid = Ident.fresh "arg" in
-    let v = Ssa.Var argid, a in
-    builder_state := Some { cur_label = l; cur_arg = [argid]; cur_lets = [] };
+    let args = List.map ~f:(fun _ -> Ident.fresh "x") l.Ssa.arg_types in
+    let x = List.last_exn args in
+    let a = List.last_exn l.Ssa.arg_types in
+    let v = Ssa.Var x, a in
+    builder_state := Some { cur_label = l; cur_arg = args; cur_lets = [] };
     v
   | Some _ ->
      assert false
 
 let begin_block2 (l: Ssa.label) : value * value =
-  let a, b =
-    match l.Ssa.arg_types with
-    | [a; b] -> a, b
-    | _ -> failwith "begin_block2 must be called with labels with two args." in
   match !builder_state with
   | None ->
-    let arg1 = Ident.fresh "arg" in
-    let arg2 = Ident.fresh "arg" in
-    let v1 = Ssa.Var arg1, a in
-    let v2 = Ssa.Var arg2, b in
-    builder_state := Some { cur_label = l; cur_arg = [arg1; arg2]; cur_lets = [] };
+    let args = List.map ~f:(fun _ -> Ident.fresh "x") l.Ssa.arg_types in
+    let (x, a), (y, b) =
+      match List.rev args, List.rev l.Ssa.arg_types with
+      | y :: x :: _, b :: a :: _ -> (x, a), (y, b)
+      | _ -> failwith "begin_block2 must be called with labels with at least two args." in
+    let v1 = Ssa.Var x, a in
+    let v2 = Ssa.Var y, b in
+    builder_state := Some { cur_label = l; cur_arg = args; cur_lets = [] };
     v1, v2
   | Some _ ->
      assert false
@@ -223,7 +221,7 @@ let project (v: value) (a: Basetype.t) : value =
     | Basetype.Sgn (Basetype.DataB(id, params)) ->
        select id params v
     | _ ->
-       failwith "project3"
+      assert false
 
 let embed (v: value) (a: Basetype.t) : value =
   let _, va = v in
@@ -269,14 +267,23 @@ let embed (v: value) (a: Basetype.t) : value =
     | _ ->
       failwith "not_leq"
 
+let fill_args (args : Ident.t list) (v : value list) (dst : Ssa.label)
+  : Ssa.value list =
+  let vv = List.map ~f:(fun (vv, va) -> vv) v in
+  let i = List.length dst.Ssa.arg_types - List.length v in
+  let gamma = List.take args i
+              |> List.map ~f:(fun i -> Ssa.Var i) in
+  gamma @ vv
+
+
 (* TODO: add assertions to check types *)
 let end_block_jump (dst: Ssa.label) (v: value list) : Ssa.block =
-  let vv = List.map ~f:(fun (vv, va) -> vv) v in
   match !builder_state with
   | None -> assert false
   | Some s ->
     builder_state := None;
-    Ssa.Direct(s.cur_label, s.cur_arg, s.cur_lets, vv, dst)
+    let argv = fill_args s.cur_arg v dst in
+    Ssa.Direct(s.cur_label, s.cur_arg, s.cur_lets, argv, dst)
 
 (* TODO: add assertions to check types *)
 (* TODO: the functions in [targets] must not create new let-definitions *)
@@ -310,7 +317,7 @@ let end_block_case (v: value) (targets: (value -> Ssa.label * (value list)) list
                     let x = Ident.fresh "x" in
                     let vx = Ssa.Var x, a in
                     let dst, arg = t vx in
-                    let argv = List.map ~f:(fun (vv, va) -> vv) arg in
+                    let argv = fill_args s.cur_arg arg dst in
                     x, argv, dst
                 ) in
      builder_state := None;
