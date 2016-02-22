@@ -19,8 +19,13 @@ type builder_state_type = {
     cur_lets: Ssa.let_bindings
   }
 
+let blocks = Ident.Table.create ()
 let builder_state =
   ref (None : builder_state_type option)
+
+let reset () : unit=
+  Ident.Table.clear blocks;
+  builder_state := None
 
 let emit (l : Ssa.let_binding) : unit =
   match !builder_state with
@@ -28,6 +33,7 @@ let emit (l : Ssa.let_binding) : unit =
   | Some s ->
      builder_state := Some { s with cur_lets = l :: s.cur_lets }
 
+(* append to existing block *)
 let begin_block (l: Ssa.label) : value =
   assert (l.Ssa.arg_types <> []);
   match !builder_state with
@@ -277,17 +283,20 @@ let fill_args (args : Ident.t list) (v : value list) (dst : Ssa.label)
 
 
 (* TODO: add assertions to check types *)
-let end_block_jump (dst: Ssa.label) (v: value list) : Ssa.block =
+let end_block_jump (dst: Ssa.label) (v: value list) : unit =
   match !builder_state with
   | None -> assert false
   | Some s ->
-    builder_state := None;
     let argv = fill_args s.cur_arg v dst in
-    Ssa.Direct(s.cur_label, s.cur_arg, s.cur_lets, argv, dst)
+    let block = Ssa.Direct(s.cur_label, s.cur_arg, s.cur_lets, argv, dst) in
+    builder_state := None;
+    Ident.Table.add_exn blocks
+      ~key:s.cur_label.Ssa.name
+      ~data:block
 
 (* TODO: add assertions to check types *)
 (* TODO: the functions in [targets] must not create new let-definitions *)
-let end_block_case (v: value) (targets: (value -> Ssa.label * (value list)) list) : Ssa.block =
+let end_block_case (v: value) (targets: (value -> Ssa.label * (value list)) list) : unit =
   let vv, va = v in
   match !builder_state with
   | None -> assert false
@@ -319,15 +328,21 @@ let end_block_case (v: value) (targets: (value -> Ssa.label * (value list)) list
                     let dst, arg = t vx in
                     let argv = fill_args s.cur_arg arg dst in
                     x, argv, dst
-                ) in
+           ) in
+     let block = Ssa.Branch(s.cur_label, s.cur_arg, s.cur_lets,
+                            (id, params, vv, branches)) in
      builder_state := None;
-     Ssa.Branch(s.cur_label, s.cur_arg, s.cur_lets,
-                (id, params, vv, branches))
+     Ident.Table.add_exn blocks
+       ~key:s.cur_label.Ssa.name
+       ~data:block
 
-let end_block_return (v: value) : Ssa.block =
+let end_block_return (v: value) : unit =
   let vv, va = v in
   match !builder_state with
   | None -> assert false
   | Some s ->
+    let block = Ssa.Return(s.cur_label, s.cur_arg, s.cur_lets, vv, va) in
     builder_state := None;
-    Ssa.Return(s.cur_label, s.cur_arg, s.cur_lets, vv, va)
+    Ident.Table.add_exn blocks
+      ~key:s.cur_label.Ssa.name
+      ~data:block
