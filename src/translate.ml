@@ -801,10 +801,8 @@ let rec translate (t: Cbvterm.t) : fragment =
     let vcons = Builder.project vh tcons in
     Builder.end_block_case
       vcons
-      [ (fun ve ->
-            access.exit, [Builder.pair ve vm0]);
-        (fun vhg ->
-           invoke_rec_block, [vhg; vm0])
+      [ (fun ve -> access.exit, [Builder.pair ve vm0]);
+        (fun vhg -> invoke_rec_block, [vhg; vm0])
       ];
     (* s access exit *)
     let vh, vm = Builder.begin_block2 s_fragment.access.exit in
@@ -813,10 +811,8 @@ let rec translate (t: Cbvterm.t) : fragment =
     let vcons = Builder.project vh tcons in
     Builder.end_block_case
       vcons
-      [ (fun ve ->
-            access.exit, [Builder.pair ve vm1]);
-        (fun vhg ->
-           invoke_rec_block, [vhg; vm1])
+      [ (fun ve -> access.exit, [Builder.pair ve vm1]);
+        (fun vhg -> invoke_rec_block, [vhg; vm1])
       ];
     (* x access entry *)
     let vh, vm = Builder.begin_block2 x_access.entry in
@@ -914,8 +910,7 @@ let rec translate (t: Cbvterm.t) : fragment =
     let _, vm = Builder.unpair vgm in
     Builder.end_block_case
       vm
-      [ (fun c -> eval_body_block,
-                  [ve; Builder.pair va (Builder.snd c)]);
+      [ (fun c -> eval_body_block, [ve; Builder.pair va (Builder.snd c)]);
         (fun c -> dummy_block, [Builder.unit]);
         (fun c -> dummy_block, [Builder.unit]) ];
     let context =
@@ -1055,8 +1050,7 @@ let rec translate (t: Cbvterm.t) : fragment =
     (* access exit *)
     let arg = Builder.begin_block t1_fragment.access.exit in
     let va = Builder.snd arg in
-    Builder.end_block_case
-      va
+    Builder.end_block_case va
       [ (fun c -> access.exit, [c]);
         (fun _ -> assert_false, [Builder.unit]) ];
     { eval = eval;
@@ -1094,8 +1088,7 @@ let rec translate (t: Cbvterm.t) : fragment =
     (* access exit *)
     let arg = Builder.begin_block t1_fragment.access.exit in
     let va = Builder.snd arg in
-    Builder.end_block_case
-      va
+    Builder.end_block_case va
       [ (fun _ -> assert_false, [Builder.unit]) ;
         (fun c -> access.exit, [c]) ];
     { eval = eval;
@@ -1164,8 +1157,7 @@ let rec translate (t: Cbvterm.t) : fragment =
     (* case block *)
     let arg = Builder.begin_block t1_fragment.access.exit in
     let vfun = Builder.snd arg in
-    Builder.end_block_case
-      vfun
+    Builder.end_block_case vfun
       [ (fun c -> block8, [c]);
         (fun c -> access.exit, [c]);
         (fun c -> t2_fragment.access.entry, [c]) ];

@@ -16,15 +16,19 @@ type value = Ssa.value * Basetype.t
 type builder_state_type = {
     cur_label: Ssa.label;
     cur_arg: Ident.t list;
-    cur_lets: Ssa.let_bindings
+    cur_lets: Ssa.let_bindings;
+    cur_implicit_args: Ssa.value list
   }
 
 let blocks = Ident.Table.create ()
 let builder_state =
   ref (None : builder_state_type option)
 
-let reset () : unit=
+let predecessors : (Ssa.block list) Ident.Table.t = Ident.Table.create ()
+
+let reset () : unit =
   Ident.Table.clear blocks;
+  Ident.Table.clear predecessors;
   builder_state := None
 
 let emit (l : Ssa.let_binding) : unit =
@@ -34,31 +38,62 @@ let emit (l : Ssa.let_binding) : unit =
      builder_state := Some { s with cur_lets = l :: s.cur_lets }
 
 (* append to existing block *)
-let begin_block (l: Ssa.label) : value =
+let begin_block ?may_append:(may_append = true) (l: Ssa.label) : value =
   assert (l.Ssa.arg_types <> []);
   match !builder_state with
   | None ->
-    let args = List.map ~f:(fun _ -> Ident.fresh "x") l.Ssa.arg_types in
-    let x = List.last_exn args in
-    let a = List.last_exn l.Ssa.arg_types in
-    let v = Ssa.Var x, a in
-    builder_state := Some { cur_label = l; cur_arg = args; cur_lets = [] };
+    begin
+      match Ident.Table.find predecessors l.Ssa.name with
+      | Some [Ssa.Direct(l1, args, lets, vv, l')] ->
+        assert (l.Ssa.name = l'.Ssa.name);
+        Ident.Table.remove blocks l1.Ssa.name;
+        Ident.Table.remove_multi predecessors l.Ssa.name;
+        builder_state := Some { cur_label = l1; cur_arg = args; cur_lets = lets; cur_implicit_args = vv };
+        let x = List.last_exn vv in
+        let a = List.last_exn l'.Ssa.arg_types in
+        let v = x, a in
+        v
+      | _ ->
+        let args = List.map ~f:(fun _ -> Ident.fresh "x") l.Ssa.arg_types in
+        let iargs = List.map ~f:(fun x -> Ssa.Var x) args in
+        let x = List.last_exn args in
+        let a = List.last_exn l.Ssa.arg_types in
+        let v = Ssa.Var x, a in
+        builder_state := Some { cur_label = l; cur_arg = args; cur_lets = []; cur_implicit_args = iargs };
     v
+    end
   | Some _ ->
      assert false
 
 let begin_block2 (l: Ssa.label) : value * value =
   match !builder_state with
   | None ->
-    let args = List.map ~f:(fun _ -> Ident.fresh "x") l.Ssa.arg_types in
-    let (x, a), (y, b) =
-      match List.rev args, List.rev l.Ssa.arg_types with
-      | y :: x :: _, b :: a :: _ -> (x, a), (y, b)
-      | _ -> failwith "begin_block2 must be called with labels with at least two args." in
-    let v1 = Ssa.Var x, a in
-    let v2 = Ssa.Var y, b in
-    builder_state := Some { cur_label = l; cur_arg = args; cur_lets = [] };
-    v1, v2
+    begin
+      match Ident.Table.find predecessors l.Ssa.name with
+      | Some [Ssa.Direct(l1, args, lets, vv, l')] ->
+        assert (l.Ssa.name = l'.Ssa.name);
+        Ident.Table.remove blocks l1.Ssa.name;
+        Ident.Table.remove_multi predecessors l.Ssa.name;
+        builder_state := Some { cur_label = l1; cur_arg = args; cur_lets = lets; cur_implicit_args = vv };
+        let (x, a), (y, b) =
+          match List.rev vv, List.rev l'.Ssa.arg_types with
+          | y :: x :: _, b :: a :: _ -> (x, a), (y, b)
+          | _ -> failwith "begin_block2 must be called with labels with at least two args." in
+        let v1 = x, a in
+        let v2 = y, b in
+        v1, v2
+      | _ ->
+        let args = List.map ~f:(fun _ -> Ident.fresh "x") l.Ssa.arg_types in
+        let iargs = List.map ~f:(fun x -> Ssa.Var x) args in
+        let (x, a), (y, b) =
+          match List.rev args, List.rev l.Ssa.arg_types with
+          | y :: x :: _, b :: a :: _ -> (x, a), (y, b)
+          | _ -> failwith "begin_block2 must be called with labels with at least two args." in
+        let v1 = Ssa.Var x, a in
+        let v2 = Ssa.Var y, b in
+        builder_state := Some { cur_label = l; cur_arg = args; cur_lets = []; cur_implicit_args = iargs };
+        v1, v2
+    end
   | Some _ ->
      assert false
 
@@ -273,26 +308,23 @@ let embed (v: value) (a: Basetype.t) : value =
     | _ ->
       failwith "not_leq"
 
-let fill_args (args : Ident.t list) (v : value list) (dst : Ssa.label)
+let fill_args (args : Ssa.value list) (v : value list) (dst : Ssa.label)
   : Ssa.value list =
   let vv = List.map ~f:(fun (vv, va) -> vv) v in
   let i = List.length dst.Ssa.arg_types - List.length v in
-  let gamma = List.take args i
-              |> List.map ~f:(fun i -> Ssa.Var i) in
+  let gamma = List.take args i in
   gamma @ vv
-
 
 (* TODO: add assertions to check types *)
 let end_block_jump (dst: Ssa.label) (v: value list) : unit =
   match !builder_state with
   | None -> assert false
   | Some s ->
-    let argv = fill_args s.cur_arg v dst in
+    let argv = fill_args s.cur_implicit_args v dst in
     let block = Ssa.Direct(s.cur_label, s.cur_arg, s.cur_lets, argv, dst) in
     builder_state := None;
-    Ident.Table.add_exn blocks
-      ~key:s.cur_label.Ssa.name
-      ~data:block
+    Ident.Table.add_exn blocks ~key:s.cur_label.Ssa.name ~data:block;
+    Ident.Table.add_multi predecessors ~key:dst.Ssa.name ~data:block
 
 (* TODO: add assertions to check types *)
 (* TODO: the functions in [targets] must not create new let-definitions *)
@@ -326,15 +358,13 @@ let end_block_case (v: value) (targets: (value -> Ssa.label * (value list)) list
                     let x = Ident.fresh "x" in
                     let vx = Ssa.Var x, a in
                     let dst, arg = t vx in
-                    let argv = fill_args s.cur_arg arg dst in
+                    let argv = fill_args s.cur_implicit_args arg dst in
                     x, argv, dst
            ) in
      let block = Ssa.Branch(s.cur_label, s.cur_arg, s.cur_lets,
                             (id, params, vv, branches)) in
      builder_state := None;
-     Ident.Table.add_exn blocks
-       ~key:s.cur_label.Ssa.name
-       ~data:block
+     Ident.Table.add_exn blocks ~key:s.cur_label.Ssa.name ~data:block
 
 let end_block_return (v: value) : unit =
   let vv, va = v in
@@ -343,6 +373,4 @@ let end_block_return (v: value) : unit =
   | Some s ->
     let block = Ssa.Return(s.cur_label, s.cur_arg, s.cur_lets, vv, va) in
     builder_state := None;
-    Ident.Table.add_exn blocks
-      ~key:s.cur_label.Ssa.name
-      ~data:block
+    Ident.Table.add_exn blocks ~key:s.cur_label.Ssa.name ~data:block

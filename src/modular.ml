@@ -55,9 +55,9 @@ let compile (d: Decl.t) : unit =
       if !Opts.print_annotated_term then
         Printing.fprint_annotated_term Format.std_formatter t;
       let ssa = Translate.to_ssa t in
-(*      Out_channel.with_file
+      Out_channel.with_file
         (f_name ^ ".ssa")
-        ~f:(fun c -> Ssa.fprint_func c ssa) *)
+        ~f:(fun c -> Ssa.fprint_func c ssa);
       let ssa_traced = Trace.trace ssa in
       let ssa_shortcut = Trace.shortcut_jumps ssa_traced in
 (*      Out_channel.with_file
