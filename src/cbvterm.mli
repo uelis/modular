@@ -1,13 +1,14 @@
 (** Typed representation of intput terms *)
 
 type const = Ast.const
-               
+
 type 'a term = {
-    t_desc: 'a t_desc;
-    t_ann: Basetype.t;
-    t_type: 'a;
-    t_context: (Ident.t * 'a) list;
-    t_loc: Ast.Location.t
+  t_id: Ident.t;
+  t_desc: 'a t_desc;
+  t_ann: Basetype.t;
+  t_type: 'a;
+  t_context: (Ident.t * 'a) list;
+  t_loc: Ast.Location.t
   }
  and 'a t_desc =
    | Var of Ident.t

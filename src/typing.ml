@@ -154,6 +154,7 @@ let rec fresh_annotations_term (t: Simpletype.t Cbvterm.term) : Cbvterm.t =
   match t.t_desc with
   | Var v ->
     { t_desc = Cbvterm.Var(v);
+      t_id = t.t_id;
       t_ann = t.t_ann;
       t_type =  fresh_annotations_type t.t_type;
       t_context = [];
@@ -161,6 +162,7 @@ let rec fresh_annotations_term (t: Simpletype.t Cbvterm.term) : Cbvterm.t =
     }
   | Const(c, ts) ->
     { t_desc = Cbvterm.Const(c, List.map ts ~f:fresh_annotations_term);
+      t_id = t.t_id;
       t_ann = t.t_ann;
       t_type =  fresh_annotations_type t.t_type;
       t_context = [];
@@ -168,6 +170,7 @@ let rec fresh_annotations_term (t: Simpletype.t Cbvterm.term) : Cbvterm.t =
     }
   | App(s1, s2) ->
     { t_desc = Cbvterm.App(fresh_annotations_term s1, fresh_annotations_term s2);
+      t_id = t.t_id;
       t_ann = t.t_ann;
       t_type =  fresh_annotations_type t.t_type;
       t_context = [];
@@ -175,6 +178,7 @@ let rec fresh_annotations_term (t: Simpletype.t Cbvterm.term) : Cbvterm.t =
     }
   | Pair(s1, s2) ->
     { t_desc = Cbvterm.Pair(fresh_annotations_term s1, fresh_annotations_term s2);
+      t_id = t.t_id;
       t_ann = t.t_ann;
       t_type =  fresh_annotations_type t.t_type;
       t_context = [];
@@ -182,6 +186,7 @@ let rec fresh_annotations_term (t: Simpletype.t Cbvterm.term) : Cbvterm.t =
     }
   | Fst(s1) ->
     { t_desc = Cbvterm.Fst(fresh_annotations_term s1);
+      t_id = t.t_id;
       t_ann = t.t_ann;
       t_type =  fresh_annotations_type t.t_type;
       t_context = [];
@@ -189,6 +194,7 @@ let rec fresh_annotations_term (t: Simpletype.t Cbvterm.term) : Cbvterm.t =
     }
   | Snd(s2) ->
     { t_desc = Cbvterm.Snd(fresh_annotations_term s2);
+      t_id = t.t_id;
       t_ann = t.t_ann;
       t_type =  fresh_annotations_type t.t_type;
       t_context = [];
@@ -197,6 +203,7 @@ let rec fresh_annotations_term (t: Simpletype.t Cbvterm.term) : Cbvterm.t =
   | Fun((x, a), s) ->
     { t_desc = Cbvterm.Fun((x, fresh_annotations_type a),
                            fresh_annotations_term s);
+      t_id = t.t_id;
       t_ann = t.t_ann;
       t_type =  fresh_annotations_type t.t_type;
       t_context = [];
@@ -206,6 +213,7 @@ let rec fresh_annotations_term (t: Simpletype.t Cbvterm.term) : Cbvterm.t =
     { t_desc = Cbvterm.Ifz(fresh_annotations_term sc,
                            fresh_annotations_term st,
                            fresh_annotations_term sf);
+      t_id = t.t_id;
       t_ann = t.t_ann;
       t_type =  fresh_annotations_type t.t_type;
       t_context = [];
@@ -214,6 +222,7 @@ let rec fresh_annotations_term (t: Simpletype.t Cbvterm.term) : Cbvterm.t =
   | Fix((_, f, x, a), s) ->
     { t_desc = Cbvterm.Fix((Basetype.newvar (), f, x, fresh_annotations_type a),
                            fresh_annotations_term s);
+      t_id = t.t_id;
       t_ann = t.t_ann;
       t_type =  fresh_annotations_type t.t_type;
       t_context = [];
@@ -222,6 +231,7 @@ let rec fresh_annotations_term (t: Simpletype.t Cbvterm.term) : Cbvterm.t =
   | Tailfix((_, f, x, a), s) ->
     { t_desc = Cbvterm.Tailfix((Basetype.newvar (), f, x, fresh_annotations_type a),
                                fresh_annotations_term s);
+      t_id = t.t_id;
       t_ann = t.t_ann;
       t_type =  fresh_annotations_type t.t_type;
       t_context = [];
@@ -230,6 +240,7 @@ let rec fresh_annotations_term (t: Simpletype.t Cbvterm.term) : Cbvterm.t =
   | Contr(((x, a), xs), s) ->
     { t_desc = Cbvterm.Contr(((x, fresh_annotations_type a), xs),
                              fresh_annotations_term s);
+      t_id = t.t_id;
       t_ann = t.t_ann;
       t_type =  fresh_annotations_type t.t_type;
       t_context = [];

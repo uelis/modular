@@ -98,9 +98,17 @@ let fresh_label (name: string) (a : Basetype.t list): Ssa.label =
   { Ssa.name = Ident.fresh name;
     Ssa.arg_types = (List.rev !stage) @ a }
 
+let eval_table = Ident.Table.create ()
+
 let fresh_eval (s: string) (t: Cbvterm.t) : int_interface =
-  { entry = fresh_label (s ^ "_eval_entry") [pairB t.t_ann (code_context t.t_context)];
-    exit  = fresh_label (s ^ "_eval_exit") [pairB t.t_ann (Cbvtype.code t.t_type)] }
+  match Ident.Table.find eval_table t.t_id with
+  | Some i -> i
+  | None ->
+    let i =
+      { entry = fresh_label (s ^ "_eval_entry") [pairB t.t_ann (code_context t.t_context)];
+        exit  = fresh_label (s ^ "_eval_exit") [pairB t.t_ann (Cbvtype.code t.t_type)] } in
+    Ident.Table.add_exn eval_table ~key:t.t_id ~data:i;
+    i
 
 let fresh_access (s: string) (a: Cbvtype.t) : int_interface =
   { entry = fresh_label (s ^ "_access_entry") [access_entry_type a];
@@ -472,13 +480,23 @@ let rec translate (t: Cbvterm.t) : fragment =
       context = [(x, access)]
     }
   | Contr(((x, a), xs), s) ->
-    let s_fragment = translate s in
     let id = "contr" in
-    let eval = {
-      entry = fresh_label (id ^ "_eval_entry")
-          [pairB t.t_ann (code_context t.t_context)];
-      exit = s_fragment.eval.exit
-    } in
+    let eval_s = fresh_eval "blac" s in
+    let eval = fresh_eval id t in
+    (* eval *)
+    let arg = Builder.begin_block eval.entry in
+    let vstack, vgamma = Builder.unpair arg in
+    let delta =
+      List.map s.t_context
+        ~f:(fun (y, a) -> (if List.mem xs y then x else y), a) in
+    let vdelta = build_context_map t.t_context delta vgamma in
+    let v = Builder.pair vstack vdelta in
+    Builder.end_block_jump eval_s.entry [v];
+    (* body *)
+    let s_fragment = translate s in
+    (* eval exit *)
+    let arg = Builder.begin_block eval_s.exit in
+    Builder.end_block_jump eval.exit [arg];
     let x_access = fresh_access "contr" a in
     let tmult =
       let summands = List.map xs
@@ -488,15 +506,6 @@ let rec translate (t: Cbvterm.t) : fragment =
       | [] -> unitB
       | [x] -> x
       | xs -> Basetype.sumB xs in
-    (* eval *)
-    let arg = Builder.begin_block eval.entry in
-    let vstack, vgamma = Builder.unpair arg in
-    let delta =
-      List.map s.t_context
-        ~f:(fun (y, a) -> (if List.mem xs y then x else y), a) in
-    let vdelta = build_context_map t.t_context delta vgamma in
-    let v = Builder.pair vstack vdelta in
-    Builder.end_block_jump s_fragment.eval.entry [v];
     (* project blocks *)
     begin
       match xs with
@@ -588,13 +597,15 @@ let rec translate (t: Cbvterm.t) : fragment =
   | Const(Ast.Cintconst _, _) ->
     assert false
   | Const(Ast.Cintprint, [s]) ->
-    let s_fragment = translate s in
     let id = "intprint" in
     let eval = fresh_eval id t in
+    let eval_s = fresh_eval "bla" s in
     let access = fresh_access id t.t_type in
     (* eval *)
     let arg = Builder.begin_block eval.entry in
-    Builder.end_block_jump s_fragment.eval.entry [arg];
+    Builder.end_block_jump eval_s.entry [arg];
+    (* argument *)
+    let s_fragment = translate s in
     (* print *)
     let arg = Builder.begin_block s_fragment.eval.exit in
     let vi = Builder.snd arg in
@@ -624,9 +635,9 @@ let rec translate (t: Cbvterm.t) : fragment =
       | Ast.Cboolconst _ -> assert false
       | Ast.Cintconst _ -> assert false
       | Ast.Cintprint -> assert false in
-    let s1_fragment = translate s1 in
-    let s2_fragment = translate s2 in
     let eval = fresh_eval id t in
+    let eval_s1 = fresh_eval id s1 in
+    let eval_s2 = fresh_eval id s2 in
     let access = fresh_access id t.t_type in
     (* eval 1 *)
     let arg = Builder.begin_block eval.entry in
@@ -635,7 +646,8 @@ let rec translate (t: Cbvterm.t) : fragment =
     let vgamma2 = build_context_map t.t_context s2.t_context vgamma in
     let vstack1 = Builder.embed (Builder.pair vstack vgamma2) s1.t_ann in
     let v = Builder.pair vstack1 vgamma1 in
-    Builder.end_block_jump s1_fragment.eval.entry [v];
+    Builder.end_block_jump eval_s1.entry [v];
+    let s1_fragment = translate s1 in
     (* eval 2 *)
     let arg = Builder.begin_block s1_fragment.eval.exit in
     let vstack1, vn1 = Builder.unpair arg in
@@ -644,7 +656,8 @@ let rec translate (t: Cbvterm.t) : fragment =
     let vstack, vgamma2 = Builder.unpair vp in
     let vstack2 = Builder.embed (Builder.pair vstack vn1) s2.t_ann in
     let v = Builder.pair vstack2 vgamma2 in
-    Builder.end_block_jump s2_fragment.eval.entry [v];
+    Builder.end_block_jump eval_s2.entry [v];
+    let s2_fragment = translate s2 in
     (* eval 3 *)
     let arg = Builder.begin_block s2_fragment.eval.exit in
     let vstack2, vn2 = Builder.unpair arg in
@@ -669,14 +682,12 @@ let rec translate (t: Cbvterm.t) : fragment =
   | Const(_, _) ->
     assert false
   | Fun((x, xty), s) ->
-    enter_stage (Cbvtype.multiplicity t.t_type);
-    let s_fragment = translate s in
-    leave_stage ();
     let id = "fun" in
+    enter_stage (Cbvtype.multiplicity t.t_type);
+    let eval_s = fresh_eval id s in
+    leave_stage ();
     let eval = fresh_eval id t in
     let access = fresh_access id t.t_type in
-    (* TODO: nimmt an, dass x im context von s vorkommt. *)
-    let x_access = List.Assoc.find_exn s_fragment.context x in
     (* eval *)
     let arg = Builder.begin_block eval.entry in
     let vstack, vgamma = Builder.unpair arg in
@@ -699,7 +710,12 @@ let rec translate (t: Cbvterm.t) : fragment =
       let vdelta = build_context_map ((x, xty)::t.t_context) s.t_context vgammax in
       (* TODO: Dokumentieren! *)
       let v = Builder.pair va vdelta in
-      Builder.end_block_jump s_fragment.eval.entry [ve; v] in
+      Builder.end_block_jump eval_s.entry [ve; v] in
+    enter_stage (Cbvtype.multiplicity t.t_type);
+    let s_fragment = translate s in
+    leave_stage ();
+    (* TODO: nimmt an, dass x im context von s vorkommt. *)
+    let x_access = List.Assoc.find_exn s_fragment.context x in
     (* access *)
     let arg = Builder.begin_block access.entry in
     let ve = Builder.fst arg in
@@ -1096,10 +1112,10 @@ let rec translate (t: Cbvterm.t) : fragment =
       context = t1_fragment.context
     }
   | App(t1, t2) ->
-    let t1_fragment = translate t1 in
-    let t2_fragment = translate t2 in
     let id = "app" in
     let eval = fresh_eval id t in
+    let eval_t1 = fresh_eval "bla" t1 in
+    let eval_t2 = fresh_eval "bla" t2 in
     let access = fresh_access id t.t_type in
     (* block 1 *)
     let arg = Builder.begin_block eval.entry in
@@ -1108,7 +1124,8 @@ let rec translate (t: Cbvterm.t) : fragment =
     let vdelta = build_context_map t.t_context t2.t_context vgammadelta in
     let embed_val = Builder.embed (Builder.pair vu vdelta) t1.t_ann in
     let v = Builder.pair embed_val vgamma in
-    Builder.end_block_jump t1_fragment.eval.entry [v];
+    Builder.end_block_jump eval_t1.entry [v];
+    let t1_fragment = translate t1 in
     (* block 2 *)
     let arg = Builder.begin_block t1_fragment.eval.exit in
     let ve, vf = Builder.unpair arg in
@@ -1118,7 +1135,8 @@ let rec translate (t: Cbvterm.t) : fragment =
     let vu_f = Builder.pair vu vf in
     let ve' = Builder.embed vu_f t2.t_ann in
     let v = Builder.pair ve' vdelta in
-    Builder.end_block_jump t2_fragment.eval.entry [v];
+    Builder.end_block_jump eval_t2.entry [v];
+    let t2_fragment = translate t2 in
     (* block 3 *)
     let arg = Builder.begin_block t2_fragment.eval.exit in
     let ve, vx = Builder.unpair arg in

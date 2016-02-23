@@ -173,17 +173,23 @@ let primop (c: Ssa.op_const) (v: value) : value =
 let fst (v: value) : value =
   let vv, va = v in
   let a1, a2 = unPairB va in
-  Ssa.Fst(vv, a1, a2), a1
+  match vv with
+  | Ssa.Pair(v1, v2) -> v1, a1
+  | _ -> Ssa.Fst(vv, a1, a2), a1
 
 let snd (v: value) : value =
   let vv, va = v in
   let a1, a2 = unPairB va in
-  Ssa.Snd(vv, a1, a2), a2
+  match vv with
+  | Ssa.Pair(v1, v2) -> v2, a2
+  | _ -> Ssa.Snd(vv, a1, a2), a2
 
 let unpair (v: value) : value * value =
-  let v1 = fst v in
-  let v2 = snd v in
-  v1, v2
+  let vv, va = v in
+  let a1, a2 = unPairB va in
+  match vv with
+  | Ssa.Pair(v1, v2) -> (v1, a1), (v2, a2)
+  | _ -> (Ssa.Fst(vv, a1, a2), a1), (Ssa.Snd(vv, a1, a2), a2)
 
 let pair (v1: value) (v2: value) : value =
   let vv1, va1 = v1 in
