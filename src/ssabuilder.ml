@@ -44,6 +44,7 @@ let begin_block ?may_append:(may_append = true) (l: Ssa.label) : value =
   | None ->
     begin
       match Ident.Table.find predecessors l.Ssa.name with
+      (*
       | Some [Ssa.Direct(l1, args, lets, vv, l')] ->
         assert (l.Ssa.name = l'.Ssa.name);
         Ident.Table.remove blocks l1.Ssa.name;
@@ -53,6 +54,7 @@ let begin_block ?may_append:(may_append = true) (l: Ssa.label) : value =
         let a = List.last_exn l'.Ssa.arg_types in
         let v = x, a in
         v
+      *)
       | _ ->
         let args = List.map ~f:(fun _ -> Ident.fresh "x") l.Ssa.arg_types in
         let iargs = List.map ~f:(fun x -> Ssa.Var x) args in
@@ -70,6 +72,7 @@ let begin_block2 (l: Ssa.label) : value * value =
   | None ->
     begin
       match Ident.Table.find predecessors l.Ssa.name with
+      (*
       | Some [Ssa.Direct(l1, args, lets, vv, l')] ->
         assert (l.Ssa.name = l'.Ssa.name);
         Ident.Table.remove blocks l1.Ssa.name;
@@ -82,6 +85,7 @@ let begin_block2 (l: Ssa.label) : value * value =
         let v1 = x, a in
         let v2 = y, b in
         v1, v2
+      *)
       | _ ->
         let args = List.map ~f:(fun _ -> Ident.fresh "x") l.Ssa.arg_types in
         let iargs = List.map ~f:(fun x -> Ssa.Var x) args in
