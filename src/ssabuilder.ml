@@ -45,6 +45,18 @@ let begin_block ?may_append:(may_append = true) (l: Ssa.label) : value =
     begin
       match Ident.Table.find predecessors l.Ssa.name with
       (*
+      | Some [Ssa.Branch(l1, args, lets, (id, params, Ssa.In((_, k, w), _), cases))] ->
+        let y, vv, dst = List.nth_exn cases k in
+        let ww = List.map vv
+            ~f:(Ssa.subst_value (fun z -> if z = y then w else Ssa.Var z)) in
+        assert (l.Ssa.name = dst.Ssa.name);
+        Ident.Table.remove blocks l1.Ssa.name;
+        Ident.Table.remove_multi predecessors l.Ssa.name;
+        builder_state := Some { cur_label = l1; cur_arg = args; cur_lets = lets; cur_implicit_args = ww };
+        let x = List.last_exn ww in
+        let a = List.last_exn dst.Ssa.arg_types in
+        let v = x, a in
+        v
       | Some [Ssa.Direct(l1, args, lets, vv, l')] ->
         assert (l.Ssa.name = l'.Ssa.name);
         Ident.Table.remove blocks l1.Ssa.name;
@@ -54,7 +66,7 @@ let begin_block ?may_append:(may_append = true) (l: Ssa.label) : value =
         let a = List.last_exn l'.Ssa.arg_types in
         let v = x, a in
         v
-      *)
+         *)
       | _ ->
         let args = List.map ~f:(fun _ -> Ident.fresh "x") l.Ssa.arg_types in
         let iargs = List.map ~f:(fun x -> Ssa.Var x) args in
@@ -85,7 +97,7 @@ let begin_block2 (l: Ssa.label) : value * value =
         let v1 = x, a in
         let v2 = y, b in
         v1, v2
-      *)
+*)
       | _ ->
         let args = List.map ~f:(fun _ -> Ident.fresh "x") l.Ssa.arg_types in
         let iargs = List.map ~f:(fun x -> Ssa.Var x) args in
@@ -337,31 +349,23 @@ let end_block_jump (dst: Ssa.label) (v: value list) : unit =
     Ident.Table.add_multi predecessors ~key:dst.Ssa.name ~data:block
 
 (* TODO: add assertions to check types *)
+let end_block_unreachable () : unit =
+  match !builder_state with
+  | None -> assert false
+  | Some s ->
+    let block = Ssa.Unreachable(s.cur_label) in
+    builder_state := None;
+    Ident.Table.add_exn blocks ~key:s.cur_label.Ssa.name ~data:block
+
+(* TODO: add assertions to check types *)
 (* TODO: the functions in [targets] must not create new let-definitions *)
 let end_block_case (v: value) (targets: (value -> Ssa.label * (value list)) list) : unit =
   let vv, va = v in
   match !builder_state with
   | None -> assert false
   | Some s ->
-   (*  let l = s.cur_label in
-     let arg = s.cur_arg in
-     let lets = s.cur_lets in *)
      let id, params = unDataB va in
      let cs = Basetype.Data.constructor_types id params in
-     (*
-     let make_branch (target, a) =
-       builder_state := None;
-       let x = begin_block a in
-       let dst, (v, _) = target vx in
-       if !builder_state.cur_lets = [] then
-         !builder_state.cur_arg, v, dst
-       else
-
-                    let x = Ident.fresh "x" in
-                    let vx = Ssa.Var x, a in
-                    let dst, (arg, _) = t vx in
-                    x, arg, dst
-     *)
      let branches =
        List.map (List.zip_exn targets cs)
                 ~f:(fun (t, a) ->
@@ -375,6 +379,7 @@ let end_block_case (v: value) (targets: (value -> Ssa.label * (value list)) list
                             (id, params, vv, branches)) in
      builder_state := None;
      Ident.Table.add_exn blocks ~key:s.cur_label.Ssa.name ~data:block
+(* TODO: direkte Sprünge gleich an Vorgänger anhängen *)
 
 let end_block_return (v: value) : unit =
   let vv, va = v in
