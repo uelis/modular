@@ -966,6 +966,7 @@ let rec translate stage (t: term_with_interface) : unit =
       Builder.end_block_jump t.access.exit [v]
     end
   | Fix((th, f, x, xty), s) ->
+    (* TODO: check order *)
     translate (th :: stage) s;
     let x_access = List.Assoc.find_exn s.context x in
     let f_access = List.Assoc.find_exn s.context f in
@@ -1066,23 +1067,20 @@ let rec translate stage (t: term_with_interface) : unit =
     project_context t.context gamma;
     embed_context t.context gamma
   | Tailfix((th, f, x, xty), s) ->
-    let x_access = List.Assoc.find_exn s.context x in
-    let f_access = List.Assoc.find_exn s.context f in
-    translate (th :: stage) s;
+    (* TODO: check order *)
     let te, (_, ta, td, _) = Cbvtype.unFun t.term.t_type in
     let tea = pairB te ta in
-    (* dummy *)
-    let dummy_block = fresh_label stage "dummy" [unitB] in
-    begin (* dummy *)
-      ignore (Builder.begin_block dummy_block);
-      Builder.end_block_unreachable ()
-    end;
     begin (* eval *)
       let arg = Builder.begin_block t.eval.entry in
       let vstack, vgamma = Builder.unpair arg in
       let vclosure = Builder.embed vgamma (Cbvtype.code t.term.t_type) in
       let v = Builder.pair vstack vclosure in
       Builder.end_block_jump t.eval.exit [v]
+    end;
+    let dummy_block = fresh_label stage "dummy" [unitB] in
+    begin (* dummy *)
+      ignore (Builder.begin_block dummy_block);
+      Builder.end_block_unreachable ()
     end;
     let eval_body_block =
       let tx = Cbvtype.code xty in
@@ -1109,6 +1107,11 @@ let rec translate stage (t: term_with_interface) : unit =
           (fun c -> dummy_block, [Builder.unit]);
           (fun c -> dummy_block, [Builder.unit]) ]
     end;
+    let gamma = List.filter s.context
+                  ~f:(fun (y, _) -> y <> x && y <> f) in
+    project_context t.context gamma;
+    translate (th :: stage) s;
+    (* dummy *)
     begin (* s eval exit *)
       let vh, vum = Builder.begin_block2 s.eval.exit in
       let vm = Builder.snd vum in
@@ -1124,10 +1127,12 @@ let rec translate stage (t: term_with_interface) : unit =
       Builder.end_block_unreachable ();
     end;
     begin (* x access entry *)
+      let x_access = List.Assoc.find_exn s.context x in
       let _ = Builder.begin_block2 x_access.entry in
       Builder.end_block_unreachable ()
     end;
     begin (* f access entry *)
+      let f_access = List.Assoc.find_exn s.context f in
       let vh, vgm = Builder.begin_block2 f_access.entry in
       let vea = Builder.project vh tea in
       let ve = Builder.fst vea in
@@ -1138,9 +1143,6 @@ let rec translate stage (t: term_with_interface) : unit =
           (fun c -> dummy_block, [Builder.unit]);
           (fun c -> dummy_block, [Builder.unit]) ]
     end;
-    let gamma = List.filter s.context
-                  ~f:(fun (y, _) -> y <> x && y <> f) in
-    project_context t.context gamma;
     embed_context t.context gamma
   | Pair(t1, t2) ->
     begin (* eval *)
@@ -1243,17 +1245,17 @@ let rec translate stage (t: term_with_interface) : unit =
     end
   | Fst(t1) ->
     begin (* eval entry *)
-    let arg = Builder.begin_block t.eval.entry in
-    Builder.end_block_jump t1.eval.entry [arg]
+      let arg = Builder.begin_block t.eval.entry in
+      Builder.end_block_jump t1.eval.entry [arg]
     end;
     begin (* access entry *)
-    let arg = Builder.begin_block t.access.entry in
-    let vu = Builder.unit in
-    let tm, tq = unPairB_singleton t1.access.entry.Ssa.arg_types in
-    let vm = Builder.embed vu tm in
-    let vq = Builder.inj 0 arg tq in
-    let v = Builder.pair vm vq in
-    Builder.end_block_jump t1.access.entry [v]
+      let arg = Builder.begin_block t.access.entry in
+      let vu = Builder.unit in
+      let tm, tq = unPairB_singleton t1.access.entry.Ssa.arg_types in
+      let vm = Builder.embed vu tm in
+      let vq = Builder.inj 0 arg tq in
+      let v = Builder.pair vm vq in
+      Builder.end_block_jump t1.access.entry [v]
     end;
     let assert_false = fresh_label stage "assert_false" [unitB] in
     begin
@@ -1322,6 +1324,11 @@ let rec translate stage (t: term_with_interface) : unit =
       let v = Builder.pair embed_val vgamma in
       Builder.end_block_jump t1.eval.entry [v]
     end;
+    let apply_block = fresh_label stage "apply" [access_entry_type t1.term.t_type] in
+    begin
+      let arg = Builder.begin_block apply_block in
+      Builder.end_block_jump t1.access.entry [arg]
+    end;
     (* Term 1 *)
     translate stage t1;
     begin (* block 2 *)
@@ -1335,6 +1342,18 @@ let rec translate stage (t: term_with_interface) : unit =
       let v = Builder.pair ve' vdelta in
       Builder.end_block_jump t2.eval.entry [v]
     end;
+    let block8 =
+      let _, (_, tv, _, _) = Cbvtype.unFun t1.term.t_type in
+      let _, tres = unPairB_singleton t.eval.exit.Ssa.arg_types in
+      fresh_label stage "decode_stack" [pairB tv tres] in
+    begin (* case block *)
+      let arg = Builder.begin_block t1.access.exit in
+      let vfun = Builder.snd arg in
+      Builder.end_block_case vfun
+        [ (fun c -> block8, [c]);
+          (fun c -> t.access.exit, [c]);
+          (fun c -> t2.access.entry, [c]) ]
+    end;
     (* Term 1 *)
     translate stage t2;
     begin (* block 3 *)
@@ -1346,91 +1365,82 @@ let rec translate stage (t: term_with_interface) : unit =
       let vv = Builder.embed vu tv in
       let vvfx = Builder.pair vv (Builder.pair vf vx) in
       let td, tfunacc = unPairB_singleton t1.access.entry.Ssa.arg_types in
-      let vfunacc = Builder.inj 0 vvfx tfunacc in
       let vd = Builder.embed Builder.unit td in
-      let v = Builder.pair vd vfunacc in
-      Builder.end_block_jump t1.access.entry [v]
+      let v = Builder.pair vd (Builder.inj 0 vvfx tfunacc) in
+      Builder.end_block_jump apply_block [v]
     end;
     begin (* access *)
       let arg = Builder.begin_block t.access.entry in
       let td, tfunacc = unPairB_singleton t1.access.entry.Ssa.arg_types in
       let vd = Builder.embed Builder.unit td in
       let v = Builder.pair vd (Builder.inj 1 arg tfunacc) in
-      Builder.end_block_jump t1.access.entry [v]
+      Builder.end_block_jump apply_block [v]
     end;
     begin (* block 7 *)
       let arg = Builder.begin_block t2.access.exit in
       let td, tfunacc = unPairB_singleton t1.access.entry.Ssa.arg_types in
       let vd = Builder.embed Builder.unit td in
       let v = Builder.pair vd (Builder.inj 2 arg tfunacc) in
-      Builder.end_block_jump t1.access.entry [v]
+      Builder.end_block_jump apply_block [v]
     end;
-    let block8 =
-      let _, (_, tv, _, _) = Cbvtype.unFun t1.term.t_type in
-      let _, tres = unPairB_singleton t.eval.exit.Ssa.arg_types in
-      fresh_label stage "decode_stack" [pairB tv tres] in
-    begin
+    begin (* block 8 *)
       let arg = Builder.begin_block block8 in
       let vv, vres = Builder.unpair arg in
       let vu = Builder.project vv t.term.t_ann in
       let v = Builder.pair vu vres in
       Builder.end_block_jump t.eval.exit [v]
-    end;
-    begin (* case block *)
-      let arg = Builder.begin_block t1.access.exit in
-      let vfun = Builder.snd arg in
-      Builder.end_block_case vfun
-        [ (fun c -> block8, [c]);
-          (fun c -> t.access.exit, [c]);
-          (fun c -> t2.access.entry, [c]) ]
     end
   | Ifz(tc, t1, t2) ->
     begin (* eval 1 *)
-    let arg = Builder.begin_block t.eval.entry in
-    let vstack, vgamma = Builder.unpair arg in
-    let vgammac = build_context_map t.term.t_context tc.term.t_context vgamma in
-    let vgamma1 = build_context_map t.term.t_context t1.term.t_context vgamma in
-    let vgamma2 = build_context_map t.term.t_context t2.term.t_context vgamma in
-    let vstack1 = Builder.embed (Builder.pair vstack (Builder.pair vgamma1 vgamma2)) tc.term.t_ann in
-    let v = Builder.pair vstack1 vgammac in
-    Builder.end_block_jump tc.eval.entry [v]
+      let arg = Builder.begin_block t.eval.entry in
+      let vstack, vgamma = Builder.unpair arg in
+      let vgammac = build_context_map t.term.t_context tc.term.t_context vgamma in
+      let vgamma1 = build_context_map t.term.t_context t1.term.t_context vgamma in
+      let vgamma2 = build_context_map t.term.t_context t2.term.t_context vgamma in
+      let vstack1 = Builder.embed (Builder.pair vstack (Builder.pair vgamma1 vgamma2)) tc.term.t_ann in
+      let v = Builder.pair vstack1 vgammac in
+      Builder.end_block_jump tc.eval.entry [v]
     end;
     translate stage tc;
     begin (* eval c *)
-    let arg = Builder.begin_block tc.eval.exit in
-    let vstack1, vz = Builder.unpair arg in
-    let vp = Builder.project vstack1 (pairB t.term.t_ann
-                                        (pairB
-                                           (code_context t1.term.t_context)
-                                           (code_context t2.term.t_context)
-                                        )) in
-    let vstack, vgamma12 = Builder.unpair vp in
-    let vgamma1, vgamma2 = Builder.unpair vgamma12 in
-    Builder.end_block_case vz
-      [ (fun _ -> t1.eval.entry, [Builder.pair vstack vgamma1]);
-        (fun _ -> t2.eval.entry, [Builder.pair vstack vgamma2]) ]
+      let arg = Builder.begin_block tc.eval.exit in
+      let vstack1, vz = Builder.unpair arg in
+      let vp = Builder.project vstack1 (pairB t.term.t_ann
+                                          (pairB
+                                             (code_context t1.term.t_context)
+                                             (code_context t2.term.t_context)
+                                          )) in
+      let vstack, vgamma12 = Builder.unpair vp in
+      let vgamma1, vgamma2 = Builder.unpair vgamma12 in
+      Builder.end_block_case vz
+        [ (fun _ -> t1.eval.entry, [Builder.pair vstack vgamma1]);
+          (fun _ -> t2.eval.entry, [Builder.pair vstack vgamma2]) ]
     end;
-    translate stage t1;
-    translate stage t2;
-    (* eval rt *)
-    let arg = Builder.begin_block t1.eval.exit in
-    let vstack = Builder.fst arg in
-    let vn = Builder.snd arg in
-    let v = Builder.pair vstack (join_code `Left vn t1.term.t_type t2.term.t_type t.term.t_type) in
-    Builder.end_block_jump t.eval.exit [v];
-    (* eval rf *)
-    let arg = Builder.begin_block t2.eval.exit in
-    let vstack = Builder.fst arg in
-    let vn = Builder.snd arg in
-    let v = Builder.pair vstack (join_code `Right vn t1.term.t_type t2.term.t_type t.term.t_type) in
-    Builder.end_block_jump t.eval.exit [v];
-    (* access c *)
-    let arg = Builder.begin_block tc.access.exit in
-    Builder.end_block_jump tc.access.exit [arg];
     split_entry stage
       (t.access.entry, t.term.t_type)
       (t1.access.entry, t1.term.t_type)
       (t2.access.entry, t2.term.t_type);
+    translate stage t1;
+    translate stage t2;
+    begin (* eval rt *)
+      let arg = Builder.begin_block t1.eval.exit in
+      let vstack = Builder.fst arg in
+      let vn = Builder.snd arg in
+      let v = Builder.pair vstack (join_code `Left vn t1.term.t_type t2.term.t_type t.term.t_type) in
+      Builder.end_block_jump t.eval.exit [v]
+    end;
+    begin (* eval rf *)
+      let arg = Builder.begin_block t2.eval.exit in
+      let vstack = Builder.fst arg in
+      let vn = Builder.snd arg in
+      let v = Builder.pair vstack (join_code `Right vn t1.term.t_type t2.term.t_type t.term.t_type) in
+      Builder.end_block_jump t.eval.exit [v]
+    end;
+    (* access c *)
+    begin
+      ignore (Builder.begin_block tc.access.exit);
+      Builder.end_block_unreachable ()
+    end;
     join_exit stage
       (t1.access.exit, t1.term.t_type)
       (t2.access.exit, t2.term.t_type)

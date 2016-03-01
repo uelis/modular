@@ -57,6 +57,7 @@ let begin_block ?may_append:(may_append = true) (l: Ssa.label) : value =
         let a = List.last_exn dst.Ssa.arg_types in
         let v = x, a in
         v
+         *)
       | Some [Ssa.Direct(l1, args, lets, vv, l')] ->
         assert (l.Ssa.name = l'.Ssa.name);
         Ident.Table.remove blocks l1.Ssa.name;
@@ -66,7 +67,6 @@ let begin_block ?may_append:(may_append = true) (l: Ssa.label) : value =
         let a = List.last_exn l'.Ssa.arg_types in
         let v = x, a in
         v
-         *)
       | _ ->
         let args = List.map ~f:(fun _ -> Ident.fresh "x") l.Ssa.arg_types in
         let iargs = List.map ~f:(fun x -> Ssa.Var x) args in
@@ -84,7 +84,6 @@ let begin_block2 (l: Ssa.label) : value * value =
   | None ->
     begin
       match Ident.Table.find predecessors l.Ssa.name with
-      (*
       | Some [Ssa.Direct(l1, args, lets, vv, l')] ->
         assert (l.Ssa.name = l'.Ssa.name);
         Ident.Table.remove blocks l1.Ssa.name;
@@ -97,7 +96,6 @@ let begin_block2 (l: Ssa.label) : value * value =
         let v1 = x, a in
         let v2 = y, b in
         v1, v2
-*)
       | _ ->
         let args = List.map ~f:(fun _ -> Ident.fresh "x") l.Ssa.arg_types in
         let iargs = List.map ~f:(fun x -> Ssa.Var x) args in
@@ -378,7 +376,10 @@ let end_block_case (v: value) (targets: (value -> Ssa.label * (value list)) list
      let block = Ssa.Branch(s.cur_label, s.cur_arg, s.cur_lets,
                             (id, params, vv, branches)) in
      builder_state := None;
-     Ident.Table.add_exn blocks ~key:s.cur_label.Ssa.name ~data:block
+     Ident.Table.add_exn blocks ~key:s.cur_label.Ssa.name ~data:block;
+     List.iter branches
+       ~f:(fun (_, _, dst) ->
+           Ident.Table.add_multi predecessors ~key:dst.Ssa.name ~data:block)
 (* TODO: direkte Sprünge gleich an Vorgänger anhängen *)
 
 let end_block_return (v: value) : unit =
