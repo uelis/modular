@@ -577,17 +577,12 @@ let infer_annotations (t: Cbvterm.t) : Cbvterm.t =
       let gamma = List.Assoc.remove as1.t_context y in
       Cbvtype.unify_exn t.t_type s.t_type;
       Basetype.unify_exn t.t_ann s.t_ann;
-      Cbvtype.unify_exn a (freshen_multiplicity yt);
+      Cbvtype.unify_exn a yt;
       { t with
         t_desc = Contr(((x, a), [y]), as1);
         t_context = (x, a) :: gamma
       },
-      [ { lower = Cbvtype.multiplicity yt;
-          upper = Cbvtype.multiplicity a;
-          reason = "singleton contraction"
-        }
-      ]
-      @ cs1
+      cs1
     | Contr(((x, a), xs), s) ->
       let as1, cs1 = constraints s in
       let m = Cbvtype.multiplicity a in

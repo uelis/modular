@@ -229,10 +229,6 @@ let fprint_block (oc: Out_channel.t) (b: block) : unit =
           (Ident.to_string l)
           (Printing.string_of_basetype t))
     |> String.concat ~sep:", " in
-  let dummy_params types =
-    let n = List.length types in
-    let xs = List.init n ~f:(fun _ -> Ident.fresh "x") in
-    param_string xs types in
   let rec fprint_values oc values =
     match values with
     | [] -> ()
@@ -242,9 +238,8 @@ let fprint_block (oc: Out_channel.t) (b: block) : unit =
       fprint_values oc vs in
   match b with
     | Unreachable(l) ->
-      Printf.fprintf oc " l%s(%s) = unreachable"
+      Printf.fprintf oc " l%s(...) = unreachable\n"
         (Ident.to_string l.name)
-        (dummy_params l.arg_types)
     | Direct(l, x, bndgs, body, goal) ->
       Printf.fprintf oc " l%s(%s) =\n"
         (Ident.to_string l.name)

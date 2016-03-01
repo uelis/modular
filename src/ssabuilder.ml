@@ -37,79 +37,43 @@ let emit (l : Ssa.let_binding) : unit =
   | Some s ->
      builder_state := Some { s with cur_lets = l :: s.cur_lets }
 
-(* append to existing block *)
-let begin_block ?may_append:(may_append = true) (l: Ssa.label) : value =
+let begin_blockn n ?may_append:(may_append = false) (l: Ssa.label) : value list =
   assert (l.Ssa.arg_types <> []);
   match !builder_state with
   | None ->
-    begin
+    let values =
       match Ident.Table.find predecessors l.Ssa.name with
-      (*
-      | Some [Ssa.Branch(l1, args, lets, (id, params, Ssa.In((_, k, w), _), cases))] ->
-        let y, vv, dst = List.nth_exn cases k in
-        let ww = List.map vv
-            ~f:(Ssa.subst_value (fun z -> if z = y then w else Ssa.Var z)) in
-        assert (l.Ssa.name = dst.Ssa.name);
-        Ident.Table.remove blocks l1.Ssa.name;
-        Ident.Table.remove_multi predecessors l.Ssa.name;
-        builder_state := Some { cur_label = l1; cur_arg = args; cur_lets = lets; cur_implicit_args = ww };
-        let x = List.last_exn ww in
-        let a = List.last_exn dst.Ssa.arg_types in
-        let v = x, a in
-        v
-         *)
-      | Some [Ssa.Direct(l1, args, lets, vv, l')] ->
+      | Some [Ssa.Direct(l1, args, lets, vv, l')] when may_append ->
         assert (l.Ssa.name = l'.Ssa.name);
         Ident.Table.remove blocks l1.Ssa.name;
         Ident.Table.remove_multi predecessors l.Ssa.name;
         builder_state := Some { cur_label = l1; cur_arg = args; cur_lets = lets; cur_implicit_args = vv };
-        let x = List.last_exn vv in
-        let a = List.last_exn l'.Ssa.arg_types in
-        let v = x, a in
-        v
+        List.zip_exn vv l'.Ssa.arg_types
       | _ ->
         let args = List.map ~f:(fun _ -> Ident.fresh "x") l.Ssa.arg_types in
         let iargs = List.map ~f:(fun x -> Ssa.Var x) args in
-        let x = List.last_exn args in
-        let a = List.last_exn l.Ssa.arg_types in
-        let v = Ssa.Var x, a in
         builder_state := Some { cur_label = l; cur_arg = args; cur_lets = []; cur_implicit_args = iargs };
-    v
-    end
+        List.zip_exn iargs l.Ssa.arg_types in
+    let lastn = List.rev (List.take (List.rev values) n) in
+    lastn
   | Some _ ->
      assert false
 
-let begin_block2 (l: Ssa.label) : value * value =
-  match !builder_state with
-  | None ->
-    begin
-      match Ident.Table.find predecessors l.Ssa.name with
-      | Some [Ssa.Direct(l1, args, lets, vv, l')] ->
-        assert (l.Ssa.name = l'.Ssa.name);
-        Ident.Table.remove blocks l1.Ssa.name;
-        Ident.Table.remove_multi predecessors l.Ssa.name;
-        builder_state := Some { cur_label = l1; cur_arg = args; cur_lets = lets; cur_implicit_args = vv };
-        let (x, a), (y, b) =
-          match List.rev vv, List.rev l'.Ssa.arg_types with
-          | y :: x :: _, b :: a :: _ -> (x, a), (y, b)
-          | _ -> failwith "begin_block2 must be called with labels with at least two args." in
-        let v1 = x, a in
-        let v2 = y, b in
-        v1, v2
-      | _ ->
-        let args = List.map ~f:(fun _ -> Ident.fresh "x") l.Ssa.arg_types in
-        let iargs = List.map ~f:(fun x -> Ssa.Var x) args in
-        let (x, a), (y, b) =
-          match List.rev args, List.rev l.Ssa.arg_types with
-          | y :: x :: _, b :: a :: _ -> (x, a), (y, b)
-          | _ -> failwith "begin_block2 must be called with labels with at least two args." in
-        let v1 = Ssa.Var x, a in
-        let v2 = Ssa.Var y, b in
-        builder_state := Some { cur_label = l; cur_arg = args; cur_lets = []; cur_implicit_args = iargs };
-        v1, v2
-    end
-  | Some _ ->
-     assert false
+(* append to existing block *)
+let begin_block ?may_append:(may_append = true) (l: Ssa.label) : value =
+  match begin_blockn ~may_append:may_append 1 l with
+  | [v] -> v
+  | _ -> assert false
+
+let begin_block2 ?may_append:(may_append = true) (l: Ssa.label) : value * value =
+  match begin_blockn ~may_append:may_append 2 l with
+  | [v1; v2] -> v1, v2
+  | _ -> assert false
+
+let begin_block3 ?may_append:(may_append = true) (l: Ssa.label) : value * value * value =
+  match begin_blockn ~may_append:may_append 3 l with
+  | [v1; v2; v3] -> v1, v2, v3
+  | _ -> assert false
 
 let unit : value =
   Ssa.Unit,
@@ -208,11 +172,11 @@ let unpair (v: value) : value * value =
 let pair (v1: value) (v2: value) : value =
   let vv1, va1 = v1 in
   let vv2, va2 = v2 in
-(*  match vv1, vv2 with
+  match vv1, vv2 with
   | Ssa.Fst(x, _, _), Ssa.Snd(y, _, _) when x = y ->
     x,
     Basetype.newty (Basetype.PairB(va1, va2))
-    | _ ->*)
+  | _ ->
     Ssa.Pair(vv1, vv2),
     Basetype.newty (Basetype.PairB(va1, va2))
 
@@ -259,8 +223,7 @@ let project (v: value) (a: Basetype.t) : value =
     let cs = Basetype.Data.constructor_types id params in
     let rec sel cs n =
       match cs with
-      | [] ->
-         failwith "project_sel"
+      | [] -> assert false
       | c1 :: rest ->
          if Basetype.equals a c1 then
            select x n
@@ -277,7 +240,7 @@ let project (v: value) (a: Basetype.t) : value =
          | Basetype.Sgn (Basetype.DataB(id, params)) ->
             let x = unbox v in
             select id params x
-         | _ -> failwith "project2"
+         | _ -> assert false
        end
     | Basetype.Sgn (Basetype.DataB(id, params)) ->
        select id params v
@@ -302,7 +265,7 @@ let embed (v: value) (a: Basetype.t) : value =
           let cs = Basetype.Data.constructor_types id l in
           let rec inject l n =
             match l with
-            | [] -> failwith "not_leq"
+            | [] -> assert false
             | b1 :: bs ->
                if Basetype.equals va b1 then
                  let inv = inj n v c in
@@ -311,13 +274,13 @@ let embed (v: value) (a: Basetype.t) : value =
               else
                 inject bs (n + 1) in
           inject cs 0
-        | _ -> failwith "not_leq"
+        | _ -> assert false
       end
     | Basetype.Sgn (Basetype.DataB(id, l)) ->
       let cs = Basetype.Data.constructor_types id l in
       let rec inject l n =
         match l with
-        | [] -> failwith "not_leq"
+        | [] -> assert false
         | b1 :: bs ->
           if Basetype.equals va b1 then
             let inv = inj n v a in
@@ -326,7 +289,7 @@ let embed (v: value) (a: Basetype.t) : value =
             inject bs (n + 1) in
       inject cs 0
     | _ ->
-      failwith "not_leq"
+      assert false
 
 let fill_args (args : Ssa.value list) (v : value list) (dst : Ssa.label)
   : Ssa.value list =
