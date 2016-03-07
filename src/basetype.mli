@@ -85,5 +85,6 @@ sig
 end
 
 val unitB : t
+val pairB : t -> t -> t
 val boolB : t
 val sumB : t list -> t

@@ -1,7 +1,5 @@
 open Core_kernel.Std
 
-let pairB a1 a2 = Basetype.newty (Basetype.TupleB [a1; a2])
-
 let unPairB a =
   match Basetype.case a with
   | Basetype.Sgn (Basetype.TupleB [a1; a2]) -> a1, a2
@@ -194,10 +192,10 @@ let pair (v1: value) (v2: value) : value =
   match vv1, vv2 with
   | Ssa.Proj(x, 0, [b1; b2]), Ssa.Proj(y, 1, _) when x = y ->
     x,
-    pairB va1 va2
+    Basetype.pairB va1 va2
   | _ ->
     Ssa.Tuple [vv1; vv2],
-    pairB va1 va2
+    Basetype.pairB va1 va2
 
 let tuple (vs: value list) : value =
   let values, types = List.unzip vs in
