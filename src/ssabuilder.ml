@@ -37,7 +37,7 @@ let emit (l : Ssa.let_binding) : unit =
   | Some s ->
      builder_state := Some { s with cur_lets = l :: s.cur_lets }
 
-let begin_blockn n ?may_append:(may_append = false) (l: Ssa.label) : value list =
+let begin_blockn n ?may_append:(may_append = true) (l: Ssa.label) : value list =
   assert (l.Ssa.arg_types <> []);
   match !builder_state with
   | None ->

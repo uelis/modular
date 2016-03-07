@@ -1,4 +1,3 @@
-(* TODO: reverse block arguments? *)
 open Core_kernel.Std
 open Cbvterm
 
@@ -25,7 +24,6 @@ module Access : sig
     f:((Ssa.label * Basetype.t list) -> (Ssa.label * Basetype.t list) list -> unit) -> unit
 
   val forward: t -> t -> unit
-
   val unreachable: t -> unit
 
   val project_split: t -> t list -> unit
@@ -762,8 +760,6 @@ let rec build_blocks stage (t: term_with_interface) : unit =
       | _ -> assert false
     end
   | Fix((th, f, x, xty), s) ->
-    (* TODO: check order *)
-    build_blocks (th :: stage) s;
     let x_access = List.Assoc.find_exn s.context x in
     let f_access = List.Assoc.find_exn s.context f in
     begin (* eval *)
@@ -774,10 +770,10 @@ let rec build_blocks stage (t: term_with_interface) : unit =
       Builder.end_block_jump t.eval.exit [v]
     end;
     (* E + H *G *)
-    let te = Cbvtype.multiplicity t.term.t_type in
-    let tg = Cbvtype.multiplicity (List.Assoc.find_exn s.term.t_context f) in
-    let thg = pairB th tg in
     let tcons =
+      let te = Cbvtype.multiplicity t.term.t_type in
+      let tg = Cbvtype.multiplicity (List.Assoc.find_exn s.term.t_context f) in
+      let thg = pairB th tg in
       Basetype.newty (Basetype.DataB(Basetype.Data.sumid 2, [te; thg])) in
     let build_singleton ve =
       Builder.embed (Builder.inj 0 ve tcons) th in
@@ -786,7 +782,7 @@ let rec build_blocks stage (t: term_with_interface) : unit =
     let stack_singleton src dst =
       Access.iter2_exn src dst
         ~f:(fun (ls, ms) (ld, _) ->
-          let ds = List.length ms + 2 (* 2 to include stack! *)in
+            let ds = List.length ms + 2 (* 2 to include E on stack! *)in
             match Builder.begin_blockn ds ls with
             | ve :: vv ->
               let vh = build_singleton ve in
@@ -795,7 +791,7 @@ let rec build_blocks stage (t: term_with_interface) : unit =
     let stack_push src dst =
       Access.iter2_exn src dst
         ~f:(fun (ls, ms) (ld, _) ->
-          let ds = List.length ms + 3 (* 3 to include stack! *) in
+            let ds = List.length ms + 3 (* 3 to include H, E on stack! *) in
             match Builder.begin_blockn ds ls with
             | vh :: vg :: vv ->
               let vpushed = build_push vh vg in
@@ -804,22 +800,22 @@ let rec build_blocks stage (t: term_with_interface) : unit =
     let stack_case src dst1 dst2 =
       Access.iter2_list_exn src [dst1; dst2]
         ~f:(fun (la, ma) ls ->
-          match ls with
-          | [(dst1, _); (dst2, _)] ->
-            let da = List.length ma + 2 (* 2 to include stack!*) in
-            begin
-              match Builder.begin_blockn da la with
-              | [] -> assert false
-              | vh :: vv ->
-                let vcons = Builder.project vh tcons in
-                Builder.end_block_case vcons
-                  [ (fun ve -> dst1, ve :: vv);
-                    (fun vhg ->
-                       let vh, vg = Builder.unpair vhg in
-                       dst2, vh :: vg :: vv)
-                  ]
-            end
-          | _ -> assert false) in
+            match ls with
+            | [(dst1, _); (dst2, _)] ->
+              let da = List.length ma + 2 (* 2 to include H on stack!*) in
+              begin
+                match Builder.begin_blockn da la with
+                | [] -> assert false
+                | vh :: vv ->
+                  let vcons = Builder.project vh tcons in
+                  Builder.end_block_case vcons
+                    [ (fun ve -> dst1, ve :: vv);
+                      (fun vhg ->
+                         let vh, vg = Builder.unpair vhg in
+                         dst2, vh :: vg :: vv)
+                    ]
+              end
+            | _ -> assert false) in
     (* eval *)
     let eval_body_block =
       let ts = s.term.t_ann in
@@ -837,6 +833,8 @@ let rec build_blocks stage (t: term_with_interface) : unit =
       let v = (Builder.pair va vdelta) in
       Builder.end_block_jump s.eval.entry [vh; v]
     end;
+    (* body *)
+    build_blocks (th :: stage) s;
     (* access entry *)
     begin
       match t.access.entry with
