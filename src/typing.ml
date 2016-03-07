@@ -347,7 +347,7 @@ let infer_annotations (t: Cbvterm.t) : Cbvterm.t =
         t_desc = Fst(as1);
         t_context = as1.t_context
       },
-      [ { lower = Basetype.newty (Basetype.UnitB);
+      [ { lower = Basetype.unitB;
           upper = a;
           reason = "fst: one pair copy"
         }
@@ -361,7 +361,7 @@ let infer_annotations (t: Cbvterm.t) : Cbvterm.t =
         t_desc = Snd(as1);
         t_context = as1.t_context
       },
-      [ { lower = Basetype.newty (Basetype.UnitB);
+      [ { lower = Basetype.unitB;
           upper = a;
           reason = "snd: one pair copy"
         }
@@ -388,7 +388,7 @@ let infer_annotations (t: Cbvterm.t) : Cbvterm.t =
           upper = s2.t_ann;
           reason = "app: argument stack"
         }
-      ; { lower = Basetype.newty (Basetype.UnitB);
+      ; { lower = Basetype.unitB;
           upper = c;
           reason = "app: one function copy"
         }
@@ -545,7 +545,7 @@ let infer_annotations (t: Cbvterm.t) : Cbvterm.t =
       Cbvtype.unify_exn x (List.Assoc.find_exn as1.t_context v);
       Cbvtype.unify_exn y y';
       Cbvtype.unify_exn y s.t_type;
-      Basetype.unify_exn as1.t_ann (Basetype.newty (Basetype.UnitB));
+      Basetype.unify_exn as1.t_ann (Basetype.unitB);
       let outer_context =
         List.filter_map as1.t_context
           ~f:(fun (y, a) ->

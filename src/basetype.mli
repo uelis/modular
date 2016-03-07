@@ -16,7 +16,6 @@ open Core_kernel.Std
 type 'a sgn =
   | IntB
   | ZeroB
-  | UnitB
   | BoxB of 'a
   | TupleB of 'a list
   | DataB of string * 'a list
@@ -86,5 +85,6 @@ sig
   val add_constructor : id -> string -> t list -> t -> unit
 end
 
+val unitB : t
 val boolB : t
 val sumB : t list -> t

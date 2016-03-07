@@ -88,8 +88,8 @@ let begin_block4 ?may_append:(may_append = true) (l: Ssa.label) : value * value 
   | _ -> assert false
 
 let unit : value =
-  Ssa.Unit,
-  Basetype.newty (Basetype.UnitB)
+  Ssa.Tuple [],
+  Basetype.unitB
 
 let intconst (i: int) =
   Ssa.IntConst(i),
@@ -97,7 +97,7 @@ let intconst (i: int) =
 
 let boolconst (b: bool) =
   let i = if b then 0 else 1 in
-  Ssa.In((Basetype.Data.boolid, i, Ssa.Unit), Basetype.boolB),
+  Ssa.In((Basetype.Data.boolid, i, Ssa.Tuple []), Basetype.boolB),
   Basetype.boolB
 
 let primop (c: Ssa.op_const) (v: value) : value =
@@ -110,7 +110,7 @@ let primop (c: Ssa.op_const) (v: value) : value =
         failwith "internal translate.ml: type mismatch" in
     match c with
     | Ssa.Cprint(_) ->
-       newty UnitB
+       Basetype.unitB
     | Ssa.Cintadd
     | Ssa.Cintsub
     | Ssa.Cintmul
@@ -134,25 +134,25 @@ let primop (c: Ssa.op_const) (v: value) : value =
     | Ssa.Cintprint ->
        let intty = newty IntB in
        equals_exn va intty;
-       newty UnitB
+       unitB
     | Ssa.Cgcalloc(b)
     | Ssa.Calloc(b) ->
-       equals_exn va (newty UnitB);
+       equals_exn va unitB;
        newty (BoxB b)
     | Ssa.Cfree(b) ->
        equals_exn va (newty (BoxB b));
-       newty UnitB
+       unitB
     | Ssa.Cload(b) ->
        equals_exn va (newty (BoxB b));
        b
     | Ssa.Cstore(b) ->
        equals_exn va (pairB (newty (BoxB b)) b);
-       (newty UnitB)
+       unitB
     | Ssa.Cpush(b) ->
        equals_exn va b;
-       (newty UnitB)
+       unitB
     | Ssa.Cpop(b) ->
-       equals_exn va (newty UnitB);
+       equals_exn va unitB;
        b
     | Ssa.Ccall(_, b1, b2) ->
        equals_exn va b1;

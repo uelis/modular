@@ -123,7 +123,7 @@ end
       | Sgn sa ->
         begin
           match sa with
-          | ZeroB | UnitB -> null
+          | ZeroB -> null
           | IntB -> singleton Lltype.int_type
           | BoxB _ -> singleton Lltype.Pointer
           | TupleB(bs) -> List.fold_right bs ~f:(fun a c -> add (a_s a) c)
@@ -377,8 +377,6 @@ let rec build_value
   | Ssa.IntConst(i) ->
     let vali = Llvm.const_int (int_lltype) i in
     Mixedvector.singleton Lltype.int_type vali
-  | Ssa.Unit ->
-    Mixedvector.null
   | Ssa.Tuple(ts) ->
     List.fold_left ts
       ~init:Mixedvector.null

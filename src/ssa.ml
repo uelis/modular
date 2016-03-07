@@ -34,7 +34,6 @@ type op_const =
 
 type value =
   | Var of Ident.t
-  | Unit
   | Tuple of value list
   | In of (Basetype.Data.id * int * value) * Basetype.t
   | Proj of value * int * Basetype.t list
@@ -77,8 +76,6 @@ let rec fprint_value (oc: Out_channel.t) (v: value) : unit =
   match v with
   | Var(x) ->
     Printf.fprintf oc "%s" (Ident.to_string x)
-  | Unit ->
-    Printf.fprintf oc "()"
   | Tuple(vs) ->
     Out_channel.output_string oc "(";
     List.iter vs
@@ -111,7 +108,6 @@ let rec fprint_value (oc: Out_channel.t) (v: value) : unit =
 let rec subst_value (rho: Ident.t -> value) (v: value) =
   match v with
   | Var(x) -> rho x
-  | Unit -> v
   | Tuple(vs) -> Tuple(List.map ~f:(subst_value rho) vs)
   | In((id, i, v), a) -> In((id, i, subst_value rho v), a)
   | Proj(v, i, b) ->
@@ -310,8 +306,6 @@ let rec typeof_value
       | Some b -> b
       | None -> failwith ("internal ssa.ml: undefined variable " ^ (Ident.to_string x))
     end
-  | Unit ->
-    newty UnitB
   | Tuple(vs) ->
     let bs = List.map ~f:(typeof_value gamma) vs in
     newty (TupleB(bs))
@@ -368,8 +362,8 @@ let typecheck_term
     equals_exn a b
   | Const(Cprint(_), v) ->
     let b = typeof_value gamma v in
-    equals_exn b (newty UnitB);
-    equals_exn a (newty UnitB)
+    equals_exn b unitB;
+    equals_exn a unitB
   | Const(Cintadd, v)
   | Const(Cintsub, v)
   | Const(Cintmul, v)
@@ -396,16 +390,16 @@ let typecheck_term
     let b = typeof_value gamma v in
     let intty = newty IntB in
     equals_exn b intty;
-    equals_exn a (newty UnitB)
+    equals_exn a unitB
   | Const(Cgcalloc(b), v)
   | Const(Calloc(b), v) ->
     let c = typeof_value gamma v in
-    equals_exn c (newty UnitB);
+    equals_exn c unitB;
     equals_exn a (newty (BoxB b))
   | Const(Cfree(b), v) ->
     let c = typeof_value gamma v in
     equals_exn c (newty (BoxB b));
-    equals_exn a (newty UnitB)
+    equals_exn a unitB
   | Const(Cload(b), v) ->
     let c = typeof_value gamma v in
     equals_exn c (newty (BoxB b));
@@ -413,14 +407,14 @@ let typecheck_term
   | Const(Cstore(b), v) ->
     let c = typeof_value gamma v in
     equals_exn c (newty (TupleB [newty (BoxB b); b]));
-    equals_exn a (newty UnitB)
+    equals_exn a unitB
   | Const(Cpush(b), v) ->
     let c = typeof_value gamma v in
     equals_exn c b;
-    equals_exn a (newty UnitB)
+    equals_exn a unitB
   | Const(Cpop(b), v) ->
     let c = typeof_value gamma v in
-    equals_exn c (newty UnitB);
+    equals_exn c unitB;
     equals_exn a b
   | Const(Ccall(_, b1, b2), v) ->
     let c = typeof_value gamma v in

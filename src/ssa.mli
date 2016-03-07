@@ -33,7 +33,6 @@ type op_const =
 (** SSA values and terms *)
 type value =
   | Var of Ident.t
-  | Unit
   | Tuple of value list
   | In of (Basetype.Data.id * int * value) * Basetype.t
   | Proj of value * int * Basetype.t list

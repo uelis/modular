@@ -3,7 +3,6 @@ open Core_kernel.Std
 type 'a sgn =
   | IntB
   | ZeroB
-  | UnitB
   | BoxB of 'a
   | TupleB of 'a list
   | DataB of string * 'a list
@@ -18,7 +17,6 @@ module Sig = struct
     match t with
      | IntB  -> IntB
      | ZeroB  -> ZeroB
-     | UnitB  -> UnitB
      | BoxB x -> BoxB (f x)
      | TupleB(xs) -> TupleB(List.map ~f:f xs)
      | DataB(id, xs) -> DataB(id, List.map ~f:f xs)
@@ -26,8 +24,7 @@ module Sig = struct
   let children (t: 'a t) : 'a list =
     match t with
      | IntB
-     | ZeroB
-     | UnitB -> []
+     | ZeroB -> []
      | BoxB x -> [x]
      | TupleB(xs) -> xs
      | DataB(_, xs) -> xs
@@ -35,8 +32,7 @@ module Sig = struct
   let equals (s: 'a t) (t: 'a t) ~equals:(equals: 'a -> 'a -> bool) : bool =
     match s, t with
     | IntB, IntB
-    | ZeroB, ZeroB
-    | UnitB, UnitB ->
+    | ZeroB, ZeroB ->
       true
     | BoxB(t1), BoxB(s1) ->
       equals t1 s1
@@ -52,15 +48,14 @@ module Sig = struct
         | None -> false
         | Some l -> List.for_all l ~f:(fun (t, s) -> equals t s)
       end
-    | IntB, _ | ZeroB, _ | UnitB, _
+    | IntB, _ | ZeroB, _
     | BoxB _, _ | TupleB _, _ | DataB _, _ ->
       false
 
   let unify_exn (s: 'a t) (t: 'a t) ~unify:(unify: 'a -> 'a -> unit) : unit =
     match s, t with
     | IntB, IntB
-    | ZeroB, ZeroB
-    | UnitB, UnitB ->
+    | ZeroB, ZeroB ->
       ()
     | BoxB(t1), BoxB(s1) ->
       unify t1 s1
@@ -76,13 +71,15 @@ module Sig = struct
         | None -> raise Uftype.Constructor_mismatch
         | Some l -> List.iter l ~f:(fun (t, s) -> unify t s)
       end
-    | IntB, _ | ZeroB, _ | UnitB, _
+    | IntB, _ | ZeroB, _
     | BoxB _, _ | TupleB _, _ | DataB _, _ ->
       raise Uftype.Constructor_mismatch
 end
 
 module Basetype = Uftype.Make(Sig)
 include Basetype
+
+let unitB = newty (TupleB [])
 
 module Data =
 struct
@@ -101,8 +98,8 @@ struct
       ~data:{ name = "bool";
               params = [];
               discriminated = true;
-              constructors = ["True", newty UnitB;
-                              "False", newty UnitB] };
+              constructors = ["True", unitB;
+                              "False", unitB] };
     "bool"
 
   let sumid =
@@ -168,7 +165,7 @@ struct
       | Sgn s ->
         begin
           match s with
-          | ZeroB | UnitB | IntB -> false
+          | ZeroB | IntB -> false
           | BoxB(b1) -> check_rec b1
           | TupleB(bs) -> List.exists ~f:check_rec bs
           | DataB(id', bs) -> id = id' || List.exists ~f:check_rec bs
@@ -233,7 +230,7 @@ struct
       | Sgn s ->
         begin
           match s with
-          | IntB | UnitB | ZeroB -> ()
+          | IntB | ZeroB -> ()
           | TupleB(bs) ->
             List.iter ~f:check_rec_occ bs
           | DataB(id', params) ->
