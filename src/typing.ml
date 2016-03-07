@@ -104,10 +104,14 @@ let solve_constraints (ineqs: lhd_constraint list) : unit =
 
 (** Returns the code type of an annotated context *)
 let rec code_of_context (gamma : Cbvtype.t context) : Basetype.t =
+  let cs = List.map ~f:(fun (_, a) -> Cbvtype.code a) gamma in
+  Basetype.newty (Basetype.TupleB cs)
+    (*
   match gamma with
   | [] -> Basetype.newty Basetype.UnitB
   | (_, a) :: delta ->
     Basetype.newty (Basetype.TupleB [code_of_context delta; Cbvtype.code a])
+*)
 
 (** Replaces the multiplicity with a fresh type variable *)
 let freshen_multiplicity (a : Cbvtype.t) : Cbvtype.t =

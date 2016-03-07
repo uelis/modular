@@ -368,9 +368,9 @@ let int_lltype = Lltype.to_lltype Lltype.int_type
 
 (** Encoding of values *)
 let rec build_value
-      (the_module : Llvm.llmodule)
-      (ctx: (Ident.t * encoded_value) list)
-      (t: Ssa.value) : encoded_value =
+    (the_module : Llvm.llmodule)
+    (ctx: (Ident.t * encoded_value) list)
+    (t: Ssa.value) : encoded_value =
   match t with
   | Ssa.Var(x) ->
     List.Assoc.find_exn ctx x
@@ -395,8 +395,8 @@ let rec build_value
     let tenc = build_value the_module ctx t in
     let branch = Llvm.const_int (Llvm.integer_type context (log n)) i in
     let denc = Mixedvector.concatenate
-                 (Mixedvector.singleton (Lltype.Integer (log n)) branch)
-                 tenc in
+        (Mixedvector.singleton (Lltype.Integer (log n)) branch)
+        tenc in
     build_truncate_extend denc a
   | Ssa.Proj(t, i, bs) ->
     let tenc = build_value the_module ctx t in
@@ -409,15 +409,6 @@ let rec build_value
         if i = 0 then t1a else drop (i - 1) rest t2a
       | [] -> assert false in
     drop i bs tenc
-      (*
-  | Ssa.Snd(t, a, b) ->
-    let tenc = build_value the_module ctx t in
-    let len_aa = Profile.of_basetype a in
-    let t1a, t2a = Mixedvector.takedrop tenc len_aa in
-    assert (Profile.equal (Profile.of_basetype a) (Mixedvector.to_profile t1a));
-    assert (Profile.equal (Profile.of_basetype b) (Mixedvector.to_profile t2a));
-    t2a
-*)
   | Ssa.Select(t, (id, params), i)
     when Basetype.Data.is_discriminated id = false ->
     let tenc = build_value the_module ctx t in

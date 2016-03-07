@@ -166,8 +166,8 @@ struct
           match s with
           | ZeroB | UnitB | IntB -> false
           | BoxB(b1) -> check_rec b1
-          | TupleB(bs) -> List.for_all ~f:check_rec bs
-          | DataB(id', bs) -> id = id' || List.for_all ~f:check_rec bs
+          | TupleB(bs) -> List.exists ~f:check_rec bs
+          | DataB(id', bs) -> id = id' || List.exists ~f:check_rec bs
         end
     in
     let freshparams = List.init (param_count id) ~f:(fun _ -> newvar ()) in

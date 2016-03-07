@@ -7,6 +7,11 @@ let unPairB a =
   | Basetype.Sgn (Basetype.TupleB [a1; a2]) -> a1, a2
   | _ -> assert false
 
+let unTupleB a =
+  match Basetype.case a with
+  | Basetype.Sgn (Basetype.TupleB bs) -> bs
+  | _ -> assert false
+
 let unDataB a =
   match Basetype.case a with
   | Basetype.Sgn (Basetype.DataB(id, params)) ->
@@ -150,6 +155,13 @@ let primop (c: Ssa.op_const) (v: value) : value =
   emit (Ssa.Let((prim, vb), Ssa.Const(c, vv)));
   Ssa.Var prim, vb
 
+let proj (v: value) (i: int) : value =
+  let vv, va = v in
+  let bs = unTupleB va in
+  match vv with
+  | Ssa.Tuple vs -> List.nth_exn vs i, List.nth_exn bs i
+  | _ -> Ssa.Proj(vv, i, bs), List.nth_exn bs i
+
 let fst (v: value) : value =
   let vv, va = v in
   let a1, a2 = unPairB va in
@@ -175,7 +187,7 @@ let pair (v1: value) (v2: value) : value =
   let vv1, va1 = v1 in
   let vv2, va2 = v2 in
   match vv1, vv2 with
-  | Ssa.Proj(x, 0, _), Ssa.Proj(y, 1, _) when x = y ->
+  | Ssa.Proj(x, 0, [b1; b2]), Ssa.Proj(y, 1, _) when x = y ->
     x,
     pairB va1 va2
   | _ ->

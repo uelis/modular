@@ -207,48 +207,40 @@ end
 
 module Context =
 struct
-  let rec code (gamma : Cbvtype.t Typing.context) : Basetype.t =
-    match gamma with
-    | [] -> Basetype.newty Basetype.UnitB
-    | (_, a) :: delta ->
-      pairB (code delta) (Cbvtype.code a)
+  let code (gamma : Cbvtype.t Typing.context) : Basetype.t =
+    let cs = List.map ~f:(fun (_, a) -> Cbvtype.code a) gamma in
+    Basetype.newty (Basetype.TupleB cs)
 
+  let decode (v: Builder.value) (gamma : Cbvtype.t Typing.context)
+    : (Builder.value Typing.context) =
+    let vv, va = v in
+    assert (Basetype.equals va (code gamma));
+    List.mapi gamma ~f:(fun i (x, _) -> x, Builder.proj v i)
+
+  let encode (vs: Builder.value Typing.context) (gamma : Cbvtype.t Typing.context)
+    : Builder.value =
+    let vs =
+      List.map gamma ~f:(fun (x, a) ->
+          let vx = List.Assoc.find_exn vs x in
+          assert (Basetype.equals (snd vx) (Cbvtype.code a));
+          vx) in
+    Builder.tuple vs
 
   let rec build_lookup
-            (gamma: Cbvtype.t Typing.context)
-            (x: Ident.t)
-            (v: Builder.value)
+      (gamma: Cbvtype.t Typing.context)
+      (x: Ident.t)
+      (v: Builder.value)
     : Builder.value =
-    match gamma with
-    | [] -> assert false
-    | (y, _) :: delta ->
-      if x = y then
-        Builder.snd v
-      else
-        let v' = Builder.fst v in
-        build_lookup delta x v'
+    let vs = decode v gamma in
+    List.Assoc.find_exn vs x
 
   let build_map
         (gamma: Cbvtype.t Typing.context)
         (delta: Cbvtype.t Typing.context)
         (code_gamma: Builder.value)
     : Builder.value =
-    let rec values gamma code_gamma =
-      match gamma with
-      | [] -> []
-      | (x, _) :: gamma' ->
-        let code_gamma', code_x = Builder.unpair code_gamma in
-        (x, code_x) :: (values gamma' code_gamma') in
-    let gamma_values = values gamma code_gamma in
-    let delta_values =
-      List.map
-        ~f:(fun (x, _) -> (x, List.Assoc.find_exn gamma_values x))
-        delta in
-    let v = List.fold_right delta_values
-              ~init:Builder.unit
-              ~f:(fun (_, vx) v -> Builder.pair v vx) in
-    v
-
+    let vs = decode code_gamma gamma in
+    encode vs delta
 end
 
 type 'a interface = {
@@ -730,8 +722,13 @@ let rec build_blocks stage (t: term_with_interface) : unit =
           let va, vdx = Builder.unpair vadx in
           let vd, vx = Builder.unpair vdx in
           let vgamma = Builder.project vd (Context.code t.term.t_context) in
-          let vgammax = Builder.pair vgamma vx in
-          let vdelta = Context.build_map ((x, xty)::t.term.t_context) s.term.t_context vgammax in
+(*          let vgammax = Builder.pair vgamma vx in *)
+          let vdelta =
+            Context.encode ((x, vx) :: Context.decode vgamma t.term.t_context)
+              s.term.t_context in
+          (*
+            Context.build_map ((x, xty)::t.term.t_context) s.term.t_context vgammax in
+             *)
           (* TODO: Dokumentieren! *)
           let v = Builder.pair va vdelta in
           Builder.end_block_jump s.eval.entry [ve; v]
@@ -827,9 +824,14 @@ let rec build_blocks stage (t: term_with_interface) : unit =
       let va, vdx = Builder.unpair vadx in
       let vd, vx = Builder.unpair vdx in
       let vgamma = Builder.project vd (Context.code t.term.t_context) in
-      let vgammadx = Builder.pair (Builder.pair vgamma vd) vx in
+      (*     let vgammadx = Builder.pair (Builder.pair vgamma vd) vx in *)
+      let vdelta =
+        Context.encode ((x, vx) :: (f, vd) :: Context.decode vgamma t.term.t_context)
+          s.term.t_context in
+      (*
       let vdelta = Context.build_map
                      ((x, xty) :: (f, t.term.t_type) :: t.term.t_context) s.term.t_context vgammadx in
+         *)
       let v = (Builder.pair va vdelta) in
       Builder.end_block_jump s.eval.entry [vh; v]
     end;
@@ -913,9 +915,14 @@ let rec build_blocks stage (t: term_with_interface) : unit =
           let va, vdx = Builder.unpair vadx in
           let vd, vx = Builder.unpair vdx in
           let vgamma = Builder.project vd (Context.code t.term.t_context) in
+          let vdelta =
+            Context.encode ((x, vx) :: (f, vd) :: Context.decode vgamma t.term.t_context)
+              s.term.t_context in
+          (*
           let vgammadx = Builder.pair (Builder.pair vgamma vd) vx in
           let vdelta = Context.build_map
                          ((x, xty) :: (f, t.term.t_type) :: t.term.t_context) s.term.t_context vgammadx in
+             *)
           let vh = Builder.embed (Builder.pair ve va) th in
           let vu = Builder.embed Builder.unit s.term.t_ann in
           let v = Builder.pair vu vdelta in
@@ -1198,7 +1205,7 @@ let to_ssa t =
         Ident.Table.set visited ~key:i ~data:();
 
         let b = Ident.Table.find_exn Builder.blocks i in
-        (*        Ssa.fprint_block stdout b; *)
+        (*        Ssa.fprint_block stdout b;*)
         rev_sorted_blocks := b :: !rev_sorted_blocks;
         List.iter (Ssa.targets_of_block b)
           ~f:(fun l -> sort_blocks l.Ssa.name)
