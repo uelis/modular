@@ -34,10 +34,9 @@ type op_const =
 type value =
   | Var of Ident.t
   | Unit
-  | Pair of value * value
+  | Tuple of value list
   | In of (Basetype.Data.id * int * value) * Basetype.t
-  | Fst of value * Basetype.t * Basetype.t
-  | Snd of value * Basetype.t * Basetype.t
+  | Proj of value * int * Basetype.t list
   | Select of value * (Basetype.Data.id * Basetype.t list) * int
   | Undef of Basetype.t
   | IntConst of int

@@ -76,7 +76,7 @@ let rec code (a : t) : Basetype.t =
      match s with
      | Bool _ -> Basetype.boolB
      | Nat _ -> Basetype.newty Basetype.IntB
-     | Pair (_, (x, y)) -> Basetype.newty (Basetype.PairB(code x, code y))
+     | Pair (_, (x, y)) -> Basetype.newty (Basetype.TupleB [code x; code y])
      | Fun(_, (_, _, d, _)) -> d
 
 let multiplicity (a : t) : Basetype.t =

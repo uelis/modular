@@ -4,7 +4,7 @@ open Cbvterm
 module Builder = Ssabuilder
 
 let pairB (a1: Basetype.t) (a2: Basetype.t): Basetype.t =
-  Basetype.newty (Basetype.PairB(a1, a2))
+  Basetype.newty (Basetype.TupleB [a1; a2])
 
 let fresh_label stage (name: string) (a : Basetype.t list): Ssa.label =
   { Ssa.name = Ident.fresh name;

@@ -107,7 +107,7 @@ let rec code_of_context (gamma : Cbvtype.t context) : Basetype.t =
   match gamma with
   | [] -> Basetype.newty Basetype.UnitB
   | (_, a) :: delta ->
-    Basetype.newty (Basetype.PairB(code_of_context delta, Cbvtype.code a))
+    Basetype.newty (Basetype.TupleB [code_of_context delta; Cbvtype.code a])
 
 (** Replaces the multiplicity with a fresh type variable *)
 let freshen_multiplicity (a : Cbvtype.t) : Cbvtype.t =
@@ -276,14 +276,14 @@ let infer_annotations (t: Cbvterm.t) : Cbvterm.t =
         t_desc = Const(c, [as1; as2]);
         t_context = as1.t_context @ as2.t_context
       },
-      [ { lower = Basetype.newty (Basetype.PairB(t.t_ann, code_of_context as2.t_context));
+      [ { lower = Basetype.newty (Basetype.TupleB [t.t_ann; code_of_context as2.t_context]);
           upper = s1.t_ann;
           reason = "prim: stack first"
         };
         (* Note: this condition gives more slack!
              Example: \f -> intadd(f 1, f 3)
         *)
-        { lower = Basetype.newty (Basetype.PairB(t.t_ann, Basetype.newty Basetype.IntB));
+        { lower = Basetype.newty (Basetype.TupleB [t.t_ann; Basetype.newty Basetype.IntB]);
           upper = s2.t_ann;
           reason = "prim: stack second"
         }
@@ -317,19 +317,19 @@ let infer_annotations (t: Cbvterm.t) : Cbvterm.t =
         t_desc = Pair(as1, as2);
         t_context = as1.t_context @ as2.t_context
       },
-      [ { lower = Basetype.newty (Basetype.PairB(t.t_ann, code_of_context as2.t_context));
+      [ { lower = Basetype.newty (Basetype.TupleB [t.t_ann; code_of_context as2.t_context]);
           upper = s1.t_ann;
           reason = "pair: eval first stack"
         }
-      ; { lower = Basetype.newty (Basetype.PairB(t.t_ann, Cbvtype.code as1.t_type));
+      ; { lower = Basetype.newty (Basetype.TupleB [t.t_ann; Cbvtype.code as1.t_type]);
           upper = s2.t_ann;
           reason = "pair: eval second stack"
         }
-      ; { lower = Basetype.newty (Basetype.PairB(a, Cbvtype.multiplicity x));
+      ; { lower = Basetype.newty (Basetype.TupleB [a; Cbvtype.multiplicity x]);
           upper = Cbvtype.multiplicity s1.t_type ;
           reason = "pair: multiplicity left"
         }
-      ; { lower = Basetype.newty (Basetype.PairB(a, Cbvtype.multiplicity y));
+      ; { lower = Basetype.newty (Basetype.TupleB [a; Cbvtype.multiplicity y]);
           upper = Cbvtype.multiplicity s2.t_type;
           reason = "pair: multiplicity right"
         }
@@ -372,7 +372,7 @@ let infer_annotations (t: Cbvterm.t) : Cbvterm.t =
         t_desc = App(as1, as2);
         t_context = as1.t_context @ as2.t_context
       },
-      [ { lower = Basetype.newty (Basetype.PairB(t.t_ann, code_of_context as2.t_context));
+      [ { lower = Basetype.newty (Basetype.TupleB [t.t_ann; code_of_context as2.t_context]);
           upper = s1.t_ann;
           reason = "app: function stack"
         }
@@ -380,7 +380,7 @@ let infer_annotations (t: Cbvterm.t) : Cbvterm.t =
           upper = a;
           reason = "app: fun stack"
         }
-      ; { lower = Basetype.newty (Basetype.PairB(t.t_ann, d));
+      ; { lower = Basetype.newty (Basetype.TupleB [t.t_ann; d]);
           upper = s2.t_ann;
           reason = "app: argument stack"
         }
@@ -408,7 +408,7 @@ let infer_annotations (t: Cbvterm.t) : Cbvterm.t =
               let a' = List.Assoc.find_exn as1.t_context y in
               let m' = Cbvtype.multiplicity a' in
               Cbvtype.unify_exn a (freshen_multiplicity a');
-              { lower = Basetype.newty (Basetype.PairB(e, m'));
+              { lower = Basetype.newty (Basetype.TupleB [e; m']);
                 upper = Cbvtype.multiplicity a;
                 reason =
                   Printf.sprintf "fun: context (%s)" (Ident.to_string v)
@@ -479,10 +479,10 @@ let infer_annotations (t: Cbvterm.t) : Cbvterm.t =
         t_context = asc.t_context @ ast.t_context @ asf.t_context
       },
       [ { lower = Basetype.newty
-              (Basetype.PairB(t.t_ann,
-                              Basetype.newty
-                                (Basetype.PairB(code_of_context ast.t_context,
-                                                code_of_context asf.t_context))));
+              (Basetype.TupleB [t.t_ann;
+                                Basetype.newty
+                                  (Basetype.TupleB [code_of_context ast.t_context;
+                                                    code_of_context asf.t_context])]);
           upper = sc.t_ann;
           reason = "if: condition stack"
         }
@@ -510,7 +510,7 @@ let infer_annotations (t: Cbvterm.t) : Cbvterm.t =
               let a' = List.Assoc.find_exn as1.t_context y in
               let m' = Cbvtype.multiplicity a' in
               Cbvtype.unify_exn a (freshen_multiplicity a');
-              { lower = Basetype.newty (Basetype.PairB(h, m'));
+              { lower = Basetype.newty (Basetype.TupleB [h; m']);
                 upper = Cbvtype.multiplicity a;
                 reason = Printf.sprintf "fix: context (%s)" (Ident.to_string y)
               }) in
@@ -524,7 +524,7 @@ let infer_annotations (t: Cbvterm.t) : Cbvterm.t =
         }
       ; { lower = Basetype.newty
               (Basetype.DataB(Basetype.Data.sumid 2,
-                              [e; Basetype.newty (Basetype.PairB(h, g))]));
+                              [e; Basetype.newty (Basetype.TupleB [h; g])]));
           upper = h;
           reason = "fix: call stack"
         }
@@ -552,7 +552,7 @@ let infer_annotations (t: Cbvterm.t) : Cbvterm.t =
               let a' = List.Assoc.find_exn as1.t_context y in
               let m' = Cbvtype.multiplicity a' in
               Cbvtype.unify_exn a (freshen_multiplicity a');
-              { lower = Basetype.newty (Basetype.PairB(h, m'));
+              { lower = Basetype.newty (Basetype.TupleB [h; m']);
                 upper = Cbvtype.multiplicity a;
                 reason =
                   Printf.sprintf "tailfix: context (%s)" (Ident.to_string v)
@@ -565,7 +565,7 @@ let infer_annotations (t: Cbvterm.t) : Cbvterm.t =
           upper = d;
           reason = "tailfix: closure"
         }
-      ; { lower =  Basetype.newty (Basetype.PairB(e, a));
+      ; { lower =  Basetype.newty (Basetype.TupleB [e; a]);
           upper = h;
           reason = "tailfix: eval stack"
         }

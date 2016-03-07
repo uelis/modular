@@ -126,7 +126,8 @@ end
           | ZeroB | UnitB -> null
           | IntB -> singleton Lltype.int_type
           | BoxB _ -> singleton Lltype.Pointer
-          | PairB(a1, a2) -> add (a_s a1) (a_s a2)
+          | TupleB(bs) -> List.fold_right bs ~f:(fun a c -> add (a_s a) c)
+                            ~init:null (*add (a_s a1) (a_s a2)*)
           | DataB(id, ps) ->
             begin
               let cs = Basetype.Data.constructor_types id ps in
@@ -378,10 +379,12 @@ let rec build_value
     Mixedvector.singleton Lltype.int_type vali
   | Ssa.Unit ->
     Mixedvector.null
-  | Ssa.Pair(t1, t2) ->
-    let t1enc = build_value the_module ctx t1 in
-    let t2enc = build_value the_module ctx t2 in
-    Mixedvector.concatenate t1enc t2enc
+  | Ssa.Tuple(ts) ->
+    List.fold_left ts
+      ~init:Mixedvector.null
+      ~f:(fun enc t ->
+          let tenc = build_value the_module ctx t in
+          Mixedvector.concatenate enc tenc)
   | Ssa.In((id, _, t), a) when
       Basetype.Data.constructor_count id = 1 ||
       Basetype.Data.is_discriminated id = false ->
@@ -395,13 +398,18 @@ let rec build_value
                  (Mixedvector.singleton (Lltype.Integer (log n)) branch)
                  tenc in
     build_truncate_extend denc a
-  | Ssa.Fst(t, a, b) ->
+  | Ssa.Proj(t, i, bs) ->
     let tenc = build_value the_module ctx t in
-    let len_aa = Profile.of_basetype a in
-    let t1a, t2a = Mixedvector.takedrop tenc len_aa in
-    assert (Profile.equal (Profile.of_basetype a) (Mixedvector.to_profile t1a));
-    assert (Profile.equal (Profile.of_basetype b) (Mixedvector.to_profile t2a));
-    t1a
+    let rec drop i bs enc =
+      match bs with
+      | a :: rest ->
+        let len_aa = Profile.of_basetype a in
+        let t1a, t2a = Mixedvector.takedrop enc len_aa in
+        assert (Profile.equal (Profile.of_basetype a) (Mixedvector.to_profile t1a));
+        if i = 0 then t1a else drop (i - 1) rest t2a
+      | [] -> assert false in
+    drop i bs tenc
+      (*
   | Ssa.Snd(t, a, b) ->
     let tenc = build_value the_module ctx t in
     let len_aa = Profile.of_basetype a in
@@ -409,6 +417,7 @@ let rec build_value
     assert (Profile.equal (Profile.of_basetype a) (Mixedvector.to_profile t1a));
     assert (Profile.equal (Profile.of_basetype b) (Mixedvector.to_profile t2a));
     t2a
+*)
   | Ssa.Select(t, (id, params), i)
     when Basetype.Data.is_discriminated id = false ->
     let tenc = build_value the_module ctx t in

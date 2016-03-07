@@ -35,10 +35,9 @@ type op_const =
 type value =
   | Var of Ident.t
   | Unit
-  | Pair of value * value
+  | Tuple of value list
   | In of (Basetype.Data.id * int * value) * Basetype.t
-  | Fst of value * Basetype.t * Basetype.t
-  | Snd of value * Basetype.t * Basetype.t
+  | Proj of value * int * Basetype.t list
   | Select of value * (Basetype.Data.id * Basetype.t list) * int
   | Undef of Basetype.t
   | IntConst of int
@@ -80,11 +79,14 @@ let rec fprint_value (oc: Out_channel.t) (v: value) : unit =
     Printf.fprintf oc "%s" (Ident.to_string x)
   | Unit ->
     Printf.fprintf oc "()"
-  | Pair(v1, v2) ->
+  | Tuple(vs) ->
     Out_channel.output_string oc "(";
-    fprint_value oc v1;
-    Out_channel.output_string oc ", ";
-    fprint_value oc v2;
+    List.iter vs
+      ~f:(let sep = ref "" in
+          fun v ->
+            Out_channel.output_string oc !sep;
+            fprint_value oc v;
+            sep := ", ");
     Out_channel.output_string oc ")"
   | In((id, k, t), _) ->
     let cname = List.nth_exn (Basetype.Data.constructor_names id) k in
@@ -92,12 +94,9 @@ let rec fprint_value (oc: Out_channel.t) (v: value) : unit =
     Out_channel.output_string oc "(";
     fprint_value oc t;
     Out_channel.output_string oc ")"
-  | Fst(t, _, _) ->
+  | Proj(t, i, _) ->
     fprint_value oc t;
-    Out_channel.output_string oc ".1"
-  | Snd(t, _, _) ->
-    fprint_value oc t;
-    Out_channel.output_string oc ".2"
+    Printf.fprintf oc ".%i" i
   | Select(t, _, i) ->
     Out_channel.output_string oc "select(";
     fprint_value oc t;
@@ -113,19 +112,13 @@ let rec subst_value (rho: Ident.t -> value) (v: value) =
   match v with
   | Var(x) -> rho x
   | Unit -> v
-  | Pair(v1, v2) -> Pair(subst_value rho v1, subst_value rho v2)
+  | Tuple(vs) -> Tuple(List.map ~f:(subst_value rho) vs)
   | In((id, i, v), a) -> In((id, i, subst_value rho v), a)
-  | Fst(v, a, b) ->
+  | Proj(v, i, b) ->
     begin
       match subst_value rho v with
-      | Pair(v1, _) -> v1
-      | w -> Fst(w, a, b)
-    end
-  | Snd(v, a, b) ->
-    begin
-      match subst_value rho v with
-      | Pair(_, v2) -> v2
-      | w -> Snd(w, a, b)
+      | Tuple(vs) -> List.nth_exn vs i
+      | w -> Proj(w, i, b)
     end
   | Select(v1, a, i) ->
     begin
@@ -319,10 +312,9 @@ let rec typeof_value
     end
   | Unit ->
     newty UnitB
-  | Pair(v1, v2) ->
-    let a1 = typeof_value gamma v1 in
-    let a2 = typeof_value gamma v2 in
-    newty (PairB(a1, a2))
+  | Tuple(vs) ->
+    let bs = List.map ~f:(typeof_value gamma) vs in
+    newty (TupleB(bs))
   | In((id, n, v), a) ->
     let b = typeof_value gamma v in
     begin
@@ -338,14 +330,14 @@ let rec typeof_value
         failwith "internal ssa.ml: data type expected"
     end;
     a
-  | Fst(v, b1, b2) ->
+  | Proj(v, i, bs) ->
     let a1 = typeof_value gamma v in
-    equals_exn a1 (newty (PairB(b1, b2)));
-    b1
-  | Snd(v, b1, b2) ->
-    let a2 = typeof_value gamma v in
-    equals_exn a2 (newty (PairB(b1, b2)));
-    b2
+    equals_exn a1 (newty (TupleB(bs)));
+    begin
+      match List.nth bs i with
+      | None -> failwith "internal ssa.ml: projection out of bounds"
+      | Some b -> b
+    end
   | Select(v, (id, params), n) ->
     let a1 = typeof_value gamma v in
     let a = newty (DataB(id, params)) in
@@ -390,7 +382,7 @@ let typecheck_term
   | Const(Cintxor, v) ->
     let b = typeof_value gamma v in
     let intty = newty IntB in
-    equals_exn b (newty (PairB(intty, intty)));
+    equals_exn b (newty (TupleB [intty; intty]));
     equals_exn a intty
   | Const(Cinteq, v)
   | Const(Cintlt, v)
@@ -398,7 +390,7 @@ let typecheck_term
     let b = typeof_value gamma v in
     let intty = newty IntB in
     let boolty = Basetype.newty (Basetype.DataB(Basetype.Data.boolid, [])) in
-    equals_exn b (newty (PairB(intty, intty)));
+    equals_exn b (newty (TupleB [intty; intty]));
     equals_exn a boolty
   | Const(Cintprint, v) ->
     let b = typeof_value gamma v in
@@ -420,7 +412,7 @@ let typecheck_term
     equals_exn a b
   | Const(Cstore(b), v) ->
     let c = typeof_value gamma v in
-    equals_exn c (newty (PairB(newty (BoxB b), b)));
+    equals_exn c (newty (TupleB [newty (BoxB b); b]));
     equals_exn a (newty UnitB)
   | Const(Cpush(b), v) ->
     let c = typeof_value gamma v in

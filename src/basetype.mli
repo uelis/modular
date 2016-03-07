@@ -18,7 +18,7 @@ type 'a sgn =
   | ZeroB
   | UnitB
   | BoxB of 'a
-  | PairB of 'a * 'a
+  | TupleB of 'a list
   | DataB of string * 'a list
   [@@deriving sexp]
 

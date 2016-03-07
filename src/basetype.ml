@@ -5,7 +5,7 @@ type 'a sgn =
   | ZeroB
   | UnitB
   | BoxB of 'a
-  | PairB of 'a * 'a
+  | TupleB of 'a list
   | DataB of string * 'a list
   [@@deriving sexp]
 
@@ -20,7 +20,7 @@ module Sig = struct
      | ZeroB  -> ZeroB
      | UnitB  -> UnitB
      | BoxB x -> BoxB (f x)
-     | PairB(x, y) -> PairB(f x, f y)
+     | TupleB(xs) -> TupleB(List.map ~f:f xs)
      | DataB(id, xs) -> DataB(id, List.map ~f:f xs)
 
   let children (t: 'a t) : 'a list =
@@ -29,7 +29,7 @@ module Sig = struct
      | ZeroB
      | UnitB -> []
      | BoxB x -> [x]
-     | PairB(x, y) -> [x; y]
+     | TupleB(xs) -> xs
      | DataB(_, xs) -> xs
 
   let equals (s: 'a t) (t: 'a t) ~equals:(equals: 'a -> 'a -> bool) : bool =
@@ -40,8 +40,10 @@ module Sig = struct
       true
     | BoxB(t1), BoxB(s1) ->
       equals t1 s1
-    | PairB(t1, t2), PairB(s1, s2) ->
-      equals t1 s1 && equals t2 s2
+    | TupleB(ts), TupleB(ss) ->
+      (match List.zip ts ss with
+       | Some ps -> List.for_all ~f:(fun (t1, s1) -> equals t1 s1) ps
+       | None -> false)
     | DataB(i, ts), DataB(j, ss) when i = j ->
       begin
         match List.zip ts ss with
@@ -49,7 +51,7 @@ module Sig = struct
         | Some l -> List.for_all l ~f:(fun (t, s) -> equals t s)
       end
     | IntB, _ | ZeroB, _ | UnitB, _
-    | BoxB _, _ | PairB _, _ | DataB _, _ ->
+    | BoxB _, _ | TupleB _, _ | DataB _, _ ->
       false
 
   let unify_exn (s: 'a t) (t: 'a t) ~unify:(unify: 'a -> 'a -> unit) : unit =
@@ -60,9 +62,10 @@ module Sig = struct
       ()
     | BoxB(t1), BoxB(s1) ->
       unify t1 s1
-    | PairB(t1, t2), PairB(s1, s2) ->
-      unify t1 s1;
-      unify t2 s2
+    | TupleB(ts), TupleB(ss) ->
+      (match List.zip ts ss with
+       | Some ps -> List.iter ~f:(fun (t1, s1) -> unify t1 s1) ps
+       | None -> raise Uftype.Constructor_mismatch)
     | DataB(i, ts), DataB(j, ss) when i = j ->
       begin
         match List.zip ts ss with
@@ -70,7 +73,7 @@ module Sig = struct
         | Some l -> List.iter l ~f:(fun (t, s) -> unify t s)
       end
     | IntB, _ | ZeroB, _ | UnitB, _
-    | BoxB _, _ | PairB _, _ | DataB _, _ ->
+    | BoxB _, _ | TupleB _, _ | DataB _, _ ->
       raise Uftype.Constructor_mismatch
 end
 
@@ -163,8 +166,8 @@ struct
           match s with
           | ZeroB | UnitB | IntB -> false
           | BoxB(b1) -> check_rec b1
-          | PairB(b1, b2) -> check_rec b1 && check_rec b2
-          | DataB(id', bs) -> id = id' || List.exists ~f:check_rec bs
+          | TupleB(bs) -> List.for_all ~f:check_rec bs
+          | DataB(id', bs) -> id = id' || List.for_all ~f:check_rec bs
         end
     in
     let freshparams = List.init (param_count id) ~f:(fun _ -> newvar ()) in
@@ -227,9 +230,8 @@ struct
         begin
           match s with
           | IntB | UnitB | ZeroB -> ()
-          | PairB(a1, a2) ->
-            check_rec_occ a1;
-            check_rec_occ a2
+          | TupleB(bs) ->
+            List.iter ~f:check_rec_occ bs
           | DataB(id', params) ->
             if (id = id') then
               failwith "Recursive occurrences are only allowed within box<...>"

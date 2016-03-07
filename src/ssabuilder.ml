@@ -1,8 +1,10 @@
 open Core_kernel.Std
 
+let pairB a1 a2 = Basetype.newty (Basetype.TupleB [a1; a2])
+
 let unPairB a =
   match Basetype.case a with
-  | Basetype.Sgn (Basetype.PairB(a1, a2)) -> a1, a2
+  | Basetype.Sgn (Basetype.TupleB [a1; a2]) -> a1, a2
   | _ -> assert false
 
 let unDataB a =
@@ -110,14 +112,14 @@ let primop (c: Ssa.op_const) (v: value) : value =
     | Ssa.Cintor
     | Ssa.Cintxor ->
        let intty = newty IntB in
-       equals_exn va (newty (PairB(intty, intty)));
+       equals_exn va (pairB intty intty);
        intty
     | Ssa.Cinteq
     | Ssa.Cintlt
     | Ssa.Cintslt ->
        let intty = newty IntB in
        let boolty = newty (DataB(Data.boolid, [])) in
-       equals_exn va (newty (PairB(intty, intty)));
+       equals_exn va (pairB intty intty);
        boolty
     | Ssa.Cintprint ->
        let intty = newty IntB in
@@ -134,7 +136,7 @@ let primop (c: Ssa.op_const) (v: value) : value =
        equals_exn va (newty (BoxB b));
        b
     | Ssa.Cstore(b) ->
-       equals_exn va (newty (PairB(newty (BoxB b), b)));
+       equals_exn va (pairB (newty (BoxB b)) b);
        (newty UnitB)
     | Ssa.Cpush(b) ->
        equals_exn va b;
@@ -152,33 +154,38 @@ let fst (v: value) : value =
   let vv, va = v in
   let a1, a2 = unPairB va in
   match vv with
-  | Ssa.Pair(v1, v2) -> v1, a1
-  | _ -> Ssa.Fst(vv, a1, a2), a1
+  | Ssa.Tuple [v1; v2] -> v1, a1
+  | _ -> Ssa.Proj(vv, 0, [a1; a2]), a1
 
 let snd (v: value) : value =
   let vv, va = v in
   let a1, a2 = unPairB va in
   match vv with
-  | Ssa.Pair(v1, v2) -> v2, a2
-  | _ -> Ssa.Snd(vv, a1, a2), a2
+  | Ssa.Tuple [v1; v2] -> v2, a2
+  | _ -> Ssa.Proj(vv, 1, [a1; a2]), a2
 
 let unpair (v: value) : value * value =
   let vv, va = v in
   let a1, a2 = unPairB va in
   match vv with
-  | Ssa.Pair(v1, v2) -> (v1, a1), (v2, a2)
-  | _ -> (Ssa.Fst(vv, a1, a2), a1), (Ssa.Snd(vv, a1, a2), a2)
+  | Ssa.Tuple [v1; v2] -> (v1, a1), (v2, a2)
+  | _ -> (Ssa.Proj(vv, 0, [a1; a2]), a1), (Ssa.Proj(vv, 1, [a1; a2]), a2)
 
 let pair (v1: value) (v2: value) : value =
   let vv1, va1 = v1 in
   let vv2, va2 = v2 in
   match vv1, vv2 with
-  | Ssa.Fst(x, _, _), Ssa.Snd(y, _, _) when x = y ->
+  | Ssa.Proj(x, 0, _), Ssa.Proj(y, 1, _) when x = y ->
     x,
-    Basetype.newty (Basetype.PairB(va1, va2))
+    pairB va1 va2
   | _ ->
-    Ssa.Pair(vv1, vv2),
-    Basetype.newty (Basetype.PairB(va1, va2))
+    Ssa.Tuple [vv1; vv2],
+    pairB va1 va2
+
+let tuple (vs: value list) : value =
+  let values, types = List.unzip vs in
+  Ssa.Tuple values,
+  Basetype.newty (Basetype.TupleB types)
 
 let inj (i: int) (v: value) (data: Basetype.t) : value =
   let vv, _ = v in
