@@ -2,7 +2,6 @@ open Core_kernel.Std
 
 type 'a sgn =
   | IntB
-  | ZeroB
   | BoxB of 'a
   | TupleB of 'a list
   | DataB of string * 'a list
@@ -16,23 +15,20 @@ module Sig = struct
   let map (f : 'a -> 'b) (t : 'a t) : 'b t =
     match t with
      | IntB  -> IntB
-     | ZeroB  -> ZeroB
      | BoxB x -> BoxB (f x)
      | TupleB(xs) -> TupleB(List.map ~f:f xs)
      | DataB(id, xs) -> DataB(id, List.map ~f:f xs)
 
   let children (t: 'a t) : 'a list =
     match t with
-     | IntB
-     | ZeroB -> []
+     | IntB -> []
      | BoxB x -> [x]
      | TupleB(xs) -> xs
      | DataB(_, xs) -> xs
 
   let equals (s: 'a t) (t: 'a t) ~equals:(equals: 'a -> 'a -> bool) : bool =
     match s, t with
-    | IntB, IntB
-    | ZeroB, ZeroB ->
+    | IntB, IntB ->
       true
     | BoxB(t1), BoxB(s1) ->
       equals t1 s1
@@ -48,14 +44,12 @@ module Sig = struct
         | None -> false
         | Some l -> List.for_all l ~f:(fun (t, s) -> equals t s)
       end
-    | IntB, _ | ZeroB, _
-    | BoxB _, _ | TupleB _, _ | DataB _, _ ->
+    | IntB, _ | BoxB _, _ | TupleB _, _ | DataB _, _ ->
       false
 
   let unify_exn (s: 'a t) (t: 'a t) ~unify:(unify: 'a -> 'a -> unit) : unit =
     match s, t with
-    | IntB, IntB
-    | ZeroB, ZeroB ->
+    | IntB, IntB ->
       ()
     | BoxB(t1), BoxB(s1) ->
       unify t1 s1
@@ -71,8 +65,7 @@ module Sig = struct
         | None -> raise Uftype.Constructor_mismatch
         | Some l -> List.iter l ~f:(fun (t, s) -> unify t s)
       end
-    | IntB, _ | ZeroB, _
-    | BoxB _, _ | TupleB _, _ | DataB _, _ ->
+    | IntB, _ | BoxB _, _ | TupleB _, _ | DataB _, _ ->
       raise Uftype.Constructor_mismatch
 end
 
@@ -165,7 +158,7 @@ struct
       | Sgn s ->
         begin
           match s with
-          | ZeroB | IntB -> false
+          | IntB -> false
           | BoxB(b1) -> check_rec b1
           | TupleB(bs) -> List.exists ~f:check_rec bs
           | DataB(id', bs) -> id = id' || List.exists ~f:check_rec bs
@@ -230,7 +223,7 @@ struct
       | Sgn s ->
         begin
           match s with
-          | IntB | ZeroB -> ()
+          | IntB -> ()
           | TupleB(bs) ->
             List.iter ~f:check_rec_occ bs
           | DataB(id', params) ->

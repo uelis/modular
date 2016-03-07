@@ -15,7 +15,6 @@ open Core_kernel.Std
 
 type 'a sgn =
   | IntB
-  | ZeroB
   | BoxB of 'a
   | TupleB of 'a list
   | DataB of string * 'a list

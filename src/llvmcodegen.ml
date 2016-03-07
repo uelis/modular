@@ -48,7 +48,7 @@ end
   let to_lltype (x: t) =
     match x with
     | Integer 0 ->
-      Llvm.integer_type context 1
+      assert false
     | Integer i ->
       Llvm.integer_type context i
     | Pointer -> Llvm.pointer_type (Llvm.i8_type context)
@@ -123,7 +123,6 @@ end
       | Sgn sa ->
         begin
           match sa with
-          | ZeroB -> null
           | IntB -> singleton Lltype.int_type
           | BoxB _ -> singleton Lltype.Pointer
           | TupleB(bs) -> List.fold_right bs ~f:(fun a c -> add (a_s a) c)
@@ -134,7 +133,9 @@ end
               let n = List.length cs in
               let mx = List.fold_right cs ~f:(fun c mx -> max (a_s c) mx)
                          ~init:Lltype.Map.empty in
-              if n = 1 || Basetype.Data.is_discriminated id = false then
+              if n = 0 then
+                null
+              else if n = 1 || Basetype.Data.is_discriminated id = false then
                 mx
               else
                 let i = Lltype.Integer (log n) in

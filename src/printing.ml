@@ -59,7 +59,7 @@ let string_of_basetype (ty: Basetype.t): string =
                 Printf.sprintf "%s<%s>" id
                   (List.map ls ~f:(fun t2 -> str t2 `Summand)
                    |> String.concat ~sep:", ")
-            | TupleB _ | IntB | ZeroB | BoxB _ ->
+            | TupleB _ | IntB | BoxB _ ->
               s `Factor
             end
         end
@@ -72,7 +72,7 @@ let string_of_basetype (ty: Basetype.t): string =
               match st with
               | TupleB(ts) -> String.concat ~sep:" * "
                                 (List.map ~f:(fun t -> str t `Atom) ts)
-              | DataB _ | IntB | ZeroB | BoxB _ ->
+              | DataB _ | IntB | BoxB _ ->
                 s `Atom
             end
         end
@@ -84,7 +84,6 @@ let string_of_basetype (ty: Basetype.t): string =
             begin
               match st with
               | IntB -> "int"
-              | ZeroB -> "void"
               | BoxB(b) -> Printf.sprintf "box<%s>" (str b `Atom)
               | DataB _
               | TupleB []  -> Printf.sprintf "()"
