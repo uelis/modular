@@ -41,9 +41,11 @@ module Sig = struct
     | BoxB(t1), BoxB(s1) ->
       equals t1 s1
     | TupleB(ts), TupleB(ss) ->
-      (match List.zip ts ss with
-       | Some ps -> List.for_all ~f:(fun (t1, s1) -> equals t1 s1) ps
-       | None -> false)
+      begin
+        match List.zip ts ss with
+        | None -> false
+        | Some l -> List.for_all l ~f:(fun (t, s) -> equals t s)
+      end
     | DataB(i, ts), DataB(j, ss) when i = j ->
       begin
         match List.zip ts ss with
@@ -63,9 +65,11 @@ module Sig = struct
     | BoxB(t1), BoxB(s1) ->
       unify t1 s1
     | TupleB(ts), TupleB(ss) ->
-      (match List.zip ts ss with
-       | Some ps -> List.iter ~f:(fun (t1, s1) -> unify t1 s1) ps
-       | None -> raise Uftype.Constructor_mismatch)
+      begin
+        match List.zip ts ss with
+        | None -> raise Uftype.Constructor_mismatch
+        | Some l -> List.iter l ~f:(fun (t1, s1) -> unify t1 s1)
+      end
     | DataB(i, ts), DataB(j, ss) when i = j ->
       begin
         match List.zip ts ss with

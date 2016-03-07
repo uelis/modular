@@ -88,6 +88,7 @@ let string_of_basetype (ty: Basetype.t): string =
               | UnitB -> "unit"
               | BoxB(b) -> Printf.sprintf "box<%s>" (str b `Atom)
               | DataB _
+              | TupleB []  -> Printf.sprintf "()"
               | TupleB _  -> Printf.sprintf "(%s)" (s `Summand)
             end
         end in

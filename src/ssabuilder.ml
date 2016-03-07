@@ -82,6 +82,11 @@ let begin_block3 ?may_append:(may_append = true) (l: Ssa.label) : value * value 
   | [v1; v2; v3] -> v1, v2, v3
   | _ -> assert false
 
+let begin_block4 ?may_append:(may_append = true) (l: Ssa.label) : value * value * value * value =
+  match begin_blockn ~may_append:may_append 4 l with
+  | [v1; v2; v3; v4] -> v1, v2, v3, v4
+  | _ -> assert false
+
 let unit : value =
   Ssa.Unit,
   Basetype.newty (Basetype.UnitB)
