@@ -48,7 +48,7 @@ end
   let to_lltype (x: t) =
     match x with
     | Integer 0 ->
-      assert false
+      Llvm.integer_type context 1
     | Integer i ->
       Llvm.integer_type context i
     | Pointer -> Llvm.pointer_type (Llvm.i8_type context)
@@ -106,8 +106,8 @@ end
         | `Both(m, n) -> Some (f m n)
         | `Left(n) | `Right(n) -> Some n)
 
-  let add = merge ~f:(+)
-  let max = merge ~f:(max)
+  let add = merge ~f:(Int.(+))
+  let max = merge ~f:(Int.max)
 
   (*
   let print p =
@@ -115,8 +115,8 @@ end
     Printf.printf "\n"
   *)
 
-  let of_basetype (a: Basetype.t) : t =
-    let rec a_s a =
+  let of_basetype =
+    let rec prof a =
       let open Basetype in
       match case a with
       | Var -> null
@@ -125,13 +125,13 @@ end
           match sa with
           | IntB -> singleton Lltype.int_type
           | BoxB _ -> singleton Lltype.Pointer
-          | TupleB(bs) -> List.fold_right bs ~f:(fun a c -> add (a_s a) c)
+          | TupleB(bs) -> List.fold_right bs ~f:(fun a c -> add (prof a) c)
                             ~init:null (*add (a_s a1) (a_s a2)*)
           | DataB(id, ps) ->
             begin
               let cs = Basetype.Data.constructor_types id ps in
               let n = List.length cs in
-              let mx = List.fold_right cs ~f:(fun c mx -> max (a_s c) mx)
+              let mx = List.fold_right cs ~f:(fun c mx -> max (prof c) mx)
                          ~init:Lltype.Map.empty in
               if n = 0 then
                 null
@@ -142,8 +142,15 @@ end
                 let ni = Lltype.Map.find mx i |> Option.value ~default:0 in
                 Lltype.Map.add mx ~key:i ~data:(ni + 1)
             end
-        end
-    in a_s a
+        end in
+    let mem = Int.Table.create () in
+    fun a ->
+      match Int.Table.find mem (Basetype.repr_id a) with
+      | Some p -> p
+      | None ->
+        let p = prof a in
+        Int.Table.add_exn mem ~key:(Basetype.repr_id a) ~data:p;
+        p
 
   let equal = Lltype.Map.equal (=)
   let find = Lltype.Map.find
@@ -171,7 +178,13 @@ sig
       order. *)
   val concatenate : t -> t -> t
 
-  (** Takes the prefix vector specified by profile and returns also the rest. *)
+  (** Takes the prefix vector specified by profile. *)
+  val take : t -> Profile.t -> t
+
+  (** Drops the prefix vector specified by profile. *)
+  val drop : t -> Profile.t -> t
+
+  (** take and drop combined *)
   val takedrop : t -> Profile.t -> t * t
 
   (** Map the entries. Returns a vector with the same profile. *)
@@ -218,14 +231,17 @@ struct
     }
 
   (* precond: v enthält mindestens so viele Werte, wie vom Profil angegeben *)
-  let takedrop v profile =
+  let take v profile =
     { bits = Profile.mapi profile
                ~f:(fun ~key:n ~data:ln ->
                  let vn = Lltype.Map.find v.bits n
                           |> Option.value ~default:[] in
                  assert (ln <= List.length vn);
                  let vn1, _ = List.split_n vn ln in
-                 vn1) },
+                 vn1) }
+
+  (* precond: v enthält mindestens so viele Werte, wie vom Profil angegeben *)
+  let drop v profile =
     { bits = Lltype.Map.fold v.bits
                ~f:(fun ~key:n ~data:vn v2 ->
                  let ln = Profile.find profile n
@@ -235,6 +251,9 @@ struct
                    Lltype.Map.add v2 ~key:n ~data:vn2
                  else v2)
                ~init:Lltype.Map.empty}
+
+  let takedrop v profile =
+    take v profile, drop v profile
 
   let mapi v ~f:(f) =
     { bits = Lltype.Map.mapi v.bits
@@ -403,9 +422,13 @@ let rec build_value
       match bs with
       | a :: rest ->
         let len_aa = Profile.of_basetype a in
-        let t1a, t2a = Mixedvector.takedrop enc len_aa in
-        assert (Profile.equal (Profile.of_basetype a) (Mixedvector.to_profile t1a));
-        if i = 0 then t1a else drop (i - 1) rest t2a
+        if i = 0 then
+          let t1 = Mixedvector.take enc len_aa in
+          assert (Profile.equal (Profile.of_basetype a) (Mixedvector.to_profile t1));
+          t1
+        else
+          let t2 = Mixedvector.drop enc len_aa in
+          drop (i - 1) rest t2
       | [] -> assert false in
     drop i bs tenc
   | Ssa.Select(t, (id, params), i)
@@ -422,8 +445,8 @@ let rec build_value
     else
       begin
         let yenc =
-          let _, ya =
-            Mixedvector.takedrop tenc (Profile.singleton (Lltype.Integer (log n))) in
+          let ya =
+            Mixedvector.drop tenc (Profile.singleton (Lltype.Integer (log n))) in
           ya in
         let case_types = Basetype.Data.constructor_types id params in
         assert (i < List.length case_types);
@@ -606,7 +629,7 @@ let build_term
             (Llvm.pointer_type a_struct) "memptr" builder in
         (* The following depends on the encoding of box and pairs and
          * is probably fragile! *)
-        let _, venc = Mixedvector.takedrop argenc
+        let venc = Mixedvector.drop argenc
             (Profile.singleton Lltype.Pointer) in
         let v_packed = pack_encoded_value (build_truncate_extend venc a) a in
         ignore (Llvm.build_store v_packed mem_ptr builder);
