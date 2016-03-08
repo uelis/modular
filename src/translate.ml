@@ -206,17 +206,17 @@ end
 module Context =
 struct
   let code (gamma : Cbvtype.t Typing.context) : Basetype.t =
-    let cs = List.map ~f:(fun (_, a) -> Cbvtype.code a) gamma in
-    Basetype.newty (Basetype.TupleB cs)
+    Typing.code_of_context gamma
 
-  let decode (v: Builder.value) (gamma : Cbvtype.t Typing.context)
+  let decode (gamma : Cbvtype.t Typing.context)
+        (v: Builder.value)
     : (Builder.value Typing.context) =
     let vv, va = v in
     assert (Basetype.equals va (code gamma));
     List.mapi gamma ~f:(fun i (x, _) -> x, Builder.proj v i)
 
-  let encode (vs: Builder.value Typing.context)
-        (gamma : Cbvtype.t Typing.context)
+  let encode (gamma : Cbvtype.t Typing.context)
+        (vs: Builder.value Typing.context)
     : Builder.value =
     let vs =
       List.map gamma ~f:(fun (x, a) ->
@@ -225,21 +225,12 @@ struct
           vx) in
     Builder.tuple vs
 
-  let rec build_lookup
-      (gamma: Cbvtype.t Typing.context)
-      (x: Ident.t)
-      (v: Builder.value)
-    : Builder.value =
-    let vs = decode v gamma in
-    List.Assoc.find_exn vs x
-
-  let build_map
-        (gamma: Cbvtype.t Typing.context)
+  let build_map (gamma: Cbvtype.t Typing.context)
         (delta: Cbvtype.t Typing.context)
         (code_gamma: Builder.value)
     : Builder.value =
-    let vs = decode code_gamma gamma in
-    encode vs delta
+    let vs = decode gamma code_gamma in
+    encode delta vs
 end
 
 type 'a interface = {
@@ -468,7 +459,6 @@ let rec add_interface (stage : Basetype.t list) (t : Cbvterm.t)
       term = t
     }
 
-
 let rec project_context
     (outer : access_interface Typing.context)
     (inner : access_interface Typing.context)
@@ -509,7 +499,7 @@ let rec join_code k v a1 a2 a =
   | Access.Fun _, _, _ ->
     assert false
 
-let rec split_entry a a1 a2 : unit =
+let rec split_entry (a: Access.t) (a1: Access.t) (a2: Access.t) : unit =
   match a, a1, a2 with
   | Access.Base, Access.Base, Access.Base -> ()
   | Access.Pair(m, x, y), Access.Pair(m1, x1, y1), Access.Pair(m2, x2, y2) ->
@@ -541,7 +531,7 @@ let rec split_entry a a1 a2 : unit =
   | Access.Fun _, _, _ ->
     assert false
 
-let rec join_exit a1 a2 a : unit =
+let rec join_exit (a1: Access.t) (a2: Access.t) (a: Access.t) : unit =
   match a, a1, a2 with
   | Access.Base, Access.Base, Access.Base -> ()
   | Access.Pair(m, x, y), Access.Pair(m1, x1, y1), Access.Pair(m2, x2, y2) ->
@@ -578,7 +568,7 @@ let rec build_blocks stage (t: term_with_interface) : unit =
   match t.desc with
   | Var x ->
     let va, vgamma = Builder.begin_block2 t.eval.entry in
-    let vx = Context.build_lookup t.term.t_context x vgamma in
+    let vx = List.Assoc.find_exn (Context.decode t.term.t_context vgamma) x in
     Builder.end_block_jump t.eval.exit [va; vx]
   | Contr(((x, a), xs), s) ->
     let x_access = List.Assoc.find_exn t.context x in
@@ -701,9 +691,8 @@ let rec build_blocks stage (t: term_with_interface) : unit =
           let vd, vx = Builder.unpair vdx in
           let vgamma = Builder.project vd (Context.code t.term.t_context) in
           let vdelta =
-            Context.encode ((x, vx) :: Context.decode vgamma t.term.t_context)
-              s.term.t_context in
-          (* TODO: Dokumentieren! *)
+            Context.encode s.term.t_context
+              ((x, vx) :: Context.decode t.term.t_context vgamma) in
           Builder.end_block_jump s.eval.entry [ve; va; vdelta]
         end;
         (* TODO: forward kann man sich sparen? *)
@@ -795,8 +784,8 @@ let rec build_blocks stage (t: term_with_interface) : unit =
       let vd, vx = Builder.unpair vdx in
       let vgamma = Builder.project vd (Context.code t.term.t_context) in
       let vdelta =
-        Context.encode ((x, vx) :: (f, vd) :: Context.decode vgamma t.term.t_context)
-          s.term.t_context in
+        Context.encode s.term.t_context
+          ((x, vx) :: (f, vd) :: Context.decode t.term.t_context vgamma) in
       Builder.end_block_jump s.eval.entry [vh; va; vdelta]
     end;
     (* body *)
@@ -858,7 +847,6 @@ let rec build_blocks stage (t: term_with_interface) : unit =
       | _ ->
         assert false
     end;
-
     let gamma = List.Assoc.remove (List.Assoc.remove s.context x) f in
     project_context t.context gamma;
     embed_context t.context gamma;
@@ -877,8 +865,8 @@ let rec build_blocks stage (t: term_with_interface) : unit =
           let vd, vx = Builder.unpair vdx in
           let vgamma = Builder.project vd (Context.code t.term.t_context) in
           let vdelta =
-            Context.encode ((x, vx) :: (f, vd) :: Context.decode vgamma t.term.t_context)
-              s.term.t_context in
+            Context.encode s.term.t_context
+              ((x, vx) :: (f, vd) :: Context.decode t.term.t_context vgamma) in
           let vh = Builder.embed (Builder.pair ve va) th in
           let vu = Builder.embed Builder.unit s.term.t_ann in
           Builder.end_block_jump s.eval.entry [vh; vu; vdelta]
@@ -886,8 +874,7 @@ let rec build_blocks stage (t: term_with_interface) : unit =
       | _ ->
         assert false
     end;
-    let gamma = List.filter s.context
-                  ~f:(fun (y, _) -> y <> x && y <> f) in
+    let gamma = List.filter s.context ~f:(fun (y, _) -> y <> x && y <> f) in
     project_context t.context gamma;
     build_blocks (th :: stage) s;
     embed_context t.context gamma;
@@ -1026,7 +1013,6 @@ let rec build_blocks stage (t: term_with_interface) : unit =
         assert false
     end
   | App(t1, t2) ->
-    (* TODO: order isn't right *)
     begin (* eval *)
       let vu, vgammadelta = Builder.begin_block2 t.eval.entry in
       let vgamma = Context.build_map t.term.t_context t1.term.t_context vgammadelta in

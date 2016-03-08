@@ -1,5 +1,6 @@
 <**/*.ml{,i}>: warn(-40), no_alias_deps
 <**/*>: thread
+# true: profile
 # This prevents the implicit addition of -ppx options by ocamlfind
 <**/*.ml{,i}>: predicate(ppx_driver)
 <src/*.ml{,i}>: ppx-driver(ppx_sexp_conv)
