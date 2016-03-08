@@ -1,5 +1,4 @@
 # Modular
-(More documentation will be added in the next few days.)
 
 This program implements the modular translation of call-by-value PCF that is
 described in detail in
@@ -96,15 +95,16 @@ Terms can be formed using the following concrete syntax:
 ```sml
   s,t  ::=  x  |  let x = s in t  |  \x -> t  |  s t  |  fix f x -> t
          |  if s = t then t1 else t2
+         | (s, t) | #1 t | #2 t
          |  0  |  ~1  |  1  |  ~2  |  2  | ...
          |  s + t  |  s - t  |  s * t  |  s / t
-         |  print(t)
+         |  print(t) | print "text"
 ```
 
 The concrete syntax for types is
 
 ```
-  X, Y  ::=  Nat | X -> Y
+  X, Y  ::=  Nat | X * Y | X -> Y
 ```
 
 The term `print(t)` prints the value of the term `t`, which must have type `Nat`.
@@ -183,3 +183,15 @@ where
   type conty0<'a> = conty0_0 of box<(conty0<'a>)> * (unit * int * 'a)
                   | conty0_1 of box<(conty0<'a>)> * int
 ```
+
+
+### Examples
+
+A few example programs can be found in the `Tests` directory. The programs
+`mandelbrot.cbv`, `raytrace.cbv` and `raytrace_inline.cbv` produce output that
+can be interpreted as images in PPM format. The produced images should look as 
+follows.
+
+![Raytrace](http://www2.tcs.ifi.lmu.de/~schoepp/raytrace.png)
+
+![Mandelbrot](http://www2.tcs.ifi.lmu.de/~schoepp/mandelbrot.png)

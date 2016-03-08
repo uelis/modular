@@ -1,3 +1,7 @@
+/* The output of this program can be interpreted 
+   as an image file in ppm format.
+*/
+
 let main =
   let z0r = ~600 in
   let z0i = 0 in
