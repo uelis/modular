@@ -254,6 +254,9 @@ let infer_annotations (t: Cbvterm.t) : Cbvterm.t =
         t_context = [(v, t.t_type)]
       },
       []
+    | Const(Ast.Cprint _, []) ->
+      t,
+      []
     | Const(Ast.Cintconst _, []) ->
       t,
       []
@@ -293,6 +296,7 @@ let infer_annotations (t: Cbvterm.t) : Cbvterm.t =
         t_context = as1.t_context
       },
       cs1
+    | Const(Ast.Cprint _, _)
     | Const(Ast.Cintconst _, _)
     | Const(Ast.Cboolconst _, _)
     | Const(Ast.Cinteq, _)

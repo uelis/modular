@@ -348,6 +348,17 @@ let rec add_interface (ms : stage) (t : Cbvterm.t)
     }
   | Const(Ast.Cintconst _, _) ->
     assert false
+  | Const(Ast.Cprint(s), []) ->
+    let eval = fresh_eval ms t in
+    let access = fresh_access ms t in
+    { desc = Const(Ast.Cprint(s), []);
+      eval = eval;
+      access = access;
+      context = [];
+      term = t
+    }
+  | Const(Ast.Cprint _, _) ->
+    assert false
   | Const(Ast.Cintprint, [s]) ->
     let si = add_interface ms s in
     let eval = fresh_eval ms t in
@@ -639,6 +650,12 @@ let rec build_blocks (ms: stage) (t: term_with_interface) : unit =
     end
   | Const(Ast.Cintconst _, _) ->
     assert false
+  | Const(Ast.Cprint s, _) ->
+    begin (* print *)
+      let vstack, vi = Builder.begin_block2 t.eval.entry in
+      ignore (Builder.primop (Ssa.Cprint s) Builder.unit);
+      Builder.end_block_jump t.eval.exit [vstack; Builder.intconst 0]
+    end
   | Const(Ast.Cintprint, [s]) ->
     begin (* eval entry *)
       let arg = Builder.begin_block t.eval.entry in
@@ -662,6 +679,7 @@ let rec build_blocks (ms: stage) (t: term_with_interface) : unit =
       | Ast.Cintdiv -> "intdiv", Ssa.Cintdiv
       | Ast.Cinteq -> "inteq", Ssa.Cinteq
       | Ast.Cintlt -> "intlt", Ssa.Cintslt
+      | Ast.Cprint _ -> assert false
       | Ast.Cboolconst _ -> assert false
       | Ast.Cintconst _ -> assert false
       | Ast.Cintprint -> assert false in

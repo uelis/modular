@@ -108,6 +108,8 @@ term_atom:
        { mkAst (Const(Cboolconst(true), [])) }
     | FALSE
        { mkAst (Const(Cboolconst(false), [])) }
+    | PRINT STRING
+       { mkAst (Const(Cprint($2), [])) }
     | PRINT term_atom
        { mkAst (Const(Cintprint, [$2])) }
     | FST term_atom

@@ -300,6 +300,7 @@ let fprint_annotated_term (f: Format.formatter) (term: Cbvterm.t) : unit =
       s_term_app t2
     | Const(Ast.Cintdiv, _) -> assert false
     | Fun _ | Fix _ | Tailfix _ | App _ | Var _
+    | Const(Ast.Cprint _, _)
     | Const(Ast.Cintprint, _) | Const(Ast.Cintconst _, _)
     | Const(Ast.Cboolconst _, _)
     | Pair _ | Proj _ | Contr _ | If _
@@ -330,6 +331,8 @@ let fprint_annotated_term (f: Format.formatter) (term: Cbvterm.t) : unit =
       else
         fprintf f "~%i" (-i)
     | Const(Ast.Cintconst _, _) -> assert false
+    | Const(Ast.Cprint s, _) ->
+      fprintf f "print@ \"%s\"" s
     | Const(Ast.Cintprint, [t1]) ->
       fprintf f "print@ ";
       s_term_atom t1

@@ -1,14 +1,8 @@
 let main =
-  /* TODO: printing of strings not implemented
-  print "P3\n400\n400\n256\n";
-  */
   let z0r = ~600 in
   let z0i = 0 in
   let d = 7 in
-  let u = print 3 in
-  let u = print 400 in
-  let u = print 400 in
-  let u = print 60 in
+  let u = print "P3\n400\n400\n60\n" in
   let printdot = \n ->
     let h = 6*n*1024/60 in
     let i = 6*n/60 in

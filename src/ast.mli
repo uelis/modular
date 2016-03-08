@@ -9,6 +9,7 @@ module Location : sig
 end
 
 type const =
+  | Cprint of string
   | Cboolconst of bool
   | Cintconst of int
   | Cinteq

@@ -53,6 +53,7 @@ let contract_instances
 
 let arg_types c =
   match c with
+  | Ast.Cprint _
   | Ast.Cboolconst _
   | Ast.Cintconst _ -> []
   | Ast.Cinteq
@@ -69,6 +70,7 @@ let arg_types c =
 
 let ret_type c =
   match c with
+  | Ast.Cprint _
   | Ast.Cintconst _
   | Ast.Cintadd
   | Ast.Cintsub

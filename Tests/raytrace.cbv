@@ -142,13 +142,7 @@ let main =
     (out1, normal1) in
   
   let main =
-    /* TODO: printing of strings not implemented
-    print "P3\n400\n400\n256\n";
-    */
-    let u = print 3 in
-    let u = print 400 in
-    let u = print 400 in
-    let u = print 256 in
+    let u = print "P3\n400\n400\n256\n" in
     let y_loop =
       tailfix cy y -> 
         if y < 400 then
