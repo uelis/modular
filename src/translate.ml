@@ -9,7 +9,7 @@ let fresh_label (ms: stage) (name: string) (a : Basetype.t list): Ssa.label =
   { Ssa.name = Ident.fresh name;
     Ssa.arg_types = (List.rev ms) @ a }
 
-(* TODO: this is leaky *)
+(** Representation and manipulation of interfaces to access encoded values. *)
 module Access : sig
   type t =
       Base
@@ -17,10 +17,12 @@ module Access : sig
     | Fun of Basetype.t * Basetype.t * Basetype.t * Ssa.label * t * t
 
   val iter2_exn: t -> t ->
-    f:((Ssa.label * stage) -> (Ssa.label * stage) -> unit) -> unit
+    f:((Ssa.label * stage) -> (Ssa.label * stage) -> unit) ->
+    unit
 
   val iter2_list_exn: t -> t list ->
-    f:((Ssa.label * stage) -> (Ssa.label * stage) list -> unit) -> unit
+    f:((Ssa.label * stage) -> (Ssa.label * stage) list -> unit) ->
+    unit
 
   val forward: t -> t -> unit
   val unreachable: t -> unit
@@ -214,7 +216,8 @@ module Context : sig
   val encode: t -> Builder.value Typing.context -> Builder.value
   val build_map: t -> t -> Builder.value -> Builder.value
 
-end = struct
+end =
+struct
 
   type t = Cbvtype.t Typing.context
 
@@ -244,14 +247,14 @@ type 'a interface = {
   exit: 'a
 }
 
-type int_interface = Ssa.label interface
+type eval_interface = Ssa.label interface
 type access_interface = Access.t interface
 
 type term_with_interface = {
   desc: (term_with_interface, Cbvtype.t) Cbvterm.sgn;
-  eval: int_interface;
+  eval: eval_interface;
   access: access_interface;
-  context: (Ident.t * access_interface) list;
+  context: access_interface Typing.context;
   term: Cbvterm.t;
 }
 
@@ -260,10 +263,9 @@ let block_name_of_term (t: Cbvterm.t) : string =
   match t.t_loc with
   | Some l ->
     Printf.sprintf "_l%i_c%i" l.start_pos.line l.start_pos.column
-  | None ->
-    ""
+  | None -> ""
 
-let fresh_eval (ms: stage) (t: Cbvterm.t) : int_interface =
+let fresh_eval (ms: stage) (t: Cbvterm.t) : eval_interface =
   let s = block_name_of_term t in
   { entry = fresh_label ms (s ^ "_eval_entry")
               [t.t_ann; Context.code t.t_context];
@@ -279,33 +281,9 @@ let fresh_access (ms: stage) (t: Cbvterm.t) : access_interface =
   let n = block_name_of_term t in
   fresh_access_named ms n t.t_type
 
-(** Embeds the multiplicities in the context of a fragment as
-    specified by the context [outer].
-
-    Inputs are a fagment context [inner] and a typing context [outer]
-    that must define the same variables and for each defined variable x,
-    the declarations in [outer] and [inner] must have the forms
-    [ x: [D]X ] and [ x: (E * (F * X-), E * (F * X+)) ] respectively, where
-    [ E*F <= D ].
-
-    The result is an interface where [x] as above gets interface
-    [ x: (D * X-, D*  X+) ]. The returned blocks perform embedding and
-    projection.
-
-    TODO: specify interfaces
-*)
-let rec embed_context_int
-          (ms : stage)
-          (outer : Cbvtype.t Typing.context)
-          (inner : access_interface Typing.context)
-  : access_interface Typing.context =
-  List.map inner ~f:(
-    fun (y, _) ->
-      (y, fresh_access_named ms "context" (List.Assoc.find_exn outer y))
-  )
-
-let rec add_interface (ms : stage) (t : Cbvterm.t)
-  : term_with_interface =
+let rec add_interface (ms : stage) (t : Cbvterm.t) : term_with_interface =
+  let context_interface =
+    List.map ~f:(fun (y, a) -> (y, fresh_access_named ms "context" a)) in
   match t.t_desc with
   | Var x ->
     let eval = fresh_eval ms t in
@@ -389,9 +367,7 @@ let rec add_interface (ms : stage) (t : Cbvterm.t)
     let si = add_interface inner_ms s in
     let eval = fresh_eval ms t in
     let access = fresh_access ms t in
-    let context =
-      let gamma = List.filter si.context ~f:(fun (y, _) -> x <> y) in
-      embed_context_int ms t.t_context gamma in
+    let context = context_interface t.t_context in
     { desc = Fun((x, xty), si);
       eval = eval;
       access = access;
@@ -402,9 +378,7 @@ let rec add_interface (ms : stage) (t : Cbvterm.t)
     let si = add_interface (th :: ms) s in
     let eval = fresh_eval ms t in
     let access = fresh_access ms t in
-    let context =
-      let gamma = List.filter si.context ~f:(fun (y, _) -> y <> x && y <> f) in
-      embed_context_int ms t.t_context gamma in
+    let context = context_interface t.t_context in
     { desc = Fix((th, f, x, xty), si);
       eval = eval;
       access = access;
@@ -415,9 +389,7 @@ let rec add_interface (ms : stage) (t : Cbvterm.t)
     let si = add_interface (th :: ms) s in
     let eval = fresh_eval ms t in
     let access = fresh_access ms t in
-    let context = let gamma = List.filter si.context
-          ~f:(fun (y, _) -> y <> x && y <> f) in
-      embed_context_int ms t.t_context gamma in
+    let context = context_interface t.t_context in
     { desc = Tailfix((th, f, x, xty), si);
       eval = eval;
       access = access;
@@ -1128,11 +1100,9 @@ let to_ssa t =
   let rec sort_blocks i =
     if not (Ident.Table.mem visited i) then
       begin
-        (*        Printf.printf "%s\n%!" (Ident.to_string i);*)
         Ident.Table.set visited ~key:i ~data:();
 
         let b = Ident.Table.find_exn Builder.blocks i in
-        (*        Ssa.fprint_block stdout b;*)
         rev_sorted_blocks := b :: !rev_sorted_blocks;
         List.iter (Ssa.targets_of_block b)
           ~f:(fun l -> sort_blocks l.Ssa.name)

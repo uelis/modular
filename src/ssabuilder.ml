@@ -1,10 +1,5 @@
 open Core_kernel.Std
 
-let unPairB a =
-  match Basetype.case a with
-  | Basetype.Sgn (Basetype.TupleB [a1; a2]) -> a1, a2
-  | _ -> assert false
-
 let unTupleB a =
   match Basetype.case a with
   | Basetype.Sgn (Basetype.TupleB bs) -> bs
@@ -12,11 +7,13 @@ let unTupleB a =
 
 let unDataB a =
   match Basetype.case a with
-  | Basetype.Sgn (Basetype.DataB(id, params)) ->
-     id, params
+  | Basetype.Sgn (Basetype.DataB(id, params)) -> id, params
   | _ -> assert false
 
 type value = Ssa.value * Basetype.t
+
+let typeof (v: value) : Basetype.t =
+  snd v
 
 type builder_state_type = {
     cur_label: Ssa.label;
@@ -210,84 +207,40 @@ let unbox (v: value) : value =
   (*  ignore (primop (Ssa.Cfree(b)) v);*)
   w
 
+let index_of_ctor id params ctor =
+  let cs = Basetype.Data.constructor_types id params in
+  match List.findi cs ~f:(fun _ -> Basetype.equals ctor) with
+  | Some(i, _) -> i
+  | None -> assert false
+
 let project (v: value) (a: Basetype.t) : value =
-  let _, va = v in
-  (*
-  Printf.printf "project: %s <= %s\n"
-                 (Intlib.Printing.string_of_basetype a)
-                 (Intlib.Printing.string_of_basetype va);
-  *)
-  let select id params x =
-    let cs = Basetype.Data.constructor_types id params in
-    let rec sel cs n =
-      match cs with
-      | [] -> assert false
-      | c1 :: rest ->
-         if Basetype.equals a c1 then
-           select x n
-         else
-           sel rest (n + 1) in
-    sel cs 0 in
-  if Basetype.equals a va then
-    v
+  let _, typeof_v = v in
+  if Basetype.equals typeof_v a then v
   else
-    match Basetype.case va with
-    | Basetype.Sgn (Basetype.BoxB(c)) ->
-       begin
-         match Basetype.case c with
-         | Basetype.Sgn (Basetype.DataB(id, params)) ->
-            let x = unbox v in
-            select id params x
-         | _ -> assert false
-       end
-    | Basetype.Sgn (Basetype.DataB(id, params)) ->
-       select id params v
-    | _ ->
-      assert false
+    match Basetype.case typeof_v with
+    | Basetype.Sgn(Basetype.DataB(id, params)) ->
+      let i = index_of_ctor id params a in
+      select v i
+    | Basetype.Sgn(Basetype.BoxB(c)) ->
+      let id, params = unDataB c in
+      let i = index_of_ctor id params a in
+      let x = unbox v in
+      select x i
+    | _ -> assert false
 
 let embed (v: value) (a: Basetype.t) : value =
-  let _, va = v in
-  (*
-  Printf.printf "embed: %s <= %s\n"
-                 (Intlib.Printing.string_of_basetype va)
-                 (Intlib.Printing.string_of_basetype a);
-  *)
-  if Basetype.equals va a then
-    v
+  let _, typeof_v = v in
+  if Basetype.equals typeof_v a then v
   else
     match Basetype.case a with
-    | Basetype.Sgn (Basetype.BoxB(c)) ->
-      begin
-        match Basetype.case c with
-        | Basetype.Sgn (Basetype.DataB(id, l)) ->
-          let cs = Basetype.Data.constructor_types id l in
-          let rec inject l n =
-            match l with
-            | [] -> assert false
-            | b1 :: bs ->
-               if Basetype.equals va b1 then
-                 let inv = inj n v c in
-                 let boxinv = box inv in
-                 boxinv
-              else
-                inject bs (n + 1) in
-          inject cs 0
-        | _ -> assert false
-      end
-    | Basetype.Sgn (Basetype.DataB(id, l)) ->
-      let cs = Basetype.Data.constructor_types id l in
-      let rec inject l n =
-        match l with
-        | [] -> assert false
-        | b1 :: bs ->
-          if Basetype.equals va b1 then
-            let inv = inj n v a in
-            inv
-          else
-            inject bs (n + 1) in
-      inject cs 0
-    | _ ->
-      assert false
+    | Basetype.Sgn(Basetype.DataB(id, params)) ->
+      let i = index_of_ctor id params typeof_v in
+      inj i v a
+    | Basetype.Sgn(Basetype.BoxB(c)) ->
+      let id, params = unDataB c in
+      let i = index_of_ctor id params typeof_v in
+      box (inj i v c)
+    | _ -> assert false
 
 let fill_args (args : Ssa.value list) (v : value list) (dst : Ssa.label)
   : Ssa.value list =
