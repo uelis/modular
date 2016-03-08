@@ -255,7 +255,7 @@ let fprint_annotated_term (f: Format.formatter) (term: Cbvterm.t) : unit =
         (string_of_cbvtype ~concise:false a);
       s_term t1;
       fprintf f "@]"
-    | Ifz(t1, t2, t3) ->
+    | If(t1, t2, t3) ->
       fprintf f "@[<hv>if ";
       s_term t1;
       fprintf f " then ";
@@ -275,7 +275,7 @@ let fprint_annotated_term (f: Format.formatter) (term: Cbvterm.t) : unit =
         | _ ->
           s_term_inf t
       end
-    | Var _ | Const _ | Pair _ | Fst _ | Snd _
+    | Var _ | Const _ | Pair _ | Proj _
       -> s_term_inf t
   and s_term_inf (t: Cbvterm.t) =
     match t.t_desc with
@@ -312,7 +312,7 @@ let fprint_annotated_term (f: Format.formatter) (term: Cbvterm.t) : unit =
     | Fun _ | Fix _ | Tailfix _ | App _ | Var _
     | Const(Ast.Cintprint, _) | Const(Ast.Cintconst _, _)
     | Const(Ast.Cboolconst _, _)
-    | Pair _ | Fst _ | Snd _ | Contr _ | Ifz _
+    | Pair _ | Proj _ | Contr _ | If _
       -> s_term_app t
   and s_term_app (t: Cbvterm.t) =
     match t.t_desc with
@@ -350,15 +350,11 @@ let fprint_annotated_term (f: Format.formatter) (term: Cbvterm.t) : unit =
       fprintf f "@] ,@ @[";
       s_term t2;
       fprintf f "@])"
-    | Fst(t1) ->
-      fprintf f "@[#1 ";
+    | Proj(t1, i) ->
+      fprintf f "@[#%i " (i + 1);
       s_term_atom t1;
       fprintf f "@]"
-    | Snd(t1) ->
-      fprintf f "@[#2 ";
-      s_term_atom t1;
-      fprintf f "@]"
-    | App _ | Fun _ | Fix _ | Tailfix _ | Ifz _ | Contr _
+    | App _ | Fun _ | Fix _ | Tailfix _ | If _ | Contr _
     | Const(Ast.Cinteq, _)
     | Const(Ast.Cintlt, _)
     | Const(Ast.Cintadd, _)

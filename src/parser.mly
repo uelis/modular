@@ -65,7 +65,7 @@ term:
     | TAILFIX identifier identifier TO term
         { mkAst (Tailfix($2, $3, $5)) }
     | IF term THEN term ELSE term
-        { mkAst (Ifz($2, $4, $6)) }
+        { mkAst (If($2, $4, $6)) }
     | LET identifier EQUALS term IN term
         { mkAst (App(mkAst (Fun($2, $6)), $4)) }
     | term_inf
@@ -111,8 +111,8 @@ term_atom:
     | PRINT term_atom
        { mkAst (Const(Cintprint, [$2])) }
     | FST term_atom
-       { mkAst (Fst $2) }
+       { mkAst (Proj($2, 0)) }
     | SND term_atom
-       { mkAst (Snd $2) }
+       { mkAst (Proj($2, 1)) }
 
 %%

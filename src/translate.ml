@@ -11,7 +11,7 @@ let fresh_label stage (name: string) (a : Basetype.t list): Ssa.label =
 module Access : sig
   type t =
       Base
-    | Pair of Basetype.t * t * t
+    | Tuple of Basetype.t * t list
     | Fun of Basetype.t * Basetype.t * Basetype.t * Ssa.label * t * t
 
   val iter2_exn: t -> t ->
@@ -38,15 +38,15 @@ end =
 struct
   type t =
       Base
-    | Pair of Basetype.t * t * t
+    | Tuple of Basetype.t * t list
     | Fun of Basetype.t * Basetype.t * Basetype.t * Ssa.label * t * t
 
   let labels (a : t) : (Ssa.label * Basetype.t list) list =
     let rec ls (a : t) (ms) : (Ssa.label * (Basetype.t list)) list =
       match a with
       | Base -> []
-      | Pair(m, x, y) ->
-        (ls x (m :: ms)) @ (ls y (m :: ms))
+      | Tuple(m, xs) ->
+        List.concat_map xs ~f:(fun x -> ls x (m :: ms))
       | Fun(m, s, c, app, x, y) ->
         let stage' = m :: ms in
         (app, List.rev (s :: stage')) :: (ls x stage') @ (ls y stage') in
@@ -176,7 +176,7 @@ struct
       | Cbvtype.Pair(m, (x, y)) ->
         let xentry = fresh_entry (m :: stage) n x in
         let yentry = fresh_entry (m :: stage) n y in
-        Pair(m, xentry, yentry)
+        Tuple(m, [xentry; yentry])
       | Cbvtype.Fun(m, (x, s, c, y)) ->
         let xc = Cbvtype.code x in
         let yentry = fresh_entry (m :: stage) n y in
@@ -194,7 +194,7 @@ struct
       | Cbvtype.Pair(m, (x, y)) ->
         let xexit = fresh_exit (m :: stage) n x in
         let yexit = fresh_exit (m :: stage) n y in
-        Pair(m, xexit, yexit)
+        Tuple(m, [xexit; yexit])
       | Cbvtype.Fun(m, (x, s, c, y)) ->
         let yc = Cbvtype.code y in
         let yexit = fresh_exit (m :: stage) n y in
@@ -415,21 +415,11 @@ let rec add_interface (stage : Basetype.t list) (t : Cbvterm.t)
       context = t1i.context @ t2i.context;
       term = t
     }
-  | Fst(t1) ->
+  | Proj(t1, i) ->
     let t1i = add_interface stage t1 in
     let eval = fresh_eval stage t in
     let access = fresh_access stage t in
-    { desc = Fst(t1i);
-      eval = eval;
-      access = access;
-      context = t1i.context;
-      term = t
-    }
-  | Snd(t1) ->
-    let t1i = add_interface stage t1 in
-    let eval = fresh_eval stage t in
-    let access = fresh_access stage t in
-    { desc = Snd(t1i);
+    { desc = Proj(t1i, i);
       eval = eval;
       access = access;
       context = t1i.context;
@@ -446,13 +436,13 @@ let rec add_interface (stage : Basetype.t list) (t : Cbvterm.t)
       context = t1i.context @ t2i.context;
       term = t
     }
-  | Ifz(tc, t1, t2) ->
+  | If(tc, t1, t2) ->
     let tci = add_interface stage tc in
     let t1i = add_interface stage t1 in
     let t2i = add_interface stage t2 in
     let eval = fresh_eval stage t in
     let access = fresh_access_named stage "join" t.t_type in
-    { desc = Ifz(tci, t1i, t2i);
+    { desc = If(tci, t1i, t2i);
       eval = eval;
       access = access;
       context = tci.context @ t1i.context @ t2i.context;
@@ -484,29 +474,41 @@ let rec join_code k v a1 a2 a =
     | `Right -> 1 in
   match a, a1, a2 with
   | Access.Base, Access.Base, Access.Base -> v
-  | Access.Pair(_, x, y), Access.Pair(_, x1, y1), Access.Pair(_, x2, y2) ->
-    let vx, vy = Builder.unpair v in
-    let vx' = join_code k vx x1 x2 x in
-    let vy' = join_code k vy y1 y2 y in
-    Builder.pair vx' vy'
+  | Access.Tuple(_, xs), Access.Tuple(_, xs1), Access.Tuple(_, xs2) ->
+    let vv = Builder.untuple v in
+    let rec join vv xs1 xs2 xs =
+      match vv, xs1, xs2, xs with
+      | [], [], [], [] -> []
+      | v :: vv, x1 :: xs1, x2 :: xs2, x :: xs ->
+        let v' = join_code k v x1 x2 x in
+        v' :: join vv xs1 xs2 xs
+      | _ -> assert false in
+    let vv' = join vv xs1 xs2 xs in
+    Builder.tuple vv'
   | Access.Fun(_, _, d, _, _, _),
     Access.Fun(_, _, d1, _, _, _),
     Access.Fun(_, _, d2, _, _, _) ->
     let vi = Builder.inj i v (Basetype.sumB [d1; d2]) in
     Builder.embed vi d
   | Access.Base, _, _
-  | Access.Pair _, _, _
+  | Access.Tuple _, _, _
   | Access.Fun _, _, _ ->
     assert false
 
 let rec split_entry (a: Access.t) (a1: Access.t) (a2: Access.t) : unit =
   match a, a1, a2 with
   | Access.Base, Access.Base, Access.Base -> ()
-  | Access.Pair(m, x, y), Access.Pair(m1, x1, y1), Access.Pair(m2, x2, y2) ->
+  | Access.Tuple(m, xs), Access.Tuple(m1, xs1), Access.Tuple(m2, xs2) ->
     assert (Basetype.equals m m1);
     assert (Basetype.equals m m2);
-    split_entry x x1 x2;
-    split_entry y y1 y2
+    let rec split xs xs1 xs2 =
+      match xs, xs1, xs2 with
+      | [], [], [] -> ()
+      | x :: xs, x1 :: xs1, x2 :: xs2 ->
+        split_entry x x1 x2;
+        split xs xs1 xs2
+      | _ -> assert false in
+    split xs xs1 xs2
   | Access.Fun(m, s, d, eval, x, y),
     Access.Fun(m1, s1, d1, eval1, x1, y1),
     Access.Fun(m2, s2, d2, eval2, x2, y2) ->
@@ -527,18 +529,24 @@ let rec split_entry (a: Access.t) (a1: Access.t) (a2: Access.t) : unit =
         ]
     end
   | Access.Base, _, _
-  | Access.Pair _, _, _
+  | Access.Tuple _, _, _
   | Access.Fun _, _, _ ->
     assert false
 
 let rec join_exit (a1: Access.t) (a2: Access.t) (a: Access.t) : unit =
   match a, a1, a2 with
   | Access.Base, Access.Base, Access.Base -> ()
-  | Access.Pair(m, x, y), Access.Pair(m1, x1, y1), Access.Pair(m2, x2, y2) ->
+  | Access.Tuple(m, xs), Access.Tuple(m1, xs1), Access.Tuple(m2, xs2) ->
     assert (Basetype.equals m m1);
     assert (Basetype.equals m m2);
-    join_exit x1 x2 x;
-    join_exit y1 y2 y
+    let rec join xs1 xs2 xs =
+      match xs1, xs2, xs with
+      | [], [], [] -> ()
+      | x1 :: xs1, x2 :: xs2, x :: xs ->
+        join_exit x1 x2 x;
+        join xs1 xs2 xs
+      | _ -> assert false in
+    join xs1 xs2 xs
   | Access.Fun(m, s, d, res, x, y),
     Access.Fun(m1, s1, d1, res1, x1, y1),
     Access.Fun(m2, s2, d2, res2, x2, y2) ->
@@ -559,7 +567,7 @@ let rec join_exit (a1: Access.t) (a2: Access.t) (a: Access.t) : unit =
       Builder.end_block_jump res [vs; vy]
     end
   | Access.Base, _, _
-  | Access.Pair _, _, _
+  | Access.Tuple _, _, _
   | Access.Fun _, _, _ ->
     assert false
 
@@ -918,7 +926,7 @@ let rec build_blocks stage (t: term_with_interface) : unit =
     (* access entry *)
     begin
       match t.access.entry with
-      | Access.Pair(_, a1, a2) ->
+      | Access.Tuple(_, [a1; a2]) ->
         Access.pop_embed a1 t1.access.entry;
         Access.pop_embed a2 t2.access.entry
       | _ ->
@@ -945,13 +953,13 @@ let rec build_blocks stage (t: term_with_interface) : unit =
     (* access exit *)
     begin
       match t.access.exit with
-      | Access.Pair(_, a1, a2) ->
+      | Access.Tuple(_, [a1; a2]) ->
         Access.project_push t1.access.exit a1;
         Access.project_push t2.access.exit a2
       | _ ->
         assert false
     end
-  | Fst(t1) ->
+  | Proj(t1, i) ->
     begin (* eval entry *)
       let arg = Builder.begin_block t.eval.entry in
       Builder.end_block_jump t1.eval.entry [arg]
@@ -959,9 +967,10 @@ let rec build_blocks stage (t: term_with_interface) : unit =
     (* access entry *)
     begin
       match t1.access.entry with
-      | Access.Pair(_, a1, a2) ->
+      | Access.Tuple(_, xs) ->
+        let xi = List.nth_exn xs i in
         (* push multiplicity of pair type *)
-        Access.push_unit_embed t.access.entry a1
+        Access.push_unit_embed t.access.entry xi
       | _ ->
         assert false
     end;
@@ -969,46 +978,20 @@ let rec build_blocks stage (t: term_with_interface) : unit =
     build_blocks stage t1;
     begin (* eval exit *)
       let vm, vp = Builder.begin_block2 t1.eval.exit in
-      let vp1 = Builder.fst vp in
+      let vp1 = Builder.proj vp i in
       Builder.end_block_jump t.eval.exit [vm; vp1]
     end;
     (* access exit *)
     begin
       match t1.access.exit with
-      | Access.Pair(_, a1, a2) ->
+      | Access.Tuple(_, xs) ->
         (* discard multiplicity of pair type *)
-        Access.pop_discard a1 t.access.exit;
-        Access.unreachable a2
-      | _ ->
-        assert false
-    end
-  | Snd(t1) ->
-    begin (* eval entry *)
-      let arg = Builder.begin_block t.eval.entry in
-      Builder.end_block_jump t1.eval.entry [arg]
-    end;
-    begin
-      match t1.access.entry with
-      | Access.Pair(_, a1, a2) ->
-        (* push multiplicity of pair type *)
-        Access.push_unit_embed t.access.entry a2
-      | _ ->
-        assert false
-    end;
-    (* body *)
-    build_blocks stage t1;
-    begin (* eval exit *)
-      let vm, vp = Builder.begin_block2 t1.eval.exit in
-      let vp2 = Builder.snd vp in
-      Builder.end_block_jump t.eval.exit [vm; vp2]
-    end;
-    (* access exit *)
-    begin
-      match t1.access.exit with
-      | Access.Pair(_, a1, a2) ->
-        (* discard multiplicity of pair type *)
-        Access.pop_discard a2 t.access.exit;
-        Access.unreachable a1
+        List.iteri xs
+          ~f:(fun j xj ->
+            if i = j then
+              Access.pop_discard xj t.access.exit
+            else
+              Access.unreachable xj)
       | _ ->
         assert false
     end
@@ -1061,7 +1044,7 @@ let rec build_blocks stage (t: term_with_interface) : unit =
       | _ ->
         assert false
     end
-  | Ifz(tc, t1, t2) ->
+  | If(tc, t1, t2) ->
     begin (* eval 1 *)
       let vstack, vgamma = Builder.begin_block2 t.eval.entry in
       let vgammac = Context.build_map t.term.t_context tc.term.t_context vgamma in

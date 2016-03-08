@@ -165,19 +165,8 @@ let proj (v: value) (i: int) : value =
   | Ssa.Tuple vs -> List.nth_exn vs i, List.nth_exn bs i
   | _ -> Ssa.Proj(vv, i, bs), List.nth_exn bs i
 
-let fst (v: value) : value =
-  let vv, va = v in
-  let a1, a2 = unPairB va in
-  match vv with
-  | Ssa.Tuple [v1; v2] -> v1, a1
-  | _ -> Ssa.Proj(vv, 0, [a1; a2]), a1
-
-let snd (v: value) : value =
-  let vv, va = v in
-  let a1, a2 = unPairB va in
-  match vv with
-  | Ssa.Tuple [v1; v2] -> v2, a2
-  | _ -> Ssa.Proj(vv, 1, [a1; a2]), a2
+let fst (v: value) : value = proj v 0
+let snd (v: value) : value = proj v 1
 
 let unpair (v: value) : value * value =
   let vv, va = v in
@@ -196,6 +185,13 @@ let pair (v1: value) (v2: value) : value =
   | _ ->
     Ssa.Tuple [vv1; vv2],
     Basetype.pairB va1 va2
+
+let untuple (v: value) : value list =
+  let vv, vb = v in
+  let bs = unTupleB vb in
+  match vv with
+  | Ssa.Tuple vs -> List.zip_exn vs bs
+  | _ -> List.mapi bs ~f:(fun i bi -> Ssa.Proj(vv, i, bs), bi)
 
 let tuple (vs: value list) : value =
   let values, types = List.unzip vs in

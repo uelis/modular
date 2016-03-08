@@ -1,5 +1,5 @@
 (** Source terms *)
-  
+
 (** Location of term in the source file *)
 module Location : sig
   type pos = { column: int; line: int}
@@ -29,9 +29,8 @@ and t_desc =
   | Fun of Ident.t * t
   | App of t * t
   | Pair of t * t
-  | Fst of t
-  | Snd of t
-  | Ifz of t * t * t
+  | Proj of t * int
+  | If of t * t * t
   | Fix of Ident.t * Ident.t * t
   | Tailfix of Ident.t * Ident.t * t
 

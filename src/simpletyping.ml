@@ -142,7 +142,12 @@ let rec linearize (phi: Simpletype.t context) (t: Ast.t)
       };
       subst = sl.subst @ tl.subst
     }
-  | Ast.Fst(t) ->
+  | Ast.Proj(t, i) ->
+    if not (i = 0 || i = 1) then
+      begin
+        let msg = "projection out of range." in
+        raise (Typing_error (Some t.Ast.loc, msg))
+      end;
     let tl = linearize phi t in
     let alpha = Simpletype.newvar () in
     let beta = Simpletype.newvar () in
@@ -151,26 +156,9 @@ let rec linearize (phi: Simpletype.t context) (t: Ast.t)
       ~expected:(Simpletype.newty (Simpletype.Pair(alpha, beta)));
     { linear_term = {
         t_id = Ident.fresh "id";
-        t_desc = Fst(tl.linear_term);
+        t_desc = Proj(tl.linear_term, i);
         t_ann = Basetype.newvar ();
-        t_type = alpha;
-        t_context = tl.linear_term.t_context;
-        t_loc = t.Ast.loc
-      };
-      subst = tl.subst
-    }
-  | Ast.Snd(t) ->
-    let tl = linearize phi t in
-    let alpha = Simpletype.newvar () in
-    let beta = Simpletype.newvar () in
-    eq_constraint t
-      ~actual:tl.linear_term.t_type
-      ~expected:(Simpletype.newty (Simpletype.Pair(alpha, beta)));
-    { linear_term = {
-        t_id = Ident.fresh "id";
-        t_desc = Snd(tl.linear_term);
-        t_ann = Basetype.newvar ();
-        t_type = beta;
+        t_type = List.nth_exn [alpha; beta] i;
         t_context = tl.linear_term.t_context;
         t_loc = t.Ast.loc
       };
@@ -254,7 +242,7 @@ let rec linearize (phi: Simpletype.t context) (t: Ast.t)
       };
       subst = sigma
     }
-  | Ast.Ifz(s, tt, tf) ->
+  | Ast.If(s, tt, tf) ->
     let sl = linearize phi s in
     let ttl = linearize phi tt in
     let tfl = linearize phi tf in
@@ -266,7 +254,7 @@ let rec linearize (phi: Simpletype.t context) (t: Ast.t)
       ~expected:ttl.linear_term.t_type;
     { linear_term = {
         t_id = Ident.fresh "id";
-        t_desc = Ifz(sl.linear_term, ttl.linear_term, tfl.linear_term);
+        t_desc = If(sl.linear_term, ttl.linear_term, tfl.linear_term);
         t_ann = Basetype.newvar ();
         t_type = ttl.linear_term.t_type;
         t_context = sl.linear_term.t_context @
@@ -292,8 +280,7 @@ let rec check_term (t: Simpletype.t Cbvterm.term) : unit =
   | Var _
   | Const _ ->
     ()
-  | Fst(t)
-  | Snd(t)
+  | Proj(t, _)
   | Fun(_, t)
   | Fix(_, t)
   | Contr(_, t) ->
@@ -302,7 +289,7 @@ let rec check_term (t: Simpletype.t Cbvterm.term) : unit =
   | App(s, t) ->
     check_term s;
     check_term t
-  | Ifz(s, tt, tf) ->
+  | If(s, tt, tf) ->
     check_term s;
     check_term tt;
     check_term tf

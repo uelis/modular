@@ -188,16 +188,8 @@ let rec fresh_annotations_term (t: Simpletype.t Cbvterm.term) : Cbvterm.t =
       t_context = [];
       t_loc = t.t_loc
     }
-  | Fst(s1) ->
-    { t_desc = Cbvterm.Fst(fresh_annotations_term s1);
-      t_id = t.t_id;
-      t_ann = t.t_ann;
-      t_type =  fresh_annotations_type t.t_type;
-      t_context = [];
-      t_loc = t.t_loc
-    }
-  | Snd(s2) ->
-    { t_desc = Cbvterm.Snd(fresh_annotations_term s2);
+  | Proj(s1, i) ->
+    { t_desc = Cbvterm.Proj(fresh_annotations_term s1, i);
       t_id = t.t_id;
       t_ann = t.t_ann;
       t_type =  fresh_annotations_type t.t_type;
@@ -213,8 +205,8 @@ let rec fresh_annotations_term (t: Simpletype.t Cbvterm.term) : Cbvterm.t =
       t_context = [];
       t_loc = t.t_loc
     }
-  | Ifz(sc, st, sf) ->
-    { t_desc = Cbvterm.Ifz(fresh_annotations_term sc,
+  | If(sc, st, sf) ->
+    { t_desc = Cbvterm.If(fresh_annotations_term sc,
                            fresh_annotations_term st,
                            fresh_annotations_term sf);
       t_id = t.t_id;
@@ -338,32 +330,19 @@ let infer_annotations (t: Cbvterm.t) : Cbvterm.t =
           reason = "pair: multiplicity right"
         }
       ] @ cs1 @ cs2
-    | Fst(s1) ->
+    | Proj(s1, i) ->
       let as1, cs1 = constraints s1 in
-      let (a, (x, _)) = Cbvtype.unPair s1.t_type in
-      Cbvtype.unify_exn x t.t_type;
+      let (a, (x0, x1)) = Cbvtype.unPair s1.t_type in
+      let xi = List.nth_exn [x0; x1] i in
+      Cbvtype.unify_exn xi t.t_type;
       Basetype.unify_exn t.t_ann s1.t_ann;
       { t with
-        t_desc = Fst(as1);
+        t_desc = Proj(as1, i);
         t_context = as1.t_context
       },
       [ { lower = Basetype.unitB;
           upper = a;
-          reason = "fst: one pair copy"
-        }
-      ] @ cs1
-    | Snd(s1) ->
-      let as1, cs1 = constraints s1 in
-      let (a, (_, y)) = Cbvtype.unPair s1.t_type in
-      Cbvtype.unify_exn y t.t_type;
-      Basetype.unify_exn t.t_ann s1.t_ann;
-      { t with
-        t_desc = Snd(as1);
-        t_context = as1.t_context
-      },
-      [ { lower = Basetype.unitB;
-          upper = a;
-          reason = "snd: one pair copy"
+          reason = "proj: one pair copy"
         }
       ] @ cs1
     | App(s1, s2) ->
@@ -427,7 +406,7 @@ let infer_annotations (t: Cbvterm.t) : Cbvterm.t =
         }
       ]
       @ context_cs @ cs1
-    | Ifz(sc, st, sf) ->
+    | If(sc, st, sf) ->
       let asc, csc = constraints sc in
       let ast, cst = constraints st in
       let asf, csf = constraints sf in
@@ -479,7 +458,7 @@ let infer_annotations (t: Cbvterm.t) : Cbvterm.t =
       let y, csy = join st.t_type sf.t_type in
       Cbvtype.unify_exn t.t_type y;
       { t with
-        t_desc = Ifz(asc, ast, asf);
+        t_desc = If(asc, ast, asf);
         t_context = asc.t_context @ ast.t_context @ asf.t_context
       },
       [ { lower = Basetype.newty

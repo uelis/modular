@@ -9,9 +9,8 @@ type ('a, 'b) sgn =
   | Fun of (Ident.t * 'b) * 'a
   | App of 'a * 'a
   | Pair of 'a * 'a
-  | Fst of 'a
-  | Snd of 'a
-  | Ifz of 'a * 'a * 'a
+  | Proj of 'a * int
+  | If of 'a * 'a * 'a
   | Fix of (Basetype.t * Ident.t * Ident.t * 'b) * 'a
   | Tailfix of (Basetype.t * Ident.t * Ident.t * 'b) * 'a
 
