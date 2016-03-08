@@ -95,14 +95,12 @@ let success_tests = files_in_dir "Tests" ".cbv"
 let fail_tests = files_in_dir "Tests/Should_fail" ".cbv"
 
 let suite =
-  "success tests" >::: (success_tests |> List.map ~f:test_of_file)
-     (*
   "modular tests" >:::
     ["success tests" >:::
      (success_tests |> List.map ~f:test_of_file);
      "fail tests" >:::
      (fail_tests |> List.map ~f:test_fail_file)
-     ]*)
+     ]
 
 let () =
   run_test_tt_main suite
