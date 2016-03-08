@@ -73,6 +73,7 @@ module Basetype = Uftype.Make(Sig)
 include Basetype
 
 let unitB = newty (TupleB [])
+let intB = newty IntB
 let pairB a b = newty (TupleB [a; b])
 
 module Data =

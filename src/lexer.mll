@@ -36,6 +36,7 @@ rule main = parse
   | ','          { COMMA }
   | "λ"          { LAMBDA }
   | '\\'         { LAMBDA }
+  | "fun"        { LAMBDA }
   | '+'          { PLUS }
   | '-'          { MINUS }
   | '*'          { STAR }

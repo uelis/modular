@@ -210,18 +210,19 @@ let fprint_letbndgs (oc: Out_channel.t) (bndgs: let_bindings) : unit =
         Out_channel.output_string oc "\n"
     )
 
+let param_string (labels: Ident.t list) (types: Basetype.t list) : string =
+  List.zip_exn labels types
+  |> List.map ~f:(fun (l, t) ->
+    Printf.sprintf "%s : %s"
+      (Ident.to_string l)
+      (Printing.string_of_basetype t))
+  |> String.concat ~sep:", "
+
 let fprint_block (oc: Out_channel.t) (b: block) : unit =
-  let param_string labels types =
-    List.zip_exn labels types
-    |> List.map ~f:(fun (l, t) ->
-        Printf.sprintf "%s : %s"
-          (Ident.to_string l)
-          (Printing.string_of_basetype t))
-    |> String.concat ~sep:", " in
   let rec fprint_values oc values =
     match values with
     | [] -> ()
-    | v::vs ->
+    | v :: vs ->
       fprint_value oc v;
       if vs <> [] then Printf.fprintf oc ", ";
       fprint_values oc vs in
@@ -262,12 +263,13 @@ let fprint_block (oc: Out_channel.t) (b: block) : unit =
       Printf.fprintf oc "\n"
 
 let fprint_func (oc: Out_channel.t) (func: t) : unit =
-  Printf.fprintf oc "%s(x: %s) : %s = l%s(x)\n\n"
+  let xs = List.map func.entry_label.arg_types ~f:(fun _ -> Ident.fresh "x") in
+  Printf.fprintf oc "%s(%s) : %s = l%s(%s)\n\n"
     func.func_name
-    "TODO"
-    (* (Printing.string_of_basetype func.entry_label.arg_types) *)
+    (param_string xs func.entry_label.arg_types)
     (Printing.string_of_basetype func.return_type)
-    (Ident.to_string func.entry_label.name);
+    (Ident.to_string func.entry_label.name)
+    (String.concat ~sep:", " (List.map xs ~f:Ident.to_string));
   List.iter func.blocks
     ~f:(fun block ->
       fprint_block oc block;
@@ -346,7 +348,7 @@ let rec typeof_value
   | Undef(a) ->
     a
   | IntConst(_) ->
-    newty IntB
+    intB
 
 let typecheck_term
       (gamma: Basetype.t Typing.context)
@@ -375,21 +377,18 @@ let typecheck_term
   | Const(Cintor, v)
   | Const(Cintxor, v) ->
     let b = typeof_value gamma v in
-    let intty = newty IntB in
-    equals_exn b (newty (TupleB [intty; intty]));
-    equals_exn a intty
+    equals_exn b (newty (TupleB [intB; intB]));
+    equals_exn a intB
   | Const(Cinteq, v)
   | Const(Cintlt, v)
   | Const(Cintslt, v) ->
     let b = typeof_value gamma v in
-    let intty = newty IntB in
     let boolty = Basetype.newty (Basetype.DataB(Basetype.Data.boolid, [])) in
-    equals_exn b (newty (TupleB [intty; intty]));
+    equals_exn b (newty (TupleB [intB; intB]));
     equals_exn a boolty
   | Const(Cintprint, v) ->
     let b = typeof_value gamma v in
-    let intty = newty IntB in
-    equals_exn b intty;
+    equals_exn b intB;
     equals_exn a unitB
   | Const(Cgcalloc(b), v)
   | Const(Calloc(b), v) ->

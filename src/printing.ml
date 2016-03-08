@@ -40,11 +40,11 @@ let string_of_basetype (ty: Basetype.t): string =
       | `Summand ->
         begin
           match case t with
-          | Var -> s `Factor
+          | Var -> s `Atom
           | Sgn st ->
             begin match st with
             | DataB(id, [t1; t2]) when id = Data.sumid 2 ->
-              Printf.sprintf "%s + %s" (str t1 `Summand) (str t2 `Factor)
+              Printf.sprintf "%s + %s" (str t1 `Summand) (str t2 `Atom)
             | DataB(id, []) when id = Data.sumid 0 -> "void"
             | DataB(id, []) -> id
             | DataB(id, ls) ->
@@ -59,21 +59,11 @@ let string_of_basetype (ty: Basetype.t): string =
                 Printf.sprintf "%s<%s>" id
                   (List.map ls ~f:(fun t2 -> str t2 `Summand)
                    |> String.concat ~sep:", ")
-            | TupleB _ | IntB | BoxB _ ->
-              s `Factor
-            end
-        end
-      | `Factor ->
-        begin
-          match case t with
-          | Var -> s `Atom
-          | Sgn st ->
-            begin
-              match st with
-              | TupleB(ts) -> String.concat ~sep:" * "
-                                (List.map ~f:(fun t -> str t `Atom) ts)
-              | DataB _ | IntB | BoxB _ ->
-                s `Atom
+            | TupleB([])  -> Printf.sprintf "()"
+            | TupleB(ts) -> String.concat ~sep:" * "
+                              (List.map ~f:(fun t -> str t `Atom) ts)
+            | IntB | BoxB _ ->
+              s `Atom
             end
         end
       | `Atom ->

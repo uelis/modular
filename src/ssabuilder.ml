@@ -91,7 +91,7 @@ let unit : value =
 
 let intconst (i: int) =
   Ssa.IntConst(i),
-  Basetype.newty (Basetype.IntB)
+  Basetype.intB
 
 let boolconst (b: bool) =
   let i = if b then 0 else 1 in
@@ -103,12 +103,9 @@ let primop (c: Ssa.op_const) (v: value) : value =
   let prim = Ident.fresh "prim" in
   let vb =
     let open Basetype in
-    let equals_exn a b =
-      if equals a b then () else
-        failwith "internal translate.ml: type mismatch" in
     match c with
     | Ssa.Cprint(_) ->
-       Basetype.unitB
+      Basetype.unitB
     | Ssa.Cintadd
     | Ssa.Cintsub
     | Ssa.Cintmul
@@ -119,72 +116,45 @@ let primop (c: Ssa.op_const) (v: value) : value =
     | Ssa.Cintand
     | Ssa.Cintor
     | Ssa.Cintxor ->
-       let intty = newty IntB in
-       equals_exn va (pairB intty intty);
-       intty
+      assert (equals va (pairB intB intB));
+      intB
     | Ssa.Cinteq
     | Ssa.Cintlt
     | Ssa.Cintslt ->
-       let intty = newty IntB in
-       let boolty = newty (DataB(Data.boolid, [])) in
-       equals_exn va (pairB intty intty);
-       boolty
+      assert (equals va (pairB intB intB));
+      Basetype.boolB
     | Ssa.Cintprint ->
-       let intty = newty IntB in
-       equals_exn va intty;
-       unitB
+      assert (equals va intB);
+      unitB
     | Ssa.Cgcalloc(b)
     | Ssa.Calloc(b) ->
-       equals_exn va unitB;
-       newty (BoxB b)
+      assert (equals va unitB);
+      newty (BoxB b)
     | Ssa.Cfree(b) ->
-       equals_exn va (newty (BoxB b));
-       unitB
+      assert (equals va (newty (BoxB b)));
+      unitB
     | Ssa.Cload(b) ->
-       equals_exn va (newty (BoxB b));
-       b
+      assert (equals va (newty (BoxB b)));
+      b
     | Ssa.Cstore(b) ->
-       equals_exn va (pairB (newty (BoxB b)) b);
-       unitB
+      assert (equals va (pairB (newty (BoxB b)) b));
+      unitB
     | Ssa.Cpush(b) ->
-       equals_exn va b;
-       unitB
+      assert (equals va b);
+      unitB
     | Ssa.Cpop(b) ->
-       equals_exn va unitB;
-       b
+      assert (equals va unitB);
+      b
     | Ssa.Ccall(_, b1, b2) ->
-       equals_exn va b1;
-       b2 in
+      assert (equals va b1);
+      b2 in
   emit (Ssa.Let((prim, vb), Ssa.Const(c, vv)));
   Ssa.Var prim, vb
 
-let proj (v: value) (i: int) : value =
-  let vv, va = v in
-  let bs = unTupleB va in
-  match vv with
-  | Ssa.Tuple vs -> List.nth_exn vs i, List.nth_exn bs i
-  | _ -> Ssa.Proj(vv, i, bs), List.nth_exn bs i
-
-let fst (v: value) : value = proj v 0
-let snd (v: value) : value = proj v 1
-
-let unpair (v: value) : value * value =
-  let vv, va = v in
-  let a1, a2 = unPairB va in
-  match vv with
-  | Ssa.Tuple [v1; v2] -> (v1, a1), (v2, a2)
-  | _ -> (Ssa.Proj(vv, 0, [a1; a2]), a1), (Ssa.Proj(vv, 1, [a1; a2]), a2)
-
-let pair (v1: value) (v2: value) : value =
-  let vv1, va1 = v1 in
-  let vv2, va2 = v2 in
-  match vv1, vv2 with
-  | Ssa.Proj(x, 0, [b1; b2]), Ssa.Proj(y, 1, _) when x = y ->
-    x,
-    Basetype.pairB va1 va2
-  | _ ->
-    Ssa.Tuple [vv1; vv2],
-    Basetype.pairB va1 va2
+let tuple (vs: value list) : value =
+  let values, types = List.unzip vs in
+  Ssa.Tuple values,
+  Basetype.newty (Basetype.TupleB types)
 
 let untuple (v: value) : value list =
   let vv, vb = v in
@@ -193,10 +163,20 @@ let untuple (v: value) : value list =
   | Ssa.Tuple vs -> List.zip_exn vs bs
   | _ -> List.mapi bs ~f:(fun i bi -> Ssa.Proj(vv, i, bs), bi)
 
-let tuple (vs: value list) : value =
-  let values, types = List.unzip vs in
-  Ssa.Tuple values,
-  Basetype.newty (Basetype.TupleB types)
+let pair (v1: value) (v2: value) : value =
+  tuple [v1; v2]
+
+let unpair (v: value) : value * value =
+  match untuple v with
+  | [v1; v2] -> v1, v2
+  | _ -> assert false
+
+let proj (v: value) (i: int) : value =
+  let vv, va = v in
+  let bs = unTupleB va in
+  match vv with
+  | Ssa.Tuple vs -> List.nth_exn vs i, List.nth_exn bs i
+  | _ -> Ssa.Proj(vv, i, bs), List.nth_exn bs i
 
 let inj (i: int) (v: value) (data: Basetype.t) : value =
   let vv, _ = v in
@@ -361,7 +341,6 @@ let end_block_case (v: value) (targets: (value -> Ssa.label * (value list)) list
      List.iter branches
        ~f:(fun (_, _, dst) ->
            Ident.Table.add_multi predecessors ~key:dst.Ssa.name ~data:block)
-(* TODO: direkte Sprünge gleich an Vorgänger anhängen *)
 
 let end_block_return (v: value) : unit =
   let vv, va = v in

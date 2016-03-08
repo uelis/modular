@@ -220,7 +220,6 @@ let rec linearize (phi: Simpletype.t context) (t: Ast.t)
       subst = sigma
     }
   | Ast.Tailfix(f, x, s) ->
-    (* TODO: verify that f appears in tail position *)
     let alpha = Simpletype.newvar() in
     let beta = Simpletype.newvar() in
     let sl = linearize ((f, alpha) :: (x, beta) :: phi) s in
