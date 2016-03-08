@@ -267,9 +267,9 @@ let main =
                         clevel (level + 1, (red, (green, (blue,
                                (colourfactor1, (rayBase1, rayDir1))))))
                     else
-                      let u1 = print (red* 256/ factor) in
-                      let u2 = print (green* 256/ factor) in
-                      print (blue* 256/ factor) in
+                      let u1 = if red < 0 then print 0 else print (red * 256/ factor) in
+                      let u2 = if green < 0 then print 0 else print (green * 256/ factor) in
+                      if blue < 0 then print 0 else print (blue * 256/ factor) in
               let u = clevel (0, (0, (0, (0, (factor, (rayBase, rayDir)))))) in
               cx (x+1)
             else
