@@ -84,7 +84,7 @@ struct
   type d = { name : Ident.t;
              params : t list;
              discriminated: bool;
-             constructors : (string * t) list }
+             constructors : (Ident.t * t) list }
 
   let datatypes = Ident.Table.create ()
   let boolid =
@@ -94,8 +94,8 @@ struct
       ~data:{ name = id;
               params = [];
               discriminated = true;
-              constructors = ["True", unitB;
-                              "False", unitB] };
+              constructors = [Ident.global "True", unitB;
+                              Ident.global "False", unitB] };
     id
 
   let sumid =
@@ -110,9 +110,9 @@ struct
         let constructors =
           List.map l
             ~f:(fun (i, alpha) ->
-              (if n = 2 && i = 0 then "Inl"
-               else if n = 2 && i = 1 then "Inr"
-               else Printf.sprintf "In_%i_%i" n i),
+              (if n = 2 && i = 0 then Ident.global "Inl"
+               else if n = 2 && i = 1 then Ident.global "Inr"
+               else Ident.global (Printf.sprintf "In_%i_%i" n i)),
               alpha) in
         let d = { name = name;
                   params = params;

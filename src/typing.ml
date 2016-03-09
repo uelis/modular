@@ -79,11 +79,9 @@ let solve_constraints (ineqs: lhd_constraint list) : unit =
                       (fun beta ->
                          if Basetype.equals beta alpha then sol else beta)
                   in
-                  Basetype.Data.add_constructor
-                    recty
-                    ((Ident.to_string recty) ^ "_" ^ (string_of_int i))
-                    params
-                    arg_type);
+                  let cname = (Ident.to_string recty) ^ "_" ^ (string_of_int i) in
+                  Basetype.Data.add_constructor recty
+                    (Ident.global cname) params arg_type);
             Printf.printf "Declaring type:\n  %s\n" (Printing.string_of_data recty);
             sol
           end

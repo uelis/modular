@@ -43,7 +43,7 @@ sig
   val constructor_count : id -> int
 
   (** Names of the constructors *)
-  val constructor_names : id -> string list
+  val constructor_names : id -> Ident.t list
 
   (** Given a name of a data type and a list of its type parameters,
       returns the types of the constructors of the type.
@@ -58,7 +58,7 @@ sig
   val is_discriminated: id -> bool
 
   (** Look up a constructor by name. *)
-  val find_constructor: string -> id * int
+  val find_constructor: Ident.t -> id * int
 
   (** Add a new data type, initially with no constructors. *)
   val make : id -> param_count:int -> discriminated:bool -> unit
@@ -77,7 +77,7 @@ sig
       - [params] is a list of type variables.
       - The free type variables in [a] are contained in [params].
   *)
-  val add_constructor : id -> string -> t list -> t -> unit
+  val add_constructor : id -> Ident.t -> t list -> t -> unit
 end
 
 val unitB : t

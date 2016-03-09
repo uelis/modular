@@ -139,8 +139,9 @@ let string_of_data id =
   Buffer.add_string buf " = ";
   Buffer.add_string buf
     (String.concat ~sep:" | "
-       (List.map ~f:(fun (n, t) ->
-          Printf.sprintf "%s of %s" n (string_of_basetype t)) cs));
+       (List.map cs ~f:(fun (n, t) ->
+            Printf.sprintf "%s of %s"
+              (Ident.to_string n) (string_of_basetype t))));
   Buffer.contents buf
 
 (** cbv types *)

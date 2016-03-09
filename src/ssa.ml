@@ -87,7 +87,7 @@ let rec fprint_value (oc: Out_channel.t) (v: value) : unit =
     Out_channel.output_string oc ")"
   | In((id, k, t), _) ->
     let cname = List.nth_exn (Basetype.Data.constructor_names id) k in
-    Out_channel.output_string oc cname;
+    Out_channel.output_string oc (Ident.to_string cname);
     Out_channel.output_string oc "(";
     fprint_value oc t;
     Out_channel.output_string oc ")"
@@ -249,7 +249,7 @@ let fprint_block (oc: Out_channel.t) (b: block) : unit =
       Printf.fprintf oc " of\n";
       List.iter2_exn constructor_names cases
         ~f:(fun cname (l, lb, lg) ->
-          Printf.fprintf oc "   | %s(%s) -> l%s(" cname
+          Printf.fprintf oc "   | %s(%s) -> l%s(" (Ident.to_string cname)
             (Ident.to_string l) (Ident.to_string lg.name);
           fprint_values oc lb;
           Printf.fprintf oc ")\n")
