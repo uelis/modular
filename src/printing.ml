@@ -104,6 +104,7 @@ let string_of_basetype (ty: Basetype.t): string =
       | `Atom, Sgn(IntB) -> "int"
       | `Atom, Sgn(BoxB(b)) ->  Printf.sprintf "box<%s>" (str b `Summand)
       | `Atom, Sgn(TupleB([])) -> "()"
+      | `Atom, Sgn(TupleB([t1])) -> str t1 `Atom
       | `Atom, Sgn(DataB _)
       | `Atom, Sgn(TupleB _) -> Printf.sprintf "(%s)" (s `Summand) in
     let tid = repr_id t in
