@@ -47,21 +47,19 @@ let compile (d: Decl.t) : unit =
     let f_name = Ident.to_string f in
     try
       let t = Typing.check_term ast in
-      Printf.printf "%s : %s%!\n"
-        (Ident.to_string f)
-        (Printing.string_of_cbvtype
-           ~concise:(not !Opts.print_type_details)
-           t.Cbvterm.t_type);
+      Printing.fprint_type Format.std_formatter
+        ~concise:(not !Opts.print_type_details)
+        f t.Cbvterm.t_type;
       if !Opts.print_annotated_term then
         Printing.fprint_annotated_term Format.std_formatter t;
       let ssa = Translate.to_ssa t in
-      if !Opts.verbose then
+      if !Opts.keep_ssa then
         Out_channel.with_file (f_name ^ ".ssa")
           ~f:(fun c -> Ssa.fprint_func c ssa);
       let ssa_traced = Trace.trace ssa in
       let ssa_shortcut = Trace.shortcut_jumps ssa_traced in
-      if !Opts.verbose then
-        Out_channel.with_file (f_name ^ ".opt.ssa")
+      if !Opts.keep_ssa then
+        Out_channel.with_file (f_name ^ ".simpl.ssa")
           ~f:(fun c -> Ssa.fprint_func c ssa_shortcut);
       let llvm_module = Llvmcodegen.llvm_compile ssa_shortcut in
       let target = Printf.sprintf "%s.bc" f_name in

@@ -82,7 +82,9 @@ let solve_constraints (ineqs: lhd_constraint list) : unit =
                   let cname = (Ident.to_string recty) ^ "_" ^ (string_of_int i) in
                   Basetype.Data.add_constructor recty
                     (Ident.global cname) params arg_type);
-            Printf.printf "Declaring type:\n  %s\n" (Printing.string_of_data recty);
+            if !Opts.verbose then
+              Printf.printf "Declaring type:\n  %s\n"
+                (Printing.string_of_data recty);
             sol
           end
         else

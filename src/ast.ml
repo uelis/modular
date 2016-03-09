@@ -35,16 +35,16 @@ and t_desc =
   | Fix of Ident.t * Ident.t * t
   | Tailfix of Ident.t * Ident.t * t
 
-let rec free_vars (term: t) : Ident.t list =
-  let abs x l = List.filter l ~f:(fun z -> not (z = x)) in
+let rec free_vars (term: t) : Ident.Set.t =
+  let abs x l = Ident.Set.remove l x in
   match term.desc with
-  | Const(_, ts) -> List.concat_map ~f:free_vars ts
-  | Var x -> [x]
+  | Const(_, ts) -> Ident.Set.union_list (List.map ~f:free_vars ts)
+  | Var x -> Ident.Set.singleton x
   | Fun(x, t) -> abs x (free_vars t)
-  | App(s, t) -> (free_vars s) @ (free_vars t)
-  | Pair(s, t) -> (free_vars s) @ (free_vars t)
+  | App(s, t) -> Ident.Set.union (free_vars s) (free_vars t)
+  | Pair(s, t) -> Ident.Set.union (free_vars s) (free_vars t)
   | Proj(t, _) -> free_vars t
-  | If(s, t1, t2) -> free_vars s @ free_vars t1 @ free_vars t2
+  | If(s, t1, t2) -> Ident.Set.union_list [free_vars s; free_vars t1; free_vars t2]
   | Fix(f, x, t) -> abs f (abs x (free_vars t))
   | Tailfix(f, x, t) -> abs f (abs x (free_vars t))
 
@@ -103,7 +103,7 @@ let substitute ?head:(head=false) (s: t) (x: Ident.t) (t: t) : t option =
     | _ -> assert false
   and abs_list sigma (l, t1) =
     if List.mem l x then (l, t1)
-    else if List.for_all l ~f:(fun y -> not (List.mem fvs y)) then
+    else if List.for_all l ~f:(fun y -> not (Ident.Set.mem fvs y)) then
       (* no capture *)
       (l, sub sigma t1)
     else

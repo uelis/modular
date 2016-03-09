@@ -12,4 +12,5 @@ val string_of_simpletype : Simpletype.t -> string
 val string_of_basetype : Basetype.t -> string
 val string_of_cbvtype : ?concise:bool -> Cbvtype.t -> string
 
+val fprint_type : ?concise:bool -> Format.formatter -> Ident.t -> Cbvtype.t -> unit
 val fprint_annotated_term: Format.formatter -> Cbvterm.t -> unit

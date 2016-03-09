@@ -165,8 +165,8 @@ let string_of_cbvtype ?concise:(concise=true) (ty: Cbvtype.t): string =
       | `Type, Sgn(Pair(c1, (t1, t2))) ->
         Printf.sprintf "%s[%s]%s(%s * %s)" ansi_cyan (string_of_basetype c1)
           ansi_defaultcolor (str t1 `Atom) (str t2 `Atom)
-      | `Type, Sgn(Fun(c1, (t1, a1, b1, t2))) when concise ->
-        Printf.sprintf "%s -> %s" (str t1 `Atom) (str t2 `Type)
+(*      | `Type, Sgn(Fun(c1, (t1, a1, b1, t2))) when concise ->
+        Printf.sprintf "%s -> %s" (str t1 `Atom) (str t2 `Type)*)
       | `Type, Sgn(Fun(c1, (t1, a1, b1, t2))) ->
         Printf.sprintf "%s[%s]%s(%s -%s{%s, %s}%s-> %s)"
           ansi_cyan (string_of_basetype c1)
@@ -199,8 +199,55 @@ let string_of_cbvtype ?concise:(concise=true) (ty: Cbvtype.t): string =
         s l in
   str ty `Type
 
+let rec datatypes_in_basetype (a: Basetype.t) : Ident.Set.t  =
+  let open Basetype in
+  match case a with
+  | Var
+  | Sgn(IntB) -> Ident.Set.empty
+  | Sgn(BoxB(b)) -> datatypes_in_basetype b
+  | Sgn(TupleB(bs)) ->
+    Ident.Set.union_list (List.map bs ~f:datatypes_in_basetype)
+  | Sgn(DataB(id, params)) ->
+    let ds = Ident.Set.union_list (List.map params ~f:datatypes_in_basetype) in
+    Ident.Set.add ds id
 
-(** Printing of terms with type annotations x*)
+let rec datatypes_in_cbvtype ?concise:(concise=true)
+    (a: Cbvtype.t) : Ident.Set.t =
+  let open Cbvtype in
+  match case a with
+  | Var -> Ident.Set.empty
+  | Sgn(Bool _) when concise -> Ident.Set.empty
+  | Sgn(Bool c) -> datatypes_in_basetype c
+  | Sgn(Nat _) when concise -> Ident.Set.empty
+  | Sgn(Nat c) -> datatypes_in_basetype c
+  | Sgn(Pair(_, (t1, t2))) when concise ->
+    Ident.Set.union (datatypes_in_cbvtype t1) (datatypes_in_cbvtype t2)
+  | Sgn(Pair(c1, (t1, t2))) ->
+    Ident.Set.union_list
+      [datatypes_in_basetype c1; datatypes_in_cbvtype t1; datatypes_in_cbvtype t2]
+  | Sgn(Fun(c1, (t1, a1, b1, t2))) ->
+    Ident.Set.union_list
+      [datatypes_in_basetype c1; datatypes_in_basetype a1;
+       datatypes_in_basetype b1; datatypes_in_cbvtype t1;
+       datatypes_in_cbvtype t2]
+
+let rec fprint_type ?concise:(concise=true)
+    (f: Format.formatter) (x: Ident.t) (a: Cbvtype.t) : unit =
+  let open Format in
+  fprintf f "@[<hv 1>%s : %s@;" (Ident.to_string x)
+    (string_of_cbvtype ~concise:concise a);
+  let ds = datatypes_in_cbvtype ~concise:concise a in
+  if not (Ident.Set.is_empty ds) then
+    begin
+      fprintf f "@[<hv 1>where@;";
+      Ident.Set.iter ds
+        ~f:(fun id -> Format.fprintf f "%s@;" (string_of_data id));
+      fprintf f "@]"
+    end;
+  fprintf f "@]\n"
+
+
+(** Printing of terms with type annotations *)
 
 let fprint_annotated_term (f: Format.formatter) (term: Cbvterm.t) : unit =
   let open Cbvterm in
