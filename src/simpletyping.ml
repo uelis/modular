@@ -15,8 +15,8 @@ let eq_constraint t ~expected:expected_ty ~actual:actual_ty =
   | Uftype.Constructor_mismatch ->
     let msg = Printf.sprintf
                 "Term has type %s, but a term of type %s is expected."
-                (Simpletype.to_string actual_ty)
-                (Simpletype.to_string expected_ty) in
+                (Printing.string_of_simpletype actual_ty)
+                (Printing.string_of_simpletype expected_ty) in
     raise (Typing_error(Some t.Ast.loc, msg))
 
 (* Invariant: All variables defined in subst have a free occurrence

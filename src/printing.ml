@@ -1,7 +1,23 @@
 open Core_kernel.Std
-(** Printing of terms and types *)
+(** Conversion to strings for printing on an ansi terminal *)
+
+let ansi_cyan = "\027[36m"
+let ansi_defaultcolor = "\027[39m"
+
+(** Printing state *)
 
 let name_counter = ref 0
+(* tables of already chosen variable names *)
+let simpletype_names = Int.Table.create ()
+let basetype_names = Int.Table.create ()
+let cbvtype_names = Int.Table.create ()
+
+(* Reset printing state *)
+let reset () =
+  name_counter := 0;
+  Int.Table.clear simpletype_names;
+  Int.Table.clear basetype_names;
+  Int.Table.clear cbvtype_names
 
 let new_name () =
   let i = !name_counter in
@@ -13,20 +29,53 @@ let new_name () =
   else
     Printf.sprintf "%c%i" c n;;
 
-let reset_names () =
-  name_counter := 0
+let get_name (table: string Int.Table.t) (id: int) : string =
+  Int.Table.find_or_add table id ~default:new_name
+
+
+(** Simple types *)
+
+let name_of_simpletype_var t = get_name simpletype_names (Simpletype.repr_id t)
+
+let string_of_simpletype (ty: Simpletype.t): string =
+  let open Simpletype in
+  let cycle_nodes =
+    let cycles = dfs_cycles ty |> List.map ~f:repr_id in
+    List.fold cycles ~init:Int.Set.empty ~f:Int.Set.add in
+  let strs = Int.Table.create () in
+  let rec str (t: t) l =
+    let rec s l =
+      match l, case t with
+      | `Type, Var -> s `Atom
+      | `Type, Sgn(Pair(t1, t2)) -> Printf.sprintf "%s * %s"
+                                      (str t1 `Atom) (str t2 `Atom)
+      | `Type, Sgn(Fun(t1, t2)) -> Printf.sprintf "%s -> %s"
+                                     (str t1 `Atom) (str t2 `Type)
+      | `Type, Sgn(Bool)
+      | `Type, Sgn(Nat) -> s `Atom
+      | `Atom, Var -> "\'" ^ (name_of_simpletype_var t)
+      | `Atom, Sgn(Bool) -> "bool"
+      | `Atom, Sgn(Nat) -> "nat"
+      | `Atom, Sgn(Pair _)
+      | `Atom, Sgn(Fun _) -> Printf.sprintf "(%s)" (s `Type) in
+    let tid = repr_id t in
+    match Int.Table.find strs tid with
+    | Some s -> s
+    | None ->
+      if Int.Set.mem cycle_nodes tid then
+        let alpha = "''" ^ (name_of_simpletype_var (newvar())) in
+        Int.Table.set strs ~key:tid ~data:alpha;
+        let s = "(rec " ^ alpha ^ ". " ^ (s l) ^ ")" in
+        Int.Table.set strs ~key:tid ~data:s;
+        s
+      else
+        s l in
+  str ty `Type
+
 
 (** Base types *)
 
-let name_base_table = Int.Table.create ()
-let name_of_basetypevar t =
-  match Int.Table.find name_base_table (Basetype.repr_id t) with
-  | Some name -> name
-  | None ->
-    let name = new_name() in
-    Int.Table.add_exn name_base_table
-      ~key:(Basetype.repr_id t) ~data:name;
-    name
+let name_of_basetype_var t = get_name basetype_names (Basetype.repr_id t)
 
 let string_of_basetype (ty: Basetype.t): string =
   let open Basetype in
@@ -36,56 +85,33 @@ let string_of_basetype (ty: Basetype.t): string =
   let strs = Int.Table.create () in
   let rec str (t: Basetype.t) l =
     let rec s l =
-      match l with
-      | `Summand ->
-        begin
-          match case t with
-          | Var -> s `Atom
-          | Sgn st ->
-            begin match st with
-            | DataB(id, [t1; t2]) when id = Data.sumid 2 ->
-              Printf.sprintf "%s + %s" (str t1 `Summand) (str t2 `Atom)
-            | DataB(id, []) when id = Data.sumid 0 -> "void"
-            | DataB(id, []) -> id
-            | DataB(id, ls) ->
-              (*if not (Data.is_discriminated id || Data.is_recursive id) then
-                begin
-                  let cs = Data.constructor_types id ls in
-                  Printf.sprintf "union<%s>"
-                    (List.map cs ~f:(fun t2 -> str t2 `Summand)
-                     |> String.concat ~sep:", ")
-                end
-                else*)
-                Printf.sprintf "%s<%s>" id
-                  (List.map ls ~f:(fun t2 -> str t2 `Summand)
-                   |> String.concat ~sep:", ")
-            | TupleB([])  -> Printf.sprintf "()"
-            | TupleB(ts) -> String.concat ~sep:" * "
-                              (List.map ~f:(fun t -> str t `Atom) ts)
-            | IntB | BoxB _ ->
-              s `Atom
-            end
-        end
-      | `Atom ->
-        begin
-          match case t with
-          | Var -> "\'" ^ (name_of_basetypevar t)
-          | Sgn st ->
-            begin
-              match st with
-              | IntB -> "int"
-              | BoxB(b) -> Printf.sprintf "box<%s>" (str b `Atom)
-              | DataB _
-              | TupleB []  -> Printf.sprintf "()"
-              | TupleB _  -> Printf.sprintf "(%s)" (s `Summand)
-            end
-        end in
+      match l, case t with
+      | `Summand, Var -> s `Atom
+      | `Summand, Sgn(DataB(id, [])) when id = Data.sumid 0 -> "void"
+      | `Summand, Sgn(DataB(id, [t1; t2])) when id = Data.sumid 2 ->
+        Printf.sprintf "%s + %s" (str t1 `Summand) (str t2 `Atom)
+      | `Summand, Sgn(DataB(id, [])) -> id
+      | `Summand, Sgn(DataB(id, params)) ->
+        Printf.sprintf "%s<%s>" id
+          (List.map params ~f:(fun t2 -> str t2 `Summand)
+           |> String.concat ~sep:", ")
+      | `Summand, Sgn(TupleB([])) -> "()"
+      | `Summand, Sgn(TupleB(ts)) ->
+        String.concat ~sep:" * " (List.map ~f:(fun t -> str t `Atom) ts)
+      | `Summand, Sgn(IntB)
+      | `Summand, Sgn(BoxB _) -> s `Atom
+      | `Atom, Var -> "\'" ^ (name_of_basetype_var t)
+      | `Atom, Sgn(IntB) -> "int"
+      | `Atom, Sgn(BoxB(b)) ->  Printf.sprintf "box<%s>" (str b `Summand)
+      | `Atom, Sgn(TupleB([])) -> "()"
+      | `Atom, Sgn(DataB _)
+      | `Atom, Sgn(TupleB _) -> Printf.sprintf "(%s)" (s `Summand) in
     let tid = repr_id t in
     match Int.Table.find strs tid with
     | Some s -> s
     | None ->
       if Int.Set.mem cycle_nodes tid then
-        let alpha = "'" ^ (name_of_basetypevar (newvar())) in
+        let alpha = "'" ^ (name_of_basetype_var (newvar())) in
         Int.Table.set strs ~key:tid ~data:alpha;
         let s = "(rec " ^ alpha ^ ". " ^ (s l) ^ ")" in
         Int.Table.set strs ~key:tid ~data:s;
@@ -119,86 +145,45 @@ let string_of_data id =
 
 (** cbv types *)
 
-let name_cbv_table = Int.Table.create ()
-let name_of_cbvtypevar t =
-  match Int.Table.find name_cbv_table (Cbvtype.repr_id t) with
-  | Some name -> name
-  | None ->
-    let name = new_name() in
-    Int.Table.add_exn name_cbv_table ~key:(Cbvtype.repr_id t) ~data:name;
-    name
+let name_of_cbvtypevar t = get_name cbvtype_names (Cbvtype.repr_id t)
 
 let string_of_cbvtype ?concise:(concise=true) (ty: Cbvtype.t): string =
   let open Cbvtype in
-  let cyan = "\027[36m" in
-  let black = "\027[39m" in
   let cycle_nodes =
     let cycles = dfs_cycles ty |> List.map ~f:repr_id in
     List.fold cycles ~init:Int.Set.empty ~f:Int.Set.add in
   let strs = Int.Table.create () in
   let rec str (t: t) l =
     let rec s l =
-      match l with
-      | `Type ->
-        begin
-          match case t with
-          | Var -> s `Atom
-          | Sgn st ->
-            match st with
-            | Bool _
-            | Nat _ ->
-              s `Atom
-            | Pair(c1, (t1, t2)) ->
-              if not concise then
-                Printf.sprintf "%s[%s]%s(%s * %s)"
-                  cyan
-                  (string_of_basetype c1)
-                  black
-                  (str t1 `Atom)
-                  (str t2 `Atom)
-              else
-                Printf.sprintf "%s * %s" (str t1 `Atom) (str t2 `Atom)
-            | Fun(c1, (t1, a1, b1, t2)) ->
-              if not concise then
-                Printf.sprintf "%s[%s]%s(%s -%s{%s, %s}%s-> %s)"
-                  cyan
-                  (string_of_basetype c1)
-                  black
-                  (str t1 `Atom)
-                  cyan
-                  (string_of_basetype a1)
-                  (string_of_basetype b1)
-                  black
-                  (str t2 `Type)
-              else
-                Printf.sprintf "%s -> %s" (str t1 `Atom) (str t2 `Type)
-        end
-      | `Atom ->
-        begin
-          match case t with
-          | Var ->
-            "\'" ^ (name_of_cbvtypevar t)
-          | Sgn st ->
-            match st with
-            | Bool c ->
-              if not concise then
-                Printf.sprintf "bool%s[%s]%s"
-                  cyan
-                  (string_of_basetype c)
-                  black
-              else
-               "Nat"
-            | Nat c ->
-              if not concise then
-                Printf.sprintf "nat%s[%s]%s"
-                  cyan
-                  (string_of_basetype c)
-                  black
-              else
-                "Nat"
-            | Pair _
-            | Fun _ -> Printf.sprintf "(%s)" (s `Type)
-        end in
+      match l, case t with
+      | `Type, Var
+      | `Type, Sgn(Bool _)
+      | `Type, Sgn(Nat _) -> s `Atom
+      | `Type, Sgn(Pair(c1, (t1, t2))) when concise ->
+        Printf.sprintf "%s * %s" (str t1 `Atom) (str t2 `Atom)
+      | `Type, Sgn(Pair(c1, (t1, t2))) ->
+        Printf.sprintf "%s[%s]%s(%s * %s)" ansi_cyan (string_of_basetype c1)
+          ansi_defaultcolor (str t1 `Atom) (str t2 `Atom)
+      | `Type, Sgn(Fun(c1, (t1, a1, b1, t2))) when concise ->
+        Printf.sprintf "%s -> %s" (str t1 `Atom) (str t2 `Type)
+      | `Type, Sgn(Fun(c1, (t1, a1, b1, t2))) ->
+        Printf.sprintf "%s[%s]%s(%s -%s{%s, %s}%s-> %s)"
+          ansi_cyan (string_of_basetype c1)
+          ansi_defaultcolor (str t1 `Atom)
+          ansi_cyan (string_of_basetype a1) (string_of_basetype b1)
+          ansi_defaultcolor (str t2 `Type)
+      | `Atom, Var -> "\'" ^ (name_of_cbvtypevar t)
+      | `Atom, Sgn(Bool _) when concise -> "bool"
+      | `Atom, Sgn(Bool c) ->
+        Printf.sprintf "bool%s[%s]%s"
+          ansi_cyan (string_of_basetype c) ansi_defaultcolor
+      | `Atom, Sgn(Nat _) when concise -> "nat"
+      | `Atom, Sgn(Nat c) ->
+        Printf.sprintf "nat%s[%s]%s"
+          ansi_cyan (string_of_basetype c) ansi_defaultcolor
+      | `Atom, Sgn(Pair _)
+      | `Atom, Sgn(Fun _) ->
+        Printf.sprintf "(%s)" (s `Type) in
     let tid = repr_id t in
     match Int.Table.find strs tid with
     | Some s -> s
@@ -213,6 +198,8 @@ let string_of_cbvtype ?concise:(concise=true) (ty: Cbvtype.t): string =
         s l in
   str ty `Type
 
+
+(** Term printing *)
 
 let fprint_annotated_term (f: Format.formatter) (term: Cbvterm.t) : unit =
   let open Cbvterm in
@@ -319,10 +306,9 @@ let fprint_annotated_term (f: Format.formatter) (term: Cbvterm.t) : unit =
     match t.t_desc with
     | Var(x) ->
       fprintf f "%s" (Ident.to_string x)
-    | Const(Ast.Cboolconst(b), []) ->
-      if b then
+    | Const(Ast.Cboolconst(true), []) ->
         fprintf f "true"
-      else
+    | Const(Ast.Cboolconst(false), []) ->
         fprintf f "false"
     | Const(Ast.Cboolconst(_), _) -> assert false
     | Const(Ast.Cintconst(i), []) ->

@@ -48,7 +48,7 @@ let rec free_vars (term: t) : Ident.t list =
   | Fix(f, x, t) -> abs f (abs x (free_vars t))
   | Tailfix(f, x, t) -> abs f (abs x (free_vars t))
 
-(* Substitues [s] for [x].
+(** Substitues [s] for [x].
    Returns [None] if [t] does not contain [x].
    If [head] is true then only the head occurrence is subtituted.
 *)
