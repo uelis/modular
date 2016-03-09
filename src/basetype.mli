@@ -3,12 +3,12 @@
     This modules represents the first-order value types that
     are used in the low-level language.
 
-    {v A,B ::= 'a | 0 | int | unit | A x B | box<A> | data<A1,...,A_n>  v}
+    {v A,B ::= 'a | int | A1 * ... * An | box<A> | data<A1,...,A_n>  v}
 
     The type [box<A>] is intended to contain boxed values of type [A].
 
     Algebraic data types may be recursive, but each recursive occurrence
-    must appear boxed.
+    must appear under a box.
 *)
 
 open Core_kernel.Std
@@ -17,7 +17,7 @@ type 'a sgn =
   | IntB
   | BoxB of 'a
   | TupleB of 'a list
-  | DataB of string * 'a list
+  | DataB of Ident.t * 'a list
   [@@deriving sexp]
 
 include Uftype.S with type 'a Sgn.t = 'a sgn
@@ -27,17 +27,13 @@ include Uftype.S with type 'a Sgn.t = 'a sgn
 module Data:
 sig
   (** Data type names, e.g. "list" *)
-  type id = string
+  type id = Ident.t
 
   (** Name of the n-ary sum type *)
   val sumid : int -> id
 
   (** Name of the bool type *)
   val boolid : id
-
-  (** Generate a new data type name.
-      This is useful for generating types programmatically. *)
-  val fresh_id : string -> id
 
   (** Number of type parameters of a data type.
       For example, pair<'a,'b> has two parameters *)

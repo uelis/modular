@@ -90,9 +90,9 @@ let string_of_basetype (ty: Basetype.t): string =
       | `Summand, Sgn(DataB(id, [])) when id = Data.sumid 0 -> "void"
       | `Summand, Sgn(DataB(id, [t1; t2])) when id = Data.sumid 2 ->
         Printf.sprintf "%s + %s" (str t1 `Summand) (str t2 `Atom)
-      | `Summand, Sgn(DataB(id, [])) -> id
+      | `Summand, Sgn(DataB(id, [])) -> Ident.to_string id
       | `Summand, Sgn(DataB(id, params)) ->
-        Printf.sprintf "%s<%s>" id
+        Printf.sprintf "%s<%s>" (Ident.to_string id)
           (List.map params ~f:(fun t2 -> str t2 `Summand)
            |> String.concat ~sep:", ")
       | `Summand, Sgn(TupleB([])) -> "()"
@@ -129,7 +129,7 @@ let string_of_data id =
   let ctypes = Basetype.Data.constructor_types id params in
   let cs = List.zip_exn cnames ctypes in
   Buffer.add_string buf "type ";
-  Buffer.add_string buf name;
+  Buffer.add_string buf (Ident.to_string name);
   if (nparams > 0) then begin
     Buffer.add_string buf "<";
     Buffer.add_string buf (String.concat ~sep:","
@@ -199,7 +199,7 @@ let string_of_cbvtype ?concise:(concise=true) (ty: Cbvtype.t): string =
   str ty `Type
 
 
-(** Term printing *)
+(** Printing of terms with type annotations x*)
 
 let fprint_annotated_term (f: Format.formatter) (term: Cbvterm.t) : unit =
   let open Cbvterm in

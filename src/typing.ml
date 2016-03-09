@@ -61,7 +61,7 @@ let solve_constraints (ineqs: lhd_constraint list) : unit =
       let sol =
         if List.length xs > 1 || constraint_recursive then
           begin
-            let recty = Basetype.Data.fresh_id "conty" in
+            let recty = Ident.fresh "conty" in
             let params = List.filter fv_unique
                 ~f:(fun beta -> not (Basetype.equals beta alpha)) in
             let n = List.length params in
@@ -81,7 +81,7 @@ let solve_constraints (ineqs: lhd_constraint list) : unit =
                   in
                   Basetype.Data.add_constructor
                     recty
-                    (recty ^ "_" ^ (string_of_int i))
+                    ((Ident.to_string recty) ^ "_" ^ (string_of_int i))
                     params
                     arg_type);
             Printf.printf "Declaring type:\n  %s\n" (Printing.string_of_data recty);

@@ -1,21 +1,20 @@
 (** Variable names *)
 
 open Core_kernel.Std
-    
+
 module T = struct
   type t = {
     name: string;
     index: int
-  }  
-  [@@deriving sexp]
+  } [@@deriving sexp]
 
-  let compare (x: t) (y: t): int =   
+  let compare (x: t) (y: t): int =
     let i = String.compare x.name y.name in
     if i = 0 then Int.compare x.index y.index else i
 
   let hash (x: t) : int =
     String.hash x.name lxor x.index
-end 
+end
 
 include T
 include Comparable.Make(T)

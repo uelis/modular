@@ -4,7 +4,7 @@ type 'a sgn =
   | IntB
   | BoxB of 'a
   | TupleB of 'a list
-  | DataB of string * 'a list
+  | DataB of Ident.t * 'a list
   [@@deriving sexp]
 
 module Sig = struct
@@ -78,24 +78,25 @@ let pairB a b = newty (TupleB [a; b])
 
 module Data =
 struct
-  type id = string
+  type id = Ident.t
 
   (* Type variables in the params list must remain private to this module *)
-  type d = { name : string;
+  type d = { name : Ident.t;
              params : t list;
              discriminated: bool;
              constructors : (string * t) list }
 
-  let datatypes = String.Table.create ()
+  let datatypes = Ident.Table.create ()
   let boolid =
-    String.Table.set datatypes
-      ~key:"bool"
-      ~data:{ name = "bool";
+    let id = Ident.global "bool" in
+    Ident.Table.set datatypes
+      ~key:id
+      ~data:{ name = id;
               params = [];
               discriminated = true;
               constructors = ["True", unitB;
                               "False", unitB] };
-    "bool"
+    id
 
   let sumid =
     let sumtypes = Int.Table.create () in
@@ -103,7 +104,7 @@ struct
       match Int.Table.find sumtypes n with
       | Some id -> id
       | None ->
-        let name = "sum" ^ (string_of_int n) in
+        let name = Ident.global ("sum" ^ (string_of_int n)) in
         let l = List.init n ~f:(fun i -> i, newvar()) in
         let params = List.map ~f:snd l in
         let constructors =
@@ -117,32 +118,28 @@ struct
                   params = params;
                   discriminated = true;
                   constructors = constructors } in
-        String.Table.set datatypes ~key:name ~data:d;
+        Ident.Table.set datatypes ~key:name ~data:d;
         Int.Table.set sumtypes ~key:n ~data:name;
         name
-
-  let fresh_id basename =
-    let used_names = String.Table.keys datatypes in
-    Vargen.mkVarGenerator basename ~avoid:used_names ()
 
   (* declare nullary and binary sums by default;
      all others are declared on demand *)
   let _ = ignore (sumid 0); ignore (sumid 2)
 
-  let param_count id = List.length (String.Table.find_exn datatypes id).params
+  let param_count id = List.length (Ident.Table.find_exn datatypes id).params
 
   let constructor_count id =
-    let cs = (String.Table.find_exn datatypes id).constructors in
+    let cs = (Ident.Table.find_exn datatypes id).constructors in
       List.length cs
 
   let constructor_names id =
-    let cs = (String.Table.find_exn datatypes id).constructors in
+    let cs = (Ident.Table.find_exn datatypes id).constructors in
       List.map cs ~f:fst
 
   let constructor_types id newparams =
-    let cs = (String.Table.find_exn datatypes id).constructors in
+    let cs = (Ident.Table.find_exn datatypes id).constructors in
     let ts = List.map cs ~f:snd in
-    let ps = (String.Table.find_exn datatypes id).params in
+    let ps = (Ident.Table.find_exn datatypes id).params in
     assert (List.length ps = List.length newparams);
     let param_subst alpha =
       let l = List.zip_exn ps newparams in
@@ -151,7 +148,7 @@ struct
     List.map ~f:(fun a -> subst a param_subst) ts
 
   let is_discriminated id =
-    (String.Table.find_exn datatypes id).discriminated
+    (Ident.Table.find_exn datatypes id).discriminated
 
   let is_recursive id =
     let rec check_rec a =
@@ -174,7 +171,7 @@ struct
 
   let find_constructor name =
     try
-      String.Table.iteri datatypes
+      Ident.Table.iteri datatypes
         ~f:(fun ~key:id ~data:d ->
           Array.of_list d.constructors
           |> Array.iteri ~f:(fun i (cname, _) ->
@@ -184,7 +181,7 @@ struct
     with Found (id, i) -> id, i
 
   let make name ~param_count:nparams ~discriminated:discriminated =
-    String.Table.set datatypes ~key:name
+    Ident.Table.set datatypes ~key:name
       ~data:{ name = name;
               (* (these type variables must remain private) *)
               params = List.init nparams ~f:(fun _ -> newvar ());
@@ -245,7 +242,7 @@ struct
       |> Option.value ~default:alpha in
     let argtype' = subst argtype param_subst in
     let d' = { d with constructors = d.constructors @ [name, argtype'] } in
-    String.Table.set datatypes ~key:id ~data:d'
+    Ident.Table.set datatypes ~key:id ~data:d'
 end
 
 let boolB = newty (DataB(Data.boolid, []))

@@ -6,7 +6,7 @@ val reset : unit -> unit
 
 (** Returns a string representation of the data type with the given
     name. *)
-val string_of_data : string -> string
+val string_of_data : Ident.t -> string
 
 val string_of_simpletype : Simpletype.t -> string
 val string_of_basetype : Basetype.t -> string
