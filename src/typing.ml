@@ -83,8 +83,7 @@ let solve_constraints (ineqs: lhd_constraint list) : unit =
                   Basetype.Data.add_constructor recty
                     (Ident.global cname) params arg_type);
             if !Opts.verbose then
-              Printf.printf "Declaring type:\n  %s\n"
-                (Printing.string_of_data recty);
+              Printf.printf "Declaring type:\n%s\n" (Printing.string_of_data recty);
             sol
           end
         else

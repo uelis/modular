@@ -120,28 +120,35 @@ let string_of_basetype (ty: Basetype.t): string =
         s l in
   str ty `Summand
 
-let string_of_data id =
-  let buf = Buffer.create 80 in
-  let name = id in
+let fprint_data (f: Format.formatter) id =
+  let open Format in
   let cnames = Basetype.Data.constructor_names id in
   let nparams = Basetype.Data.param_count id in
   let params = List.init nparams ~f:(fun _ -> Basetype.newvar()) in
   let ctypes = Basetype.Data.constructor_types id params in
   let cs = List.zip_exn cnames ctypes in
-  Buffer.add_string buf "type ";
-  Buffer.add_string buf (Ident.to_string name);
+  if Basetype.Data.is_discriminated id then
+    fprintf f "@[<hv 2>type %s" (Ident.to_string id)
+  else
+    fprintf f "@[<hv 2>union %s" (Ident.to_string id);
   if (nparams > 0) then begin
-    Buffer.add_string buf "<";
-    Buffer.add_string buf (String.concat ~sep:","
-                             (List.map ~f:string_of_basetype params));
-    Buffer.add_string buf ">";
+    fprintf f "<%s>"
+      (String.concat ~sep:"," (List.map ~f:string_of_basetype params))
   end;
-  Buffer.add_string buf " = ";
-  Buffer.add_string buf
-    (String.concat ~sep:" | "
-       (List.map cs ~f:(fun (n, t) ->
-            Printf.sprintf "%s of %s"
-              (Ident.to_string n) (string_of_basetype t))));
+  fprintf f " =";
+  print_break 1 2;
+  let first = ref true in
+  List.iter cs ~f:(fun (n, t) ->
+    if not !first then fprintf f "@ | ";
+    fprintf f "%s of %s" (Ident.to_string n) (string_of_basetype t);
+    first := false);
+  fprintf f "@]"
+
+let string_of_data id =
+  let buf = Buffer.create 80 in
+  let f = Format.formatter_of_buffer buf in
+  fprint_data f id;
+  Format.pp_print_flush f ();
   Buffer.contents buf
 
 (** cbv types *)
@@ -224,27 +231,30 @@ let rec datatypes_in_cbvtype ?concise:(concise=true)
     Ident.Set.union (datatypes_in_cbvtype t1) (datatypes_in_cbvtype t2)
   | Sgn(Pair(c1, (t1, t2))) ->
     Ident.Set.union_list
-      [datatypes_in_basetype c1; datatypes_in_cbvtype t1; datatypes_in_cbvtype t2]
+      [datatypes_in_basetype c1;
+       datatypes_in_cbvtype ~concise:concise t1;
+       datatypes_in_cbvtype ~concise:concise t2]
   | Sgn(Fun(c1, (t1, a1, b1, t2))) ->
     Ident.Set.union_list
       [datatypes_in_basetype c1; datatypes_in_basetype a1;
-       datatypes_in_basetype b1; datatypes_in_cbvtype t1;
-       datatypes_in_cbvtype t2]
+       datatypes_in_basetype b1;
+       datatypes_in_cbvtype ~concise:concise t1;
+       datatypes_in_cbvtype ~concise:concise t2]
 
 let rec fprint_type ?concise:(concise=true)
     (f: Format.formatter) (x: Ident.t) (a: Cbvtype.t) : unit =
   let open Format in
-  fprintf f "@[<hv 1>%s : %s@;" (Ident.to_string x)
+  fprintf f "@[<hv 2>%s : %s" (Ident.to_string x)
     (string_of_cbvtype ~concise:concise a);
   let ds = datatypes_in_cbvtype ~concise:concise a in
   if not (Ident.Set.is_empty ds) then
     begin
-      fprintf f "@[<hv 1>where@;";
+      fprintf f "@[<hv 2>where";
       Ident.Set.iter ds
-        ~f:(fun id -> Format.fprintf f "%s@;" (string_of_data id));
-      fprintf f "@]"
+        ~f:(fun id -> fprintf f "@;"; fprint_data f id);
+      fprintf f "@]@;"
     end;
-  fprintf f "@]\n"
+  fprintf f "@]@."
 
 
 (** Printing of terms with type annotations *)
