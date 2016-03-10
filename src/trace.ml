@@ -18,16 +18,6 @@ let trace_block blocks i0 =
   (* already visited labels *)
   let visited = Ident.Table.create () in
 
-  let rec remove_last_push ls =
-    match ls with
-    | [] -> None
-    | Let(_, Const(Ssa.Cpush(_), v)) :: rest-> Some (v, rest)
-    | l :: rest ->
-      begin
-        match remove_last_push rest with
-        | Some (v, ls') -> Some (v, l::ls')
-        | None  -> None
-      end in
   let trace_let l =
     match l with
     | Let((x, a), t) ->
@@ -36,29 +26,6 @@ let trace_block blocks i0 =
         match t', !lets with
         | Val v', _ ->
           Ident.Table.set rho ~key:x ~data:v'
-        | Const(Ssa.Cpop(_), _), _ ->
-          begin
-            match remove_last_push !lets with
-            | Some (v', lets') ->
-              lets := lets';
-              Ident.Table.set rho ~key:x ~data:v'
-            | None ->
-              let x' = fresh_var () in
-              Ident.Table.set rho ~key:x ~data:(Var x');
-              lets := Let((x', a), t') :: !lets
-          end
-        (* quick hack to eliminate Alloc,Store,Load,Free sequences
-           immediately *)
-          (* TODO:
-        | Load(addr1, _), Let((z1, a1), Store(addr2, v, _)) :: rest
-          when addr1 = addr2 ->
-          String.Table.set rho ~key:x ~data:v;
-          lets := rest @ [Let((z1, a1), Val(Unit))]
-        | Free(addr1, _), Let((addr2, anat) , Alloc(_)) :: rest
-          when addr1 = Var addr2 ->
-          String.Table.set rho ~key:x ~data:Unit;
-          lets := rest @ [Let((addr2, anat), Val(IntConst(0)))]
-          *)
         | _ ->
           let x' = fresh_var () in
           Ident.Table.set rho ~key:x ~data:(Var x');
