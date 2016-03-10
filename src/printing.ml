@@ -250,7 +250,7 @@ let rec fprint_type ?concise:(concise=true)
   let ds = datatypes_in_cbvtype ~concise:concise a in
   if not (Ident.Set.is_empty ds) then
     begin
-      fprintf f "@[<hv 2>where";
+      fprintf f "@;@[<hv 2>where";
       Ident.Set.iter ds
         ~f:(fun id -> fprintf f "@;"; fprint_data f id);
       fprintf f "@]@;"
