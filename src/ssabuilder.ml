@@ -145,7 +145,7 @@ let primop (c: Ssa.op_const) (v: value) : value =
     | Ssa.Ccall(_, b1, b2) ->
       assert (equals va b1);
       b2 in
-  emit (Ssa.Let((prim, vb), Ssa.Const(c, vv)));
+  emit (Ssa.Let(prim, Ssa.Const(c, vv)));
   Ssa.Var prim, vb
 
 let tuple (vs: value list) : value =

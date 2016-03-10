@@ -40,8 +40,8 @@ type value =
   | Select of value * (Basetype.Data.id * Basetype.t list) * int
   | Undef of Basetype.t
   | IntConst of int
+
 type term =
-  | Val of value
   | Const of op_const * value
 
 let string_of_op_const (c: op_const) : string =
@@ -140,7 +140,6 @@ let rec subst_value (rho: Ident.t -> value) (v: value) =
 
 let subst_term (rho: Ident.t -> value) (t: term) =
   match t with
-  | Val(v) -> Val(subst_value rho v)
   | Const(c, v) -> Const(c, subst_value rho v)
 
 (********************
@@ -148,7 +147,7 @@ let subst_term (rho: Ident.t -> value) (t: term) =
  ********************)
 
 type let_binding =
-  | Let of (Ident.t * Basetype.t) * term
+  | Let of Ident.t * term
 type let_bindings = let_binding list
 
 type label = {
@@ -191,10 +190,6 @@ let targets_of_block (b : block) : label list =
 
 let fprint_term (oc: Out_channel.t) (t: term) : unit =
   match t with
-  | Val(v) ->
-    Out_channel.output_string oc "Val(";
-    fprint_value oc v;
-    Out_channel.output_string oc ")"
   | Const(c, v) ->
     Out_channel.output_string oc (string_of_op_const c);
     Out_channel.output_string oc "(";
@@ -204,7 +199,7 @@ let fprint_term (oc: Out_channel.t) (t: term) : unit =
 let fprint_letbndgs (oc: Out_channel.t) (bndgs: let_bindings) : unit =
   List.iter (List.rev bndgs)
     ~f:(function
-      | Let((x, _), t) ->
+      | Let(x, t) ->
         Printf.fprintf oc "   let %s = " (Ident.to_string x);
         fprint_term oc t;
         Out_channel.output_string oc "\n"
@@ -331,22 +326,18 @@ let rec typeof_value
   | IntConst(_) ->
     intB
 
-let typecheck_term
+let typeof_term
       (gamma: Basetype.t Typing.context)
       (t: term)
-      (a: Basetype.t)
-  : unit =
+  : Basetype.t =
   let open Basetype in
   let equals_exn a b =
     if equals a b then () else failwith "internal ssa.ml: type mismatch" in
   match t with
-  | Val(v) ->
-    let b = typeof_value gamma v in
-    equals_exn a b
   | Const(Cprint(_), v) ->
     let b = typeof_value gamma v in
     equals_exn b unitB;
-    equals_exn a unitB
+    unitB
   | Const(Cintadd, v)
   | Const(Cintsub, v)
   | Const(Cintmul, v)
@@ -359,47 +350,46 @@ let typecheck_term
   | Const(Cintxor, v) ->
     let b = typeof_value gamma v in
     equals_exn b (newty (TupleB [intB; intB]));
-    equals_exn a intB
+    intB
   | Const(Cinteq, v)
   | Const(Cintlt, v)
   | Const(Cintslt, v) ->
     let b = typeof_value gamma v in
-    let boolty = Basetype.newty (Basetype.DataB(Basetype.Data.boolid, [])) in
     equals_exn b (newty (TupleB [intB; intB]));
-    equals_exn a boolty
+    boolB
   | Const(Cintprint, v) ->
     let b = typeof_value gamma v in
     equals_exn b intB;
-    equals_exn a unitB
+    unitB
   | Const(Cgcalloc(b), v)
   | Const(Calloc(b), v) ->
     let c = typeof_value gamma v in
     equals_exn c unitB;
-    equals_exn a (newty (BoxB b))
+    (newty (BoxB b))
   | Const(Cfree(b), v) ->
     let c = typeof_value gamma v in
     equals_exn c (newty (BoxB b));
-    equals_exn a unitB
+    unitB
   | Const(Cload(b), v) ->
     let c = typeof_value gamma v in
     equals_exn c (newty (BoxB b));
-    equals_exn a b
+    b
   | Const(Cstore(b), v) ->
     let c = typeof_value gamma v in
     equals_exn c (newty (TupleB [newty (BoxB b); b]));
-    equals_exn a unitB
+    unitB
   | Const(Cpush(b), v) ->
     let c = typeof_value gamma v in
     equals_exn c b;
-    equals_exn a unitB
+    unitB
   | Const(Cpop(b), v) ->
     let c = typeof_value gamma v in
     equals_exn c unitB;
-    equals_exn a b
+    b
   | Const(Ccall(_, b1, b2), v) ->
     let c = typeof_value gamma v in
     equals_exn c b1;
-    equals_exn a b2
+    b2
 
 let rec typecheck_let_bindings
       (gamma: Basetype.t Typing.context)
@@ -408,9 +398,9 @@ let rec typecheck_let_bindings
   match l with
   | [] ->
     gamma
-  | Let((v, a), t) :: ls ->
+  | Let(v, t) :: ls ->
     let gamma1 = typecheck_let_bindings gamma ls in
-    typecheck_term gamma1 t a;
+    let a = typeof_term gamma1 t in
     (v, a) :: gamma1
 
 let typecheck_block (blocks: block Ident.Table.t) (b: block) : unit =

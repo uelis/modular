@@ -463,7 +463,6 @@ let build_term
     (ctx: (Ident.t * encoded_value) list)
     (t: Ssa.term) : encoded_value =
   match t with
-  | Ssa.Val(v) -> build_value the_module ctx v
   | Ssa.Const(Ssa.Cpush(a), v) ->
     let stack_alloc =
       match Llvm.lookup_function "stack_alloc" the_module with
@@ -649,7 +648,7 @@ let build_letbinding
     (l: Ssa.let_binding) :
   (Ident.t * encoded_value) list =
   match l with
-  | Ssa.Let((x, _), Ssa.Const(Ssa.Cgcalloc a, _)) ->
+  | Ssa.Let(x, Ssa.Const(Ssa.Cgcalloc a, _)) ->
     let alloc_block = Llvm.append_block context "gcalloc" func in
     let collect_block = Llvm.append_block context "gccollect" func in
     let end_block = Llvm.append_block context "gc_end" func in
@@ -718,9 +717,8 @@ let build_letbinding
                      "addr" builder in
     let tenc = Mixedvector.singleton Lltype.Pointer addr_phi in
     (x, tenc) :: ctx_phi
-  | Ssa.Let((x, a), t) ->
+  | Ssa.Let(x, t) ->
     let tenc = build_term the_module func ctx t in
-    assert_type tenc a;
     (x, tenc) :: ctx
 
 let rec build_letbindings

@@ -39,8 +39,8 @@ type value =
   | Select of value * (Basetype.Data.id * Basetype.t list) * int
   | Undef of Basetype.t
   | IntConst of int
+
 type term =
-  | Val of value
   | Const of op_const * value
 
 (** Substition of values in values *)
@@ -51,7 +51,7 @@ val subst_term: (Ident.t -> value) -> term -> term
 
 (** Straight-line programs are given by let bindings *)
 type let_binding =
-  | Let of (Ident.t * Basetype.t) * term
+  | Let of Ident.t * term
 
 (** A block is a list of let bindings in reverse order. *)
 type let_bindings = let_binding list

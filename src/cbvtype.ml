@@ -75,7 +75,7 @@ let rec code (a : t) : Basetype.t =
   | Sgn s ->
      match s with
      | Bool _ -> Basetype.boolB
-     | Nat _ -> Basetype.newty Basetype.IntB
+     | Nat _ -> Basetype.intB
      | Pair (_, (x, y)) -> Basetype.newty (Basetype.TupleB [code x; code y])
      | Fun(_, (_, _, d, _)) -> d
 

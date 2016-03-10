@@ -281,7 +281,7 @@ let infer_annotations (t: Cbvterm.t) : Cbvterm.t =
         (* Note: this condition gives more slack!
              Example: \f -> intadd(f 1, f 3)
         *)
-        { lower = Basetype.newty (Basetype.TupleB [t.t_ann; Basetype.newty Basetype.IntB]);
+        { lower = Basetype.newty (Basetype.TupleB [t.t_ann; Basetype.intB]);
           upper = s2.t_ann;
           reason = "prim: stack second"
         }
