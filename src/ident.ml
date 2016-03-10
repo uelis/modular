@@ -9,11 +9,14 @@ module T = struct
   } [@@deriving sexp]
 
   let compare (x: t) (y: t): int =
-    let i = String.compare x.name y.name in
-    if i = 0 then Int.compare x.index y.index else i
+    let i = Int.compare x.index y.index in
+    if i = 0 then String.compare x.name y.name else i
+
+  let equal (x: t) (y: t) =
+    Int.equal x.index y.index && String.equal x.name y.name
 
   let hash (x: t) : int =
-    String.hash x.name lxor x.index
+    31 * (String.hash x.name) + x.index
 end
 
 include T
@@ -34,4 +37,4 @@ let variant (x: t) : t =
   { x with index = !next_index }
 
 let to_string (x: t) : string =
-  if Int.(=) x.index 0 then x.name else Printf.sprintf "%s$%i" x.name x.index
+  if Int.(=) x.index 0 then x.name else x.name ^ (Int.to_string x.index)

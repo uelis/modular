@@ -116,41 +116,41 @@ end
   *)
 
   let of_basetype =
+    let mem = Int.Table.create () in
     let rec prof a =
       let open Basetype in
-      match case a with
-      | Var -> null
-      | Sgn sa ->
-        begin
-          match sa with
-          | IntB -> singleton Lltype.int_type
-          | BoxB _ -> singleton Lltype.Pointer
-          | TupleB(bs) -> List.fold_right bs ~f:(fun a c -> add (prof a) c)
-                            ~init:null (*add (a_s a1) (a_s a2)*)
-          | DataB(id, ps) ->
-            begin
-              let cs = Basetype.Data.constructor_types id ps in
-              let n = List.length cs in
-              let mx = List.fold_right cs ~f:(fun c mx -> max (prof c) mx)
-                         ~init:Lltype.Map.empty in
-              if n = 0 then
-                null
-              else if n = 1 || Basetype.Data.is_discriminated id = false then
-                mx
-              else
-                let i = Lltype.Integer (log n) in
-                let ni = Lltype.Map.find mx i |> Option.value ~default:0 in
-                Lltype.Map.add mx ~key:i ~data:(ni + 1)
-            end
-        end in
-    let mem = Int.Table.create () in
-    fun a ->
       match Int.Table.find mem (Basetype.repr_id a) with
       | Some p -> p
       | None ->
-        let p = prof a in
+        let p =
+          match case a with
+          | Var -> null
+          | Sgn sa ->
+            begin
+              match sa with
+              | IntB -> singleton Lltype.int_type
+              | BoxB _ -> singleton Lltype.Pointer
+              | TupleB(bs) -> List.fold_right bs ~f:(fun a c -> add (prof a) c)
+                                ~init:null (*add (a_s a1) (a_s a2)*)
+              | DataB(id, ps) ->
+                begin
+                  let cs = Basetype.Data.constructor_types id ps in
+                  let n = List.length cs in
+                  let mx = List.fold_right cs ~f:(fun c mx -> max (prof c) mx)
+                      ~init:Lltype.Map.empty in
+                  if n = 0 then
+                    null
+                  else if n = 1 || Basetype.Data.is_discriminated id = false then
+                    mx
+                  else
+                    let i = Lltype.Integer (log n) in
+                    let ni = Lltype.Map.find mx i |> Option.value ~default:0 in
+                    Lltype.Map.add mx ~key:i ~data:(ni + 1)
+                end
+            end in
         Int.Table.add_exn mem ~key:(Basetype.repr_id a) ~data:p;
-        p
+        p in
+    prof
 
   let equal = Lltype.Map.equal (=)
   let find = Lltype.Map.find
@@ -751,7 +751,7 @@ let build_ssa_blocks
     (ssa_func : Ssa.t) : unit =
   let label_types = Ident.Table.create () in
   let predecessors = Ident.Table.create () in
-  List.iter ssa_func.Ssa.blocks
+  Ssa.iter_reachable_blocks ssa_func
     ~f:(fun b ->
         let l = Ssa.label_of_block b in
         Ident.Table.set label_types ~key:l.Ssa.name ~data:l.Ssa.arg_types;
@@ -802,7 +802,7 @@ let build_ssa_blocks
   connect_to entry_block args ssa_func.Ssa.entry_label.Ssa.name;
   (* build unconnected blocks *)
   let open Ssa in
-  List.iter ssa_func.blocks
+  Ssa.iter_reachable_blocks ssa_func
     ~f:(fun block ->
         flush stdout;
         match block with

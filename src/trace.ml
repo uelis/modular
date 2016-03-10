@@ -3,15 +3,6 @@ open Ssa
 
 let fresh_var () = Ident.fresh "z"
 
-let block_table (func: Ssa.t) =
-  let blocks = Ident.Table.create () in
-  List.iter func.blocks
-    ~f:(fun b ->
-      let i = (Ssa.label_of_block b).name in
-      Ident.Table.set blocks ~key:i ~data:b
-    );
-  blocks
-
 (**
    Tracing
 *)
@@ -137,24 +128,23 @@ let trace_block blocks i0 =
   trace_block i0 v0
 
 let trace (func : Ssa.t) =
-  let blocks = block_table func in
+  let blocks = func.blocks in
   let traced = Ident.Table.create () in
-  let rev_blocks = ref [] in
+  let res_blocks = Ident.Table.create () in
   let rec trace_blocks i =
     if not (Ident.Table.mem traced i) then
       begin
         Ident.Table.set traced ~key:i ~data:();
 
         let b = trace_block blocks i in
-        rev_blocks := b :: !rev_blocks;
-        List.iter (targets_of_block b)
-          ~f:(fun l -> trace_blocks l.name)
+        Ident.Table.set res_blocks (label_of_block b).name b;
+        List.iter (targets_of_block b) ~f:(fun l -> trace_blocks l.name)
       end in
   trace_blocks (func.entry_label.name);
   Ssa.make
     ~func_name: func.func_name
     ~entry_label: func.entry_label
-    ~blocks: (List.rev !rev_blocks)
+    ~blocks: res_blocks
     ~return_type: func.return_type
 
 (**
@@ -215,22 +205,21 @@ let shortcut_block blocks i0 =
   | Return _ -> block
 
 let shortcut_jumps (func : Ssa.t) =
-  let blocks = block_table func in
+  let blocks = func.blocks in
   let traced = Ident.Table.create () in
-  let rev_blocks = ref [] in
+  let res_blocks = Ident.Table.create () in
   let rec shortcut_blocks i =
     if not (Ident.Table.mem traced i) then
       begin
         Ident.Table.set traced ~key:i ~data:();
 
         let b = shortcut_block blocks i in
-        rev_blocks := b :: !rev_blocks;
-        List.iter (targets_of_block b)
-          ~f:(fun l -> shortcut_blocks l.name)
+        Ident.Table.set res_blocks (label_of_block b).name b;
+        List.iter (targets_of_block b) ~f:(fun l -> shortcut_blocks l.name)
       end in
   shortcut_blocks (func.entry_label.name);
   Ssa.make
     ~func_name: func.func_name
     ~entry_label: func.entry_label
-    ~blocks: (List.rev !rev_blocks)
+    ~blocks: res_blocks
     ~return_type: func.return_type

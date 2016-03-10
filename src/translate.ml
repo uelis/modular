@@ -1095,21 +1095,8 @@ let to_ssa t =
   Builder.end_block_return arg;
   (* access exit *)
   Access.unreachable f.access.exit;
-  let visited = Ident.Table.create () in
-  let rev_sorted_blocks = ref [] in
-  let rec sort_blocks i =
-    if not (Ident.Table.mem visited i) then
-      begin
-        Ident.Table.set visited ~key:i ~data:();
-
-        let b = Ident.Table.find_exn Builder.blocks i in
-        rev_sorted_blocks := b :: !rev_sorted_blocks;
-        List.iter (Ssa.targets_of_block b)
-          ~f:(fun l -> sort_blocks l.Ssa.name)
-      end in
-  sort_blocks f.eval.entry.Ssa.name;
   Ssa.make
     ~func_name:"main"
     ~entry_label:f.eval.entry
-    ~blocks: (List.rev !rev_sorted_blocks)
+    ~blocks: Builder.blocks
     ~return_type: ret_ty

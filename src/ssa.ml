@@ -171,7 +171,7 @@ type block =
 type t = {
   func_name : string;
   entry_label : label;
-  blocks : block list;
+  blocks : block Ident.Table.t;
   return_type: Basetype.t;
 }
 
@@ -270,29 +270,10 @@ let fprint_func (oc: Out_channel.t) (func: t) : unit =
     (Printing.string_of_basetype func.return_type)
     (Ident.to_string func.entry_label.name)
     (String.concat ~sep:", " (List.map xs ~f:Ident.to_string));
-  List.iter func.blocks
-    ~f:(fun block ->
+  Ident.Table.iteri func.blocks
+    ~f:(fun ~key:l ~data:block ->
       fprint_block oc block;
       Out_channel.output_string oc "\n")
-
-(* The following functions verify the representation invariants and the
-   types in ssa programs. *)
-
-let check_blocks_invariant entry_label blocks =
-  let defined_labels = Ident.Table.create () in
-  let invoked_labels = Ident.Table.create () in
-  Ident.Table.set invoked_labels ~key:entry_label.name ~data:();
-  let check block =
-    let l = label_of_block block in
-    let ts = targets_of_block block in
-    if Ident.Table.mem defined_labels l.name then
-      failwith ("ssa invariant: duplicate label definition");
-    Ident.Table.set defined_labels ~key:l.name ~data:();
-    if not (Ident.Table.mem invoked_labels l.name) then
-      failwith ("ssa invariant: no forward path from entry label");
-    List.iter ts ~f:(fun l -> Ident.Table.set invoked_labels
-                                ~key:l.name ~data:()) in
-  List.iter blocks ~f:check
 
 let rec typeof_value
           (gamma: Basetype.t Typing.context)
@@ -432,7 +413,7 @@ let rec typecheck_let_bindings
     typecheck_term gamma1 t a;
     (v, a) :: gamma1
 
-let typecheck_block (label_types: (Basetype.t list) Ident.Table.t) (b: block) : unit =
+let typecheck_block (blocks: block Ident.Table.t) (b: block) : unit =
   let equals_exn a1 a2 =
     if Basetype.equals a1 a2 then () else
       begin
@@ -443,8 +424,9 @@ let typecheck_block (label_types: (Basetype.t list) Ident.Table.t) (b: block) : 
         failwith "ssa.ml, typecheck_block: type mismatch"
       end in
   let check_label_exn l a =
-    match Ident.Table.find label_types l.name with
-    | Some b ->
+    match Ident.Table.find blocks l.name with
+    | Some block ->
+      let b = (label_of_block block).arg_types in
       List.iter2_exn ~f:equals_exn a b;
       List.iter2_exn ~f:equals_exn a l.arg_types
     | None -> failwith "internal ssa.ml: wrong argument in jump" in
@@ -479,21 +461,27 @@ let typecheck_block (label_types: (Basetype.t list) Ident.Table.t) (b: block) : 
     let b = typeof_value gamma v in
     equals_exn a b
 
-let typecheck (blocks: block list) : unit =
-  let label_types = Ident.Table.create () in
-  List.iter blocks ~f:(fun b ->
-    let l = label_of_block b in
-    match Ident.Table.add label_types ~key:l.name ~data:l.arg_types with
-    | `Duplicate -> failwith "internal ssa.ml: duplicte block"
-    | `Ok -> ()
-  );
-  List.iter blocks ~f:(typecheck_block label_types)
+let typecheck (blocks: block Ident.Table.t) : unit =
+  Ident.Table.iteri blocks ~f:(fun ~key:l ~data:b -> typecheck_block blocks b)
+
+let iter_reachable_blocks ~f:(f: block -> unit) (s: t) : unit =
+  let visited = Ident.Table.create () in
+  let rec sort_blocks i =
+    if not (Ident.Table.mem visited i) then
+      begin
+        Ident.Table.set visited ~key:i ~data:();
+
+        let b = Ident.Table.find_exn s.blocks i in
+        f b;
+        List.iter (targets_of_block b) ~f:(fun l -> sort_blocks l.name)
+      end in
+  sort_blocks s.entry_label.name
 
 let make ~func_name:(func_name: string)
       ~entry_label:(entry_label: label)
-      ~blocks:(blocks: block list)
+      ~blocks:(blocks: block Ident.Table.t)
       ~return_type:(return_type: Basetype.t) =
-  assert (check_blocks_invariant entry_label blocks = ());
+  assert (Ident.Table.find blocks entry_label.name <> None);
   assert (typecheck blocks = ()); (* execute for effect *)
   { func_name = func_name;
     entry_label = entry_label;

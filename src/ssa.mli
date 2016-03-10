@@ -81,18 +81,22 @@ val targets_of_block: block -> label list
 type t = private {
   func_name : string;
   entry_label: label;
-  blocks : block list;
+  blocks : block Ident.Table.t;
   return_type: Basetype.t;
 }
 
+(** Iterates over all blocks beginning with the entry label such that any block
+    may appear only if it is the target of a jump from a block that has
+    appeared before. *)
+val iter_reachable_blocks: f:(block -> unit) -> t -> unit
+
 (** Construct a SSA program from its part.
-    This function verifies the representation invariants and
-    verifies the program for type correctness, if assertions
-    are enabled. *)
+    This function verifies the program for type correctness,
+    if assertions are enabled. *)
 val make:
   func_name:string ->
   entry_label:label ->
-  blocks: block list ->
+  blocks: block Ident.Table.t ->
   return_type: Basetype.t ->
   t
 
