@@ -152,7 +152,8 @@ type let_bindings = let_binding list
 
 type label = {
   name: Ident.t;
-  arg_types: Basetype.t list
+  arg_types: Basetype.t list;
+  debug_loc: Ast.Location.t
 }
 
 type block =
@@ -208,9 +209,9 @@ let fprint_letbndgs (oc: Out_channel.t) (bndgs: let_bindings) : unit =
 let param_string (labels: Ident.t list) (types: Basetype.t list) : string =
   List.zip_exn labels types
   |> List.map ~f:(fun (l, t) ->
-    Printf.sprintf "%s : %s"
+    Printf.sprintf "%s"
       (Ident.to_string l)
-      (Printing.string_of_basetype t))
+    (*  (Printing.string_of_basetype t)) *))
   |> String.concat ~sep:", "
 
 let fprint_block (oc: Out_channel.t) (b: block) : unit =

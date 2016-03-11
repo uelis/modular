@@ -59,7 +59,8 @@ type let_bindings = let_binding list
 (** Programs consist of a list of blocks, which each defines a label.*)
 type label = {
   name: Ident.t;
-  arg_types: Basetype.t list
+  arg_types: Basetype.t list;
+  debug_loc: Ast.Location.t
 }
 
 (** Program blocks *)

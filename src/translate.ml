@@ -5,9 +5,11 @@ module Builder = Ssabuilder
 
 type stage = Basetype.t list
 
-let fresh_label (ms: stage) (name: string) (a : Basetype.t list): Ssa.label =
+let fresh_label (ms: stage) (name: string) (loc) (a : Basetype.t list): Ssa.label =
   { Ssa.name = Ident.fresh name;
-    Ssa.arg_types = (List.rev ms) @ a }
+    Ssa.arg_types = (List.rev ms) @ a;
+    Ssa.debug_loc = loc
+  }
 
 (** Representation and manipulation of interfaces to access encoded values. *)
 module Access : sig
@@ -185,7 +187,7 @@ struct
         let xc = Cbvtype.code x in
         let yentry = fresh_entry (m :: ms) n y in
         let xexit = fresh_exit (m :: ms) n x in
-        let eval = fresh_label (m :: ms) (n ^ "_access_entry")
+        let eval = fresh_label (m :: ms) (n ^ "_access_entry") None
                      [s; Basetype.pairB c xc] in
         Fun(m, s, c, eval, xexit, yentry)
   and fresh_exit (ms: Basetype.t list) (n: string) (a: Cbvtype.t): t =
@@ -203,7 +205,7 @@ struct
         let yc = Cbvtype.code y in
         let yexit = fresh_exit (m :: ms) n y in
         let xentry = fresh_entry (m :: ms) n x in
-        let ret = fresh_label (m :: ms) (n ^ "_access_exit") [s; yc] in
+        let ret = fresh_label (m :: ms) (n ^ "_access_exit") None [s; yc] in
         Fun(m, s, c, ret, xentry, yexit)
 end
 
@@ -267,9 +269,9 @@ let block_name_of_term (t: Cbvterm.t) : string =
 
 let fresh_eval (ms: stage) (t: Cbvterm.t) : eval_interface =
   let s = block_name_of_term t in
-  { entry = fresh_label ms (s ^ "_eval_entry")
+  { entry = fresh_label ms (s ^ "_eval_entry") t.t_loc
               [t.t_ann; Context.code t.t_context];
-    exit  = fresh_label ms (s ^ "_eval_exit")
+    exit  = fresh_label ms (s ^ "_eval_exit") t.t_loc
               [t.t_ann; Cbvtype.code t.t_type] }
 
 let fresh_access_named (ms: stage) (n : string) (a : Cbvtype.t)
@@ -638,7 +640,6 @@ let rec build_blocks (ms: stage) (t: term_with_interface) : unit =
     begin (* print *)
       let vstack, vi = Builder.begin_block2 s.eval.exit in
       ignore (Builder.primop (Ssa.Cintprint) vi);
-      ignore (Builder.primop (Ssa.Cprint "\n") Builder.unit);
       Builder.end_block_jump t.eval.exit [vstack; vi]
     end
   | Const(Ast.Cintprint, _) ->
@@ -835,7 +836,7 @@ let rec build_blocks (ms: stage) (t: term_with_interface) : unit =
       let ts = s.term.t_ann in
       let td = Cbvtype.code t.term.t_type in
       let tx = Cbvtype.code xty in
-      fresh_label ms "fix_eval_body" [th; ts; Basetype.pairB td tx] in
+      fresh_label ms "fix_eval_body" None [th; ts; Basetype.pairB td tx] in
     begin
       let vh, va, vdx = Builder.begin_block3 eval_body_block in
       let vd, vx = Builder.unpair vdx in
