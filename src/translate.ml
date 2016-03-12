@@ -1051,22 +1051,22 @@ let rec build_blocks (ms: stage) (t: term_with_interface) : unit =
       let vgammac = Context.build_map t.term.t_context tc.term.t_context vgamma in
       let vgamma1 = Context.build_map t.term.t_context t1.term.t_context vgamma in
       let vgamma2 = Context.build_map t.term.t_context t2.term.t_context vgamma in
-      let vstack1 = Builder.embed (Builder.pair vstack (Builder.pair vgamma1 vgamma2)) tc.term.t_ann in
+      let vstack1 = Builder.embed (Builder.tuple [vstack; vgamma1; vgamma2]) tc.term.t_ann in
       Builder.end_block_jump tc.eval.entry [vstack1; vgammac]
     end;
     build_blocks ms tc;
     begin (* eval c *)
       let vstack1, vz = Builder.begin_block2 tc.eval.exit in
-      let vp = Builder.project vstack1 (Basetype.pairB t.term.t_ann
-                                          (Basetype.pairB
-                                             (Context.code t1.term.t_context)
-                                             (Context.code t2.term.t_context)
-                                          )) in
-      let vstack, vgamma12 = Builder.unpair vp in
-      let vgamma1, vgamma2 = Builder.unpair vgamma12 in
-      Builder.end_block_case vz
-        [ (fun _ -> t1.eval.entry, [vstack; vgamma1]);
-          (fun _ -> t2.eval.entry, [vstack; vgamma2]) ]
+      let vp = Builder.project vstack1
+                 (Basetype.(newty (TupleB [t.term.t_ann;
+                                           Context.code t1.term.t_context;
+                                           Context.code t2.term.t_context]))) in
+      match Builder.untuple vp with
+      | [vstack; vgamma1; vgamma2] ->
+        Builder.end_block_case vz
+          [ (fun _ -> t1.eval.entry, [vstack; vgamma1]);
+            (fun _ -> t2.eval.entry, [vstack; vgamma2]) ]
+      | _ -> assert false
     end;
     split_entry t.access.entry t1.access.entry t2.access.entry;
     build_blocks ms t1;

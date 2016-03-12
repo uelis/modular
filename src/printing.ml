@@ -136,7 +136,7 @@ let fprint_data (f: Format.formatter) id =
     fprintf f "<%s>"
       (String.concat ~sep:"," (List.map ~f:string_of_basetype params))
   end;
-  fprintf f " =";
+  fprintf f " = ";
   print_break 1 2;
   let first = ref true in
   List.iter cs ~f:(fun (n, t) ->

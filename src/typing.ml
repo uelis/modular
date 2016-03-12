@@ -30,6 +30,7 @@ let solve_constraints (ineqs: lhd_constraint list) : unit =
    * variable alpha in the form [A1,...,An] <= alpha. *)
   let joined_lower_bounds =
     ineqs
+    |> List.filter ~f:(fun c -> cmp c.lower c.upper <> 0)
     |> List.sort ~cmp:(fun c1 c2 -> cmp c1.upper c2.upper)
     |> List.group ~break:(fun c1 c2 -> cmp c1.upper c2.upper <> 0)
     |> List.map
@@ -451,8 +452,8 @@ let infer_annotations (t: Cbvterm.t) : Cbvterm.t =
         t_context = asc.t_context @ ast.t_context @ asf.t_context
       },
       [ { lower = Basetype.(newty (TupleB [t.t_ann;
-                                           newty (TupleB [code_of_context ast.t_context;
-                                                          code_of_context asf.t_context])]));
+                                           code_of_context ast.t_context;
+                                           code_of_context asf.t_context]));
           upper = sc.t_ann;
           reason = "if: condition stack"
         }
