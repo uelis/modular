@@ -59,36 +59,28 @@ let solve_constraints (ineqs: lhd_constraint list) : unit =
       let constraint_recursive =
         List.exists fv_unique ~f:(Basetype.equals alpha) in
       let sol =
-        if List.length xs > 1 || constraint_recursive then
-          begin
-            let recty = Ident.fresh "conty" in
-            let params = List.filter fv_unique
-                ~f:(fun beta -> not (Basetype.equals beta alpha)) in
-            let n = List.length params in
-            Basetype.Data.make recty ~param_count:n ~discriminated:false;
-            let data = Basetype.newty (Basetype.DataB(recty, params)) in
-            let sol =
-              if constraint_recursive then
-                Basetype.newty (Basetype.BoxB(data))
-              else data in
-            (* add constructors *)
-            List.iteri xs
-              ~f:(fun i -> fun b ->
-                  let arg_type =
-                    Basetype.subst b
-                      (fun beta ->
-                         if Basetype.equals beta alpha then sol else beta)
-                  in
-                  let cname = (Ident.to_string recty) ^ "_" ^ (string_of_int i) in
-                  Basetype.Data.add_constructor recty
-                    (Ident.global cname) params arg_type);
-            if !Opts.verbose then
-              Printf.printf "Declaring type:\n%s\n" (Printing.string_of_data recty);
-            sol
-          end
-        else
-          (assert (xs <> []);
-           List.hd_exn xs) in
+        match xs with
+        | [] -> assert false
+        | [x] when not constraint_recursive -> x
+        | xs when not constraint_recursive -> Basetype.sumB xs
+        | xs ->
+          let cid = Ident.fresh "conty" in
+          let params = List.filter fv_unique ~f:(fun beta ->
+            not (Basetype.equals beta alpha)) in
+          let n = List.length params in
+          Basetype.Data.make cid ~param_count:n ~discriminated:false;
+          let sol = Basetype.(newty (BoxB (newty (DataB(cid, params))))) in
+          (* add constructors *)
+          List.iteri xs ~f:(fun i -> fun b ->
+            let name = Ident.to_string cid ^ "_" ^ (string_of_int i) in
+            let id = Ident.global name in
+            let arg_type = Basetype.subst b (fun beta ->
+              if Basetype.equals beta alpha then sol else beta) in
+            Basetype.Data.add_constructor cid id params arg_type);
+          if !Opts.verbose then
+            Printf.printf "Declaring type:\n%s\n"
+              (Printing.string_of_data cid);
+          sol in
       Basetype.unify_exn alpha sol
     | _ ->
       Printf.printf "%s\n" (Printing.string_of_basetype alpha);
@@ -104,13 +96,7 @@ let solve_constraints (ineqs: lhd_constraint list) : unit =
 (** Returns the code type of an annotated context *)
 let rec code_of_context (gamma : Cbvtype.t context) : Basetype.t =
   let cs = List.map ~f:(fun (_, a) -> Cbvtype.code a) gamma in
-  Basetype.newty (Basetype.TupleB cs)
-    (*
-  match gamma with
-  | [] -> Basetype.newty Basetype.UnitB
-  | (_, a) :: delta ->
-    Basetype.newty (Basetype.TupleB [code_of_context delta; Cbvtype.code a])
-*)
+  Basetype.(newty (TupleB cs))
 
 (** Replaces the multiplicity with a fresh type variable *)
 let freshen_multiplicity (a : Cbvtype.t) : Cbvtype.t =
@@ -119,37 +105,37 @@ let freshen_multiplicity (a : Cbvtype.t) : Cbvtype.t =
   | Cbvtype.Sgn s ->
     let m = Basetype.newvar () in
     match s with
-    | Cbvtype.Bool _ -> Cbvtype.newty (Cbvtype.Bool(m))
-    | Cbvtype.Nat _ -> Cbvtype.newty (Cbvtype.Nat(m))
-    | Cbvtype.Pair(_, s) -> Cbvtype.newty (Cbvtype.Pair(m, s))
-    | Cbvtype.Fun(_, s) -> Cbvtype.newty (Cbvtype.Fun(m, s))
+    | Cbvtype.Bool _ -> Cbvtype.(newty (Bool(m)))
+    | Cbvtype.Nat _ -> Cbvtype.(newty (Nat(m)))
+    | Cbvtype.Pair(_, s) -> Cbvtype.(newty (Pair(m, s)))
+    | Cbvtype.Fun(_, s) -> Cbvtype.(newty (Fun(m, s)))
 
 (** Adds annotations to a simple type, thus giving a Cbvtype.t *)
 let rec fresh_annotations_type (a: Simpletype.t) : Cbvtype.t =
   match Simpletype.case a with
   | Simpletype.Var ->
     let m = Basetype.newvar () in
-    Cbvtype.newty (Cbvtype.Nat m)
+    Cbvtype.(newty (Nat m))
   | Simpletype.Sgn s ->
     match s with
     | Simpletype.Bool ->
       let m = Basetype.newvar () in
-      Cbvtype.newty (Cbvtype.Bool m)
+      Cbvtype.(newty (Bool m))
     | Simpletype.Nat ->
       let m = Basetype.newvar () in
-      Cbvtype.newty (Cbvtype.Nat m)
+      Cbvtype.(newty (Nat m))
     | Simpletype.Pair(x, y) ->
       let xa = fresh_annotations_type x in
       let ya = fresh_annotations_type y in
       let m = Basetype.newvar () in
-      Cbvtype.newty (Cbvtype.Pair(m, (xa, ya)))
+      Cbvtype.(newty (Pair(m, (xa, ya))))
     | Simpletype.Fun(x, y) ->
       let xa = fresh_annotations_type x in
       let ya = fresh_annotations_type y in
       let m = Basetype.newvar () in
       let d = Basetype.newvar () in
       let a = Basetype.newvar () in
-      Cbvtype.newty (Cbvtype.Fun(m, (xa, d, a, ya)))
+      Cbvtype.(newty (Fun(m, (xa, d, a, ya))))
 
 (** Add fresh type annotations to a term *)
 let rec fresh_annotations_term (t: Simpletype.t Cbvterm.term) : Cbvterm.t =
@@ -274,14 +260,14 @@ let infer_annotations (t: Cbvterm.t) : Cbvterm.t =
         t_desc = Const(c, [as1; as2]);
         t_context = as1.t_context @ as2.t_context
       },
-      [ { lower = Basetype.newty (Basetype.TupleB [t.t_ann; code_of_context as2.t_context]);
+      [ { lower = Basetype.(newty (TupleB [t.t_ann; code_of_context as2.t_context]));
           upper = s1.t_ann;
           reason = "prim: stack first"
         };
         (* Note: this condition gives more slack!
              Example: \f -> intadd(f 1, f 3)
         *)
-        { lower = Basetype.newty (Basetype.TupleB [t.t_ann; Basetype.intB]);
+        { lower = Basetype.(newty (TupleB [t.t_ann; intB]));
           upper = s2.t_ann;
           reason = "prim: stack second"
         }
@@ -316,19 +302,19 @@ let infer_annotations (t: Cbvterm.t) : Cbvterm.t =
         t_desc = Pair(as1, as2);
         t_context = as1.t_context @ as2.t_context
       },
-      [ { lower = Basetype.newty (Basetype.TupleB [t.t_ann; code_of_context as2.t_context]);
+      [ { lower = Basetype.(newty (TupleB [t.t_ann; code_of_context as2.t_context]));
           upper = s1.t_ann;
           reason = "pair: eval first stack"
         }
-      ; { lower = Basetype.newty (Basetype.TupleB [t.t_ann; Cbvtype.code as1.t_type]);
+      ; { lower = Basetype.(newty (TupleB [t.t_ann; Cbvtype.code as1.t_type]));
           upper = s2.t_ann;
           reason = "pair: eval second stack"
         }
-      ; { lower = Basetype.newty (Basetype.TupleB [a; Cbvtype.multiplicity x]);
+      ; { lower = Basetype.(newty (TupleB [a; Cbvtype.multiplicity x]));
           upper = Cbvtype.multiplicity s1.t_type ;
           reason = "pair: multiplicity left"
         }
-      ; { lower = Basetype.newty (Basetype.TupleB [a; Cbvtype.multiplicity y]);
+      ; { lower = Basetype.(newty (TupleB [a; Cbvtype.multiplicity y]));
           upper = Cbvtype.multiplicity s2.t_type;
           reason = "pair: multiplicity right"
         }
@@ -358,7 +344,7 @@ let infer_annotations (t: Cbvterm.t) : Cbvterm.t =
         t_desc = App(as1, as2);
         t_context = as1.t_context @ as2.t_context
       },
-      [ { lower = Basetype.newty (Basetype.TupleB [t.t_ann; code_of_context as2.t_context]);
+      [ { lower = Basetype.(newty (TupleB [t.t_ann; code_of_context as2.t_context]));
           upper = s1.t_ann;
           reason = "app: function stack"
         }
@@ -366,7 +352,7 @@ let infer_annotations (t: Cbvterm.t) : Cbvterm.t =
           upper = a;
           reason = "app: fun stack"
         }
-      ; { lower = Basetype.newty (Basetype.TupleB [t.t_ann; d]);
+      ; { lower = Basetype.(newty (TupleB [t.t_ann; d]));
           upper = s2.t_ann;
           reason = "app: argument stack"
         }
@@ -394,7 +380,7 @@ let infer_annotations (t: Cbvterm.t) : Cbvterm.t =
               let a' = List.Assoc.find_exn as1.t_context y in
               let m' = Cbvtype.multiplicity a' in
               Cbvtype.unify_exn a (freshen_multiplicity a');
-              { lower = Basetype.newty (Basetype.TupleB [e; m']);
+              { lower = Basetype.(newty (TupleB [e; m']));
                 upper = Cbvtype.multiplicity a;
                 reason =
                   Printf.sprintf "fun: context (%s)" (Ident.to_string v)
@@ -421,17 +407,17 @@ let infer_annotations (t: Cbvterm.t) : Cbvterm.t =
         : Cbvtype.t * lhd_constraint list =
         match Cbvtype.case t1, Cbvtype.case t2 with
         | Cbvtype.Sgn (Cbvtype.Bool _), Cbvtype.Sgn (Cbvtype.Bool _) ->
-          Cbvtype.newty (Cbvtype.Bool (Basetype.newvar ())),
+          Cbvtype.(newty (Bool (Basetype.newvar ()))),
           []
         | Cbvtype.Sgn (Cbvtype.Nat _), Cbvtype.Sgn (Cbvtype.Nat _) ->
-          Cbvtype.newty (Cbvtype.Nat (Basetype.newvar ())),
+          Cbvtype.(newty (Nat (Basetype.newvar ()))),
           []
         | Cbvtype.Sgn (Cbvtype.Pair (m1, (x1, y1))),
           Cbvtype.Sgn (Cbvtype.Pair (m2, (x2, y2))) ->
           Basetype.unify_exn m1 m2; (* TODO ?? *)
           let x, csx = join x1 x2 in
           let y, csy = join y1 y2 in
-          Cbvtype.newty (Cbvtype.Pair (m1, (x, y))),
+          Cbvtype.(newty (Pair (m1, (x, y)))),
           csx @ csy
         | Cbvtype.Sgn (Cbvtype.Fun (m1, (x1, c1, d1, y1))),
           Cbvtype.Sgn (Cbvtype.Fun (m2, (x2, c2, d2, y2))) ->
@@ -441,7 +427,7 @@ let infer_annotations (t: Cbvterm.t) : Cbvterm.t =
           let x = freshen_multiplicity x1 in
           let d = Basetype.newvar () in
           let y, csy = join y1 y2 in
-          Cbvtype.newty (Cbvtype.Fun (m1, (x, c1, d, y))),
+          Cbvtype.(newty (Fun (m1, (x, c1, d, y)))),
           [ { lower = Basetype.sumB [d1; d2];
               upper = d;
               reason = "if: join closure"
@@ -464,11 +450,9 @@ let infer_annotations (t: Cbvterm.t) : Cbvterm.t =
         t_desc = If(asc, ast, asf);
         t_context = asc.t_context @ ast.t_context @ asf.t_context
       },
-      [ { lower = Basetype.newty
-              (Basetype.TupleB [t.t_ann;
-                                Basetype.newty
-                                  (Basetype.TupleB [code_of_context ast.t_context;
-                                                    code_of_context asf.t_context])]);
+      [ { lower = Basetype.(newty (TupleB [t.t_ann;
+                                           newty (TupleB [code_of_context ast.t_context;
+                                                          code_of_context asf.t_context])]));
           upper = sc.t_ann;
           reason = "if: condition stack"
         }
@@ -496,7 +480,7 @@ let infer_annotations (t: Cbvterm.t) : Cbvterm.t =
               let a' = List.Assoc.find_exn as1.t_context y in
               let m' = Cbvtype.multiplicity a' in
               Cbvtype.unify_exn a (freshen_multiplicity a');
-              { lower = Basetype.newty (Basetype.TupleB [h; m']);
+              { lower = Basetype.(newty (TupleB [h; m']));
                 upper = Cbvtype.multiplicity a;
                 reason = Printf.sprintf "fix: context (%s)" (Ident.to_string y)
               }) in
@@ -508,9 +492,8 @@ let infer_annotations (t: Cbvterm.t) : Cbvterm.t =
           upper = d;
           reason = "fix: closure"
         }
-      ; { lower = Basetype.newty
-              (Basetype.DataB(Basetype.Data.sumid 2,
-                              [e; Basetype.newty (Basetype.TupleB [h; g])]));
+      ; { lower = Basetype.(newty (DataB(Data.sumid 2,
+                                         [e; newty (TupleB [h; g])])));
           upper = h;
           reason = "fix: call stack"
         }
@@ -538,7 +521,7 @@ let infer_annotations (t: Cbvterm.t) : Cbvterm.t =
               let a' = List.Assoc.find_exn as1.t_context y in
               let m' = Cbvtype.multiplicity a' in
               Cbvtype.unify_exn a (freshen_multiplicity a');
-              { lower = Basetype.newty (Basetype.TupleB [h; m']);
+              { lower = Basetype.(newty (TupleB [h; m']));
                 upper = Cbvtype.multiplicity a;
                 reason =
                   Printf.sprintf "tailfix: context (%s)" (Ident.to_string v)
@@ -551,7 +534,7 @@ let infer_annotations (t: Cbvterm.t) : Cbvterm.t =
           upper = d;
           reason = "tailfix: closure"
         }
-      ; { lower =  Basetype.newty (Basetype.TupleB [e; a]);
+      ; { lower =  Basetype.(newty (TupleB [e; a]));
           upper = h;
           reason = "tailfix: eval stack"
         }
@@ -577,8 +560,7 @@ let infer_annotations (t: Cbvterm.t) : Cbvterm.t =
       let sum =
         let ms = List.map delta ~f:(fun (_, a) -> Cbvtype.multiplicity a) in
         let n = List.length ms in
-        Basetype.newty
-          (Basetype.DataB(Basetype.Data.sumid n, ms)) in
+        Basetype.(newty (DataB(Data.sumid n, ms))) in
       Cbvtype.unify_exn t.t_type s.t_type;
       Basetype.unify_exn t.t_ann s.t_ann;
       List.iter delta
