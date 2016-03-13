@@ -60,7 +60,7 @@ let compile (d: Decl.t) : unit =
       let ssa_shortcut = Trace.shortcut_jumps ssa_traced in
       if !Opts.keep_ssa then
         Out_channel.with_file (f_name ^ ".simpl.ssa")
-          ~f:(fun c -> Ssa.fprint_func c ssa_traced);
+          ~f:(fun c -> Ssa.fprint_func c ssa_shortcut);
       let llvm_module = Llvmcodegen.llvm_compile ssa_shortcut in
       let target = Printf.sprintf "%s.bc" f_name in
       ignore (Llvm_bitwriter.write_bitcode_file llvm_module target)

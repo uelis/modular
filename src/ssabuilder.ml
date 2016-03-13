@@ -39,7 +39,7 @@ let emit (l : Ssa.let_binding) : unit =
   | Some s ->
      builder_state := Some { s with cur_lets = l :: s.cur_lets }
 
-let begin_blockn n ?may_append:(may_append = true) (l: Ssa.label) : value list =
+let begin_block ?may_append:(may_append = true) (l: Ssa.label) : value list =
   assert (l.Ssa.arg_types <> []);
   match !builder_state with
   | None ->
@@ -56,13 +56,14 @@ let begin_blockn n ?may_append:(may_append = true) (l: Ssa.label) : value list =
         let iargs = List.map ~f:(fun x -> Ssa.Var x) args in
         builder_state := Some { cur_label = l; cur_arg = args; cur_lets = []; cur_implicit_args = iargs };
         List.zip_exn iargs l.Ssa.arg_types in
-    let lastn = List.rev (List.take (List.rev values) n) in
-    lastn
+    values
   | Some _ ->
      assert false
 
-(* append to existing block *)
-let begin_block ?may_append:(may_append = true) (l: Ssa.label) : value =
+let begin_blockn ?may_append:(may_append = true) (n: int) (l: Ssa.label) : value list =
+  List.rev (List.take (List.rev (begin_block ~may_append:may_append l)) n)
+
+let begin_block1 ?may_append:(may_append = true) (l: Ssa.label) : value =
   match begin_blockn ~may_append:may_append 1 l with
   | [v] -> v
   | _ -> assert false
@@ -204,7 +205,6 @@ let unbox (v: value) : value =
     | Basetype.Sgn (Basetype.BoxB(b)) -> b
     | _ -> failwith "unbox" in
   let w = primop (Ssa.Cload(b)) v in
-  (*  ignore (primop (Ssa.Cfree(b)) v);*)
   w
 
 let index_of_ctor id params ctor =
@@ -245,9 +245,9 @@ let embed (v: value) (a: Basetype.t) : value =
 let fill_args (args : Ssa.value list) (v : value list) (dst : Ssa.label)
   : Ssa.value list =
   let vv = List.map ~f:(fun (vv, va) -> vv) v in
-  let i = List.length dst.Ssa.arg_types - List.length v in
-  let gamma = List.take args i in
-  gamma @ vv
+  let need_args = List.length dst.Ssa.arg_types - List.length v in
+  let needed_args = List.take args need_args in
+  needed_args @ vv
 
 (* TODO: add assertions to check types *)
 let end_block_jump (dst: Ssa.label) (v: value list) : unit =

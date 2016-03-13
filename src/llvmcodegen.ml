@@ -88,7 +88,6 @@ module Profile: sig
   val find : t -> Lltype.t -> int option
   val mapi : t -> f:(key:Lltype.t -> data:int -> 'a) -> 'a Lltype.Map.t
   val fold_right : t -> init:'a -> f:(key:Lltype.t -> data:int -> 'a -> 'a) -> 'a
-
 end
 = struct
 
@@ -124,8 +123,8 @@ end
               match sa with
               | IntB -> singleton Lltype.int_type
               | BoxB _ -> singleton Lltype.Pointer
-              | TupleB(bs) -> List.fold_right bs ~f:(fun a c -> add (prof a) c)
-                                ~init:null (*add (a_s a1) (a_s a2)*)
+              | TupleB(bs) ->
+                List.fold_right bs ~f:(fun a c -> add (prof a) c) ~init:null
               | DataB(id, ps) ->
                 begin
                   let cs = Basetype.Data.constructor_types id ps in
@@ -211,88 +210,75 @@ sig
 end =
 struct
 
-  type t = { bits : (Llvm.llvalue list) Lltype.Map.t }
+  type t = (Llvm.llvalue list) Lltype.Map.t
 
-  let null = { bits = Lltype.Map.empty }
-  let singleton i v = { bits = Lltype.Map.singleton i [v] }
+  let null = Lltype.Map.empty
+  let singleton i v = Lltype.Map.singleton i [v]
 
   let concatenate v w =
-    { bits =
-        Lltype.Map.merge v.bits w.bits
-          ~f:(fun ~key:_ -> function
-            | `Both(vn, wn) -> Some (vn @ wn)
-            | `Left(vn) | `Right(vn) -> Some vn)
-    }
+    Lltype.Map.merge v w
+      ~f:(fun ~key:_ -> function
+        | `Both(vn, wn) -> Some (vn @ wn)
+        | `Left(vn) | `Right(vn) -> Some vn)
 
   (* precond: v enthält mindestens so viele Werte, wie vom Profil angegeben *)
   let take v profile =
-    { bits = Profile.mapi profile
-               ~f:(fun ~key:n ~data:ln ->
-                 let vn = Lltype.Map.find v.bits n
-                          |> Option.value ~default:[] in
-                 assert (ln <= List.length vn);
-                 let vn1, _ = List.split_n vn ln in
-                 vn1) }
+    Profile.mapi profile ~f:(fun ~key:n ~data:ln ->
+      let vn = Lltype.Map.find v n |> Option.value ~default:[] in
+      assert (ln <= List.length vn);
+      List.take vn ln)
 
   (* precond: v enthält mindestens so viele Werte, wie vom Profil angegeben *)
   let drop v profile =
-    { bits = Lltype.Map.fold v.bits
-               ~f:(fun ~key:n ~data:vn v2 ->
-                 let ln = Profile.find profile n
-                          |> Option.value ~default:0 in
-                 let _, vn2 = List.split_n vn ln in
-                 if (vn2 <> []) then
-                   Lltype.Map.add v2 ~key:n ~data:vn2
-                 else v2)
-               ~init:Lltype.Map.empty}
+    (* profile will most often be very small *)
+    Profile.fold_right profile ~init:v ~f:(fun ~key:n ~data:vn v ->
+      Lltype.Map.change v n ~f:(function
+        | None -> None
+        | Some ln ->
+          let ln2 = List.drop ln vn in
+          if List.is_empty ln2 then None else Some ln2))
 
   let takedrop v profile =
     take v profile, drop v profile
 
   let mapi v ~f:(f) =
-    { bits = Lltype.Map.mapi v.bits
-               ~f:(fun ~key:i ~data:d ->
-                 List.map d ~f:(fun x -> f ~key:i ~data:x)) }
+    Lltype.Map.mapi v ~f:(fun ~key:i ~data:d ->
+      List.map d ~f:(fun x -> f ~key:i ~data:x))
 
   let coerce v profile =
     let rec fill_cut i l n =
       if n = 0 then [] else
         match l with
         | [] ->
-          Llvm.const_null (Lltype.to_lltype i) :: (fill_cut i [] (n-1))
+          Llvm.undef (Lltype.to_lltype i) :: (fill_cut i [] (n-1))
         | x::xs -> x :: (fill_cut i xs (n-1)) in
-    { bits = Profile.mapi profile
-               ~f:(fun ~key:i ~data:n ->
-                 let vi = Lltype.Map.find v.bits i
-                          |> Option.value ~default:[] in
-                 fill_cut i vi n)}
+    Profile.mapi profile
+      ~f:(fun ~key:i ~data:n ->
+        let vi = Lltype.Map.find v i
+                 |> Option.value ~default:[] in
+        fill_cut i vi n)
 
   let llvalue_of_singleton v =
-    List.hd_exn (snd (Lltype.Map.min_elt_exn v.bits))
+    List.hd_exn (snd (Lltype.Map.min_elt_exn v))
 
   let llvalues_at_key (x: t) (k: Lltype.t) =
-    Lltype.Map.find x.bits k |> Option.value ~default:[]
+    Lltype.Map.find x k |> Option.value ~default:[]
 
   let to_profile (x: t) : Profile.t =
-    Lltype.Map.fold x.bits
-      ~f:(fun ~key:k ~data:xs m ->
-        Profile.add (Profile.ntimes k (List.length xs)) m)
-      ~init:Profile.null
+    Lltype.Map.fold x ~init:Profile.null ~f:(fun ~key:k ~data:xs m ->
+      Profile.add (Profile.ntimes k (List.length xs)) m)
 
   let build_phi (x, srcblock) builder =
-    let phis bits
-      = List.map bits
-          ~f:(fun x -> Llvm.build_phi [(x, srcblock)] "x" builder) in
-    { bits = Lltype.Map.map x.bits ~f:(fun bits -> phis bits) }
+    let phis bits = List.map bits ~f:(fun x ->
+      Llvm.build_phi [(x, srcblock)] "x" builder) in
+    Lltype.Map.map x ~f:(fun bits -> phis bits)
 
   let add_incoming (y, blocky) x =
     let add_incoming_n (y, blocky) x =
-      List.iter2_exn y x
-        ~f:(fun yi xi -> Llvm.add_incoming (yi, blocky) xi) in
-    List.iter (Lltype.Map.keys y.bits)
-      ~f:(fun n -> add_incoming_n
-                     (Lltype.Map.find_exn y.bits n, blocky)
-                     (Lltype.Map.find_exn x.bits n))
+      List.iter2_exn y x ~f:(fun yi xi -> Llvm.add_incoming (yi, blocky) xi) in
+    List.iter (Lltype.Map.keys y) ~f:(fun n ->
+      add_incoming_n (Lltype.Map.find_exn y n, blocky)
+        (Lltype.Map.find_exn x n))
 
   let packing_type profile =
     let struct_members =
@@ -308,7 +294,7 @@ struct
   let pack x =
     let struct_type = to_profile x |> packing_type in
     let values =
-      Lltype.Map.fold_right x.bits
+      Lltype.Map.fold_right x
         ~f:(fun ~key:_ ~data:xs vals -> vals @ xs)
         ~init:[] in
     let number_of_ptrs =
@@ -337,21 +323,18 @@ struct
     let bits, _ =
       Profile.fold_right profile
         ~f:(fun ~key:k ~data:n (bits, pos)->
-          let bitsn =
-            List.init n
-              ~f:(fun i -> Llvm.build_extractvalue v (pos + i)
-                             "unpack" builder) in
+          let bitsn = List.init n ~f:(fun i ->
+            Llvm.build_extractvalue v (pos + i) "unpack" builder) in
           Lltype.Map.add bits ~key:k ~data:bitsn,
           pos + n)
-        ~init:(Lltype.Map.empty, 1) (* first item is the tag *)
-    in {bits = bits}
+        ~init:(Lltype.Map.empty, 1) (* first item is the tag *) in
+    bits
 end
 
 type encoded_value = Mixedvector.t
 
 (** Assertion to state tenc encodes a value of type a. *)
 let assert_type tenc a =
-  (*  assert (List.length tenc.payload = payload_size a); *)
   assert (Profile.equal (Profile.of_basetype a) (Mixedvector.to_profile tenc))
 
 (** Assertion to state that a list of encoded values has the given types. *)
@@ -399,7 +382,7 @@ let rec build_value
         Mixedvector.concatenate enc tenc)
   | Ssa.In((id, _, t), a) when
       Basetype.Data.constructor_count id = 1 ||
-      Basetype.Data.is_discriminated id = false ->
+      not (Basetype.Data.is_discriminated id) ->
     let tenc = build_value the_module ctx t in
     build_truncate_extend tenc a
   | Ssa.In((id, i, t), a) ->
@@ -426,7 +409,7 @@ let rec build_value
       | [] -> assert false in
     drop i bs tenc
   | Ssa.Select(t, (id, params), i)
-    when Basetype.Data.is_discriminated id = false ->
+    when not (Basetype.Data.is_discriminated id) ->
     let tenc = build_value the_module ctx t in
     let case_types = Basetype.Data.constructor_types id params in
     let ai = List.nth_exn case_types i in
@@ -437,16 +420,12 @@ let rec build_value
     if n = 1 then
       build_value the_module ctx t
     else
-      begin
-        let yenc =
-          let ya =
-            Mixedvector.drop tenc (Profile.singleton (Lltype.Integer (log n))) in
-          ya in
-        let case_types = Basetype.Data.constructor_types id params in
-        assert (i < List.length case_types);
-        let ai = List.nth_exn case_types i in
-        build_truncate_extend yenc ai
-      end
+      let yenc = Mixedvector.drop tenc
+                   (Profile.singleton (Lltype.Integer (log n))) in
+      let case_types = Basetype.Data.constructor_types id params in
+      assert (i < List.length case_types);
+      let ai = List.nth_exn case_types i in
+      build_truncate_extend yenc ai
   | Ssa.Undef(a) ->
     build_truncate_extend Mixedvector.null a
 

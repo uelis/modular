@@ -209,9 +209,9 @@ let fprint_letbndgs (oc: Out_channel.t) (bndgs: let_bindings) : unit =
 let param_string (labels: Ident.t list) (types: Basetype.t list) : string =
   List.zip_exn labels types
   |> List.map ~f:(fun (l, t) ->
-    Printf.sprintf "%s"
+    Printf.sprintf "%s: %s"
       (Ident.to_string l)
-    (*  (Printing.string_of_basetype t)) *))
+      (Printing.string_of_basetype t))
   |> String.concat ~sep:", "
 
 let fprint_block (oc: Out_channel.t) (b: block) : unit =

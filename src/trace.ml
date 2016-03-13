@@ -133,9 +133,10 @@ let shortcut_block blocks i0 =
               match vc' with
               | In((_, i, vi), _) ->
                 let (y, vd, dst) = List.nth_exn cases i in
-                let vd' = List.map vd
-                            ~f:(fun w -> subst_value (fun z -> if y = z then vi else Var z)
-                                           (subst_value (subst x v) w)) in
+                let vd' = List.map vd ~f:(fun w ->
+                  subst_value
+                    (fun z -> if y = z then vi else Var z)
+                    (subst_value (subst x v) w)) in
                 shortcut_value dst vd'
               | _ ->
                 i, v
@@ -153,10 +154,9 @@ let shortcut_block blocks i0 =
     let dst', vr' = shortcut_value dst vr in
     Direct(l, x, lets, vr', dst')
   | Branch(l, x, lets, (id, params, vc, cases)) ->
-    let cases' = List.map cases
-                   ~f:(fun (y, vd, dst) ->
-                     let dst', vd' = shortcut_value dst vd in
-                     (y, vd', dst')) in
+    let cases' = List.map cases ~f:(fun (y, vd, dst) ->
+      let dst', vd' = shortcut_value dst vd in
+      (y, vd', dst')) in
     Branch(l, x, lets, (id, params, vc, cases'))
   | Unreachable _
   | Return _ -> block
