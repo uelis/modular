@@ -9,11 +9,11 @@
 
 #define MEM_SIZE 1024*1024
 
-static int8_t from_space_mem[MEM_SIZE];
-static int8_t to_space_mem[MEM_SIZE];
+static char from_space_mem[MEM_SIZE];
+static char to_space_mem[MEM_SIZE];
 
-int8_t *from_space = from_space_mem;
-int8_t *to_space = to_space_mem;
+char *from_space = from_space_mem;
+char *to_space = to_space_mem;
 
 int next_free = 0;
 
@@ -26,14 +26,14 @@ raise_out_of_memory()
 
 static inline
 bool
-in_from_space(int8_t *p)
+in_from_space(char *p)
 {
   return (from_space <= p) && (p < from_space + MEM_SIZE);
 }
 
 static inline
 bool
-in_to_space(int8_t *p)
+in_to_space(char *p)
 {
   return (to_space <= p) && (p < to_space + MEM_SIZE);
 }
@@ -50,22 +50,62 @@ in_to_space(int8_t *p)
  *  If the last bit of the tag is 0, then it is a forward pointer.
  */
 
-#define TAG(r)       *((int64_t*)r)
-#define SIZE(r)      (TAG(r) >> 32)
-#define PTR_COUNT(r) ((TAG(r) & 0xFFFFFFFF) >> 1)
-#define NO_FWD(r)    (TAG(r) & 0x1)
-#define FWD_PTR(r)   *((int8_t**)r)
-#define PTR(r, i)    *((int8_t**)((int64_t*)r + 1) + i)
+typedef union {
+  int64_t as_int64;
+  char *as_forward_pointer;
+} tag_t;
+
+static inline
+tag_t
+get_tag(char *record) {
+  return *((tag_t*)record);
+}
+
+static inline
+void
+set_tag(char *record, tag_t tag) {
+  *((tag_t*)record) = tag;
+}
+
+static inline
+char*
+get_pointer(char *record, int i) {
+  return *((char**)((tag_t*)record + 1) + i);
+}
+
+static inline
+void
+set_pointer(char *record, int i, char *ptr) {
+  *((char**)((tag_t*)record + 1) + i) = ptr;
+}
+
+static inline
+int64_t
+tag_size(tag_t tag) {
+  return tag.as_int64 >> 32;
+}
+
+static inline
+int64_t
+tag_pointer_count(tag_t tag) {
+  return (tag.as_int64 & 0xFFFFFFFF) >> 1;
+}
+
+static inline
+bool
+tag_is_fwd_pointer(tag_t tag) {
+  return !(tag.as_int64 & 0x1);
+}
 
 /*
  * Allocate size bytes.
  * Returns NULL if memory is full.
  */
 __attribute__((always_inline))
-void*
+char*
 gc_alloc(size_t size)
 {
-  int8_t* chunk = from_space + next_free;
+  char *chunk = from_space + next_free;
   next_free += size;
   if (next_free >= MEM_SIZE) {
     chunk = NULL;
@@ -78,15 +118,16 @@ gc_alloc(size_t size)
  * Assumes that record points to from_space and next points to to_space
  */
 static void
-copy_record(void *record, void *next)
+copy_record(char *record, char *next)
 {
   assert( in_from_space(record) );
   assert( in_to_space(next) );
-  int size = SIZE(record);
+  tag_t tag = get_tag(record);
+  int64_t size = tag_size(tag);
   memcpy(next, record, size);
   /* forward pointer */
-  TAG(record) = 0; /* make sure the last bit of tag is 0 */
-  FWD_PTR(record) = (void*)next;
+  tag_t fwd = { .as_forward_pointer = next };
+  set_tag(record, fwd);
 }
 
 /*
@@ -99,7 +140,7 @@ void
 gc_collect(size_t bytes_needed, int64_t rootc, ...)
 {
 
-  int8_t *next;
+  char *next;
   next = to_space;
 
   /* copy roots */
@@ -107,45 +148,47 @@ gc_collect(size_t bytes_needed, int64_t rootc, ...)
   va_list roots;
   va_start(roots, rootc);
   for (int i = 0; i < rootc; i++) {
-    int8_t *root = va_arg(roots, int8_t*);
+    char *root = va_arg(roots, char*);
     assert( root != NULL && in_from_space(root) );
-    int size = SIZE(root);
+    tag_t tag = get_tag(root);
     copy_record(root, next);
-    next += size;
+    next += tag_size(tag);
   }
   va_end(roots);
 
   /* copy reachable */
 
-  int8_t *scan;
+  char *scan;
   scan = to_space;
 
   while (scan < next) {
-    int size = SIZE(scan);
-    int ptr_count = PTR_COUNT(scan);
+    tag_t tag = get_tag(scan);
+    int64_t ptr_count = tag_pointer_count(tag);
 
     for (int i = 0; i < ptr_count; i++) {
-      int8_t *p = PTR(scan, i);
+      char *p = get_pointer(scan, i);
       if (p != NULL && in_from_space(p)) {
+        tag_t tag_p = get_tag(p);
 
-        if (NO_FWD(p)) {
-          int p_size = SIZE(p);
+        if (!tag_is_fwd_pointer(tag_p)) {
+          int64_t p_size = tag_size(tag_p);
           if (!in_to_space(next + p_size))
             raise_out_of_memory();
           copy_record(p, next);
           next += p_size;
+          tag_p = get_tag(p);
         }
-        PTR(scan, i) = FWD_PTR(p);
+        set_pointer(scan, i, tag_p.as_forward_pointer);
       }
     }
-    scan += size;
+    scan += tag_size(tag);
   }
 
   next_free = next - to_space;
   if (bytes_needed > MEM_SIZE - next_free)
     raise_out_of_memory();
 
-  void *tmp = from_space;
+  char *tmp = from_space;
   from_space = to_space;
   to_space = tmp;
 }
