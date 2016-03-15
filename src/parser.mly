@@ -25,7 +25,7 @@ let mkAst d : Ast.t =
 %token FST SND
 %token TRUE FALSE
 %token IF THEN ELSE PRINT LET IN
-%token FIX TAILFIX
+%token REC TAILREC
 %token <int> NUM
 %token <string> IDENT
 %token <string> STRING
@@ -50,26 +50,30 @@ decls:
       { $1 :: $2 }
 
 decl:
-    | LET identifier EQUALS term
-        {Decl.TermDecl($2, $4) }
+    | LET term_let 
+       { let f, t = $2 in Decl.TermDecl(f, t) }
 
 identifier:
     | IDENT
-        { Ident.global $1 }
+       { Ident.global $1 }
 
 term:
     | LAMBDA identifier TO term
-        { mkAst (Fun($2, $4)) }
-    | FIX identifier identifier TO term
-        { mkAst (Fix($2, $3, $5)) }
-    | TAILFIX identifier identifier TO term
-        { mkAst (Tailfix($2, $3, $5)) }
+       { mkAst (Fun($2, $4)) }
     | IF term THEN term ELSE term
-        { mkAst (If($2, $4, $6)) }
-    | LET identifier EQUALS term IN term
-        { mkAst (App(mkAst (Fun($2, $6)), $4)) }
+       { mkAst (If($2, $4, $6)) }
+    | LET term_let IN term
+       { let f, t = $2 in mkAst (App(mkAst (Fun(f, $4)), t)) }
     | term_inf
-       { $1 }      
+       { $1 }
+
+term_let:
+   | identifier EQUALS term
+       { $1, $3 }
+   | REC identifier identifier EQUALS term
+       { $2, mkAst (Fix($2, $3, $5)) }
+   | TAILREC identifier identifier EQUALS term
+       { $2, mkAst (Tailfix($2, $3, $5)) }
 
 term_inf:
     | term_app

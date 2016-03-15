@@ -93,7 +93,8 @@ expected to have the form
 Terms can be formed using the following concrete syntax:
 
 ```sml
-  s,t  ::=  x  |  let x = s in t  |  \x -> t  |  s t  |  fix f x -> t
+  s,t  ::=  x  |  let x = s in t  |  \x -> t  |  s t
+         | let rec f x = t | let tailrec f x = t
          |  if s = t then t1 else t2
          | (s, t) | #1 t | #2 t
          |  0  |  ~1  |  1  |  ~2  |  2  | ...

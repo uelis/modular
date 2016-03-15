@@ -50,8 +50,8 @@ rule main = parse
   | "if0"        { IF }
   | "then"       { THEN }
   | "else"       { ELSE }
-  | "fix"        { FIX }
-  | "tailfix"    { TAILFIX }
+  | "rec"        { REC }
+  | "tailrec"    { TAILREC }
   | "let"        { LET }
   | "in"         { IN }
   | "true"       { TRUE }

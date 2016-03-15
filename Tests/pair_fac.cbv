@@ -1,7 +1,6 @@
-let fac =
-  fix f x ->
+let rec fac x =
     let x1 = #1 x in
     let x2 = #2 x in
-    if x1 = 0 then print x2 else f (x1 - 1, x1 * x2)
+    if x1 = 0 then print x2 else fac (x1 - 1, x1 * x2)
 let main =
   fac (10, 1)

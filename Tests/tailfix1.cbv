@@ -1,5 +1,4 @@
-let f =
-    tailfix f x ->
+let tailrec f x =
       let x1 = #1 x in
       let x2 = #2 x in
       if x1 = 0 then

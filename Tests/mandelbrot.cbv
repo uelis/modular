@@ -40,13 +40,13 @@ let main =
       let u = print 60 in
       let u = print 0 in
       print (60*q/1024) in
-  let y_loop = tailfix y_loop y -> 
+  let tailrec y_loop y =
                  if y < 400 then
                    let ci = z0i + (y - 200) * d in
-                   let x_loop = tailfix x_loop x -> 
+                   let tailrec x_loop x = 
                                   if x < 400 then
                                     let cr = z0r + (x - 200) * d in
-                                    let loop = tailfix loop v -> 
+                                    let tailrec loop v =
                                                  let zr = #1 v in
                                                  let zi = #1 (#2 v) in
                                                  let n = #2 (#2 v) in

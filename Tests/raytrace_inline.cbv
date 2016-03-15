@@ -54,8 +54,7 @@ let sphereRefl = \i ->
    else factor*2/10
 
 let sqrt = \x ->
-  let sqrt' =
-    tailfix sqrt' v ->
+  let tailrec sqrt' v =
       let i0 = #1 v in
       let i = #2 v in
       if 0 < i then
@@ -69,8 +68,7 @@ let andalso = \bc ->
 let closestIntersection = \v ->
   let base = #1 v in
   let dir = #2 v in
-  let loop =
-    tailfix closestIntersection v ->
+  let tailrec closestIntersection v =
     let i = #1 v in
     let intersectionTime = #1 (#2 v) in
     let intersectionSphere = #2 (#2 v) in
@@ -101,7 +99,7 @@ let closestIntersection = \v ->
       closestIntersection (i+1, iTS)
    else
      (intersectionTime, intersectionSphere) in
-  loop (0, (10000 * factor, 0-1))
+  closestIntersection (0, (10000 * factor, 0-1))
 
 let normalise = \v ->
   let x = #1 v in
@@ -141,19 +139,16 @@ let reflectedRay = \v ->
 
 let main =
   let u = print "P3\n400\n400\n256\n" in
-  let y_loop =
-    tailfix cy y -> 
+  let tailrec y_loop y =
       if y < 400 then
-        let x_loop =
-          tailfix cx x -> 
+        let tailrec x_loop x =
             if x < 400 then
               let rayBase = ((x * factor) / 100 - 2 * factor,
                              ((y * factor)/ 100 - 2 * factor,
                               (0 - 2) * factor)) in
               let rayDir = (0, (0, factor)) in
               let ray = (rayBase, rayDir) in
-              let clevel =
-                tailfix clevel v -> 
+              let tailrec clevel v =
                   let level = #1 v in
                   let v1 = #2 v in
                   let red = #1 v1 in
@@ -265,10 +260,10 @@ let main =
                       let u2 = if green < 0 then print 0 else print (green * 256/ factor) in
                       if blue < 0 then print 0 else print (blue * 256/ factor) in
               let u = clevel (0, (0, (0, (0, (factor, (rayBase, rayDir)))))) in
-              cx (x+1)
+              x_loop (x+1)
             else
               42 in
         let u = x_loop 0 in
-        cy (y+1)
+        y_loop (y+1)
       else 42 in
   y_loop 0
