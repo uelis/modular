@@ -9,11 +9,11 @@
 
 #define MEM_SIZE 1024*1024
 
-static char from_space_mem[MEM_SIZE];
-static char to_space_mem[MEM_SIZE];
+static uint8_t from_space_mem[MEM_SIZE];
+static uint8_t to_space_mem[MEM_SIZE];
 
-char *from_space = from_space_mem;
-char *to_space = to_space_mem;
+void *from_space = from_space_mem;
+void *to_space = to_space_mem;
 
 int next_free = 0;
 
@@ -26,23 +26,23 @@ raise_out_of_memory()
 
 static inline
 bool
-in_from_space(char *p)
+in_from_space(void *p)
 {
   return (from_space <= p) && (p < from_space + MEM_SIZE);
 }
 
 static inline
 bool
-in_to_space(char *p)
+in_to_space(void *p)
 {
   return (to_space <= p) && (p < to_space + MEM_SIZE);
 }
 
 /*
  *  Record organisation:
- *  +----------------+---------------------+-----+-----------+------+
- *  | tag (64 bits)  | pointer 1 (int8_t*) | ... | pointer n | data |
- *  +----------------+---------------------+-----+-----------+------+
+ *  +----------------+-----------+-----+-----------+------+
+ *  | tag (64 bits)  | pointer 1 | ... | pointer n | data |
+ *  +----------------+-----------+-----+-----------+------+
  *
  *  If the last bit of the tag is 1, then it contains the following data:
  *  - highermost 32 bits: record size (including tag)
@@ -51,50 +51,54 @@ in_to_space(char *p)
  */
 
 typedef union {
-  int64_t as_int64;
-  char *as_forward_pointer;
+  uint64_t as_uint64;
+  void *as_forward_pointer;
 } tag_t;
 
 static inline
 tag_t
-get_tag(char *record) {
+get_tag(void *record) {
   return *((tag_t*)record);
 }
 
 static inline
 void
-set_tag(char *record, tag_t tag) {
+set_tag(void *record, tag_t tag) {
   *((tag_t*)record) = tag;
 }
 
 static inline
 char*
-get_pointer(char *record, int i) {
-  return *((char**)((tag_t*)record + 1) + i);
+get_pointer(void *record, int i) {
+  void *rec_wo_tag = (tag_t*)record + 1;
+  void **pointers = (void**)rec_wo_tag;
+  return pointers[i];
 }
 
 static inline
 void
-set_pointer(char *record, int i, char *ptr) {
-  *((char**)((tag_t*)record + 1) + i) = ptr;
+set_pointer(void *record, int i, char *ptr) {
+  void *rec_wo_tag = (tag_t*)record + 1;
+  void **pointers = (void**)rec_wo_tag;
+  pointers[i] = ptr;
 }
 
 static inline
-int64_t
+uint64_t
 tag_size(tag_t tag) {
-  return tag.as_int64 >> 32;
+  return tag.as_uint64 >> 32;
 }
 
 static inline
-int64_t
+uint64_t
 tag_pointer_count(tag_t tag) {
-  return (tag.as_int64 & 0xFFFFFFFF) >> 1;
+  return (tag.as_uint64 & 0xFFFFFFFF) >> 1;
 }
 
 static inline
 bool
 tag_is_fwd_pointer(tag_t tag) {
-  return !(tag.as_int64 & 0x1);
+  return !(tag.as_uint64 & 0x1);
 }
 
 /*
@@ -105,7 +109,7 @@ __attribute__((always_inline))
 char*
 gc_alloc(size_t size)
 {
-  char *chunk = from_space + next_free;
+  void *chunk = from_space + next_free;
   next_free += size;
   if (next_free >= MEM_SIZE) {
     chunk = NULL;
@@ -118,12 +122,12 @@ gc_alloc(size_t size)
  * Assumes that record points to from_space and next points to to_space
  */
 static void
-copy_record(char *record, char *next)
+copy_record(void *record, void *next)
 {
   assert( in_from_space(record) );
   assert( in_to_space(next) );
   tag_t tag = get_tag(record);
-  int64_t size = tag_size(tag);
+  uint64_t size = tag_size(tag);
   memcpy(next, record, size);
   /* forward pointer */
   tag_t fwd = { .as_forward_pointer = next };
@@ -137,10 +141,10 @@ copy_record(char *record, char *next)
  * The following arguments must be pointers into from_space.
  */
 void
-gc_collect(size_t bytes_needed, int64_t rootc, ...)
+gc_collect(size_t bytes_needed, uint64_t rootc, ...)
 {
 
-  char *next;
+  uint8_t *next;
   next = to_space;
 
   /* copy roots */
@@ -148,7 +152,7 @@ gc_collect(size_t bytes_needed, int64_t rootc, ...)
   va_list roots;
   va_start(roots, rootc);
   for (int i = 0; i < rootc; i++) {
-    char *root = va_arg(roots, char*);
+    void *root = va_arg(roots, void*);
     assert( root != NULL && in_from_space(root) );
     tag_t tag = get_tag(root);
     copy_record(root, next);
@@ -158,20 +162,20 @@ gc_collect(size_t bytes_needed, int64_t rootc, ...)
 
   /* copy reachable */
 
-  char *scan;
+  uint8_t *scan;
   scan = to_space;
 
   while (scan < next) {
     tag_t tag = get_tag(scan);
-    int64_t ptr_count = tag_pointer_count(tag);
+    uint64_t ptr_count = tag_pointer_count(tag);
 
     for (int i = 0; i < ptr_count; i++) {
-      char *p = get_pointer(scan, i);
+      void *p = get_pointer(scan, i);
       if (p != NULL && in_from_space(p)) {
         tag_t tag_p = get_tag(p);
 
         if (!tag_is_fwd_pointer(tag_p)) {
-          int64_t p_size = tag_size(tag_p);
+          uint64_t p_size = tag_size(tag_p);
           if (!in_to_space(next + p_size))
             raise_out_of_memory();
           copy_record(p, next);
@@ -184,11 +188,11 @@ gc_collect(size_t bytes_needed, int64_t rootc, ...)
     scan += tag_size(tag);
   }
 
-  next_free = next - to_space;
+  next_free = next - (uint8_t*)to_space;
   if (bytes_needed > MEM_SIZE - next_free)
     raise_out_of_memory();
 
-  char *tmp = from_space;
+  uint8_t *tmp = from_space;
   from_space = to_space;
   to_space = tmp;
 }
