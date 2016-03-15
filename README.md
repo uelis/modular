@@ -114,12 +114,13 @@ The value of `print(t)` is that of `t`.
 For example, the following program prints the 20-th Fibonacci number
 
 ```sml
-  let fib =
-    fix fib x -> let x1 = x - 1 in
-                 let x2 = x - 2 in
-                 if x1 = 0 then 1 else
-                 if x2 = 0 then 1 else
-                 (fib x1) +  (fib x2)
+  let rec fib x =
+    let x1 = x - 1 in
+    let x2 = x - 2 in
+    if x1 = 0 then 1 else
+    if x2 = 0 then 1 else
+    (fib x1) +  (fib x2)
+    
   let main =
     print (fib 20)
 ```
