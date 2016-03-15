@@ -1,32 +1,16 @@
 open Core_kernel.Std
 
-let unTupleB a =
-  match Basetype.case a with
-  | Basetype.Sgn (Basetype.TupleB bs) -> bs
-  | _ -> assert false
-
-let unDataB a =
-  match Basetype.case a with
-  | Basetype.Sgn (Basetype.DataB(id, params)) -> id, params
-  | _ -> assert false
-
 type value = Ssa.value * Basetype.t
-
-let typeof (v: value) : Basetype.t =
-  snd v
 
 type builder_state_type = {
     cur_label: Ssa.label;
     cur_arg: Ident.t list;
-    cur_lets: Ssa.let_bindings;
-    cur_implicit_args: Ssa.value list
+    cur_lets: Ssa.let_bindings
   }
 
 let blocks = Ident.Table.create ()
-let builder_state =
-  ref (None : builder_state_type option)
-
 let predecessors : (Ssa.block list) Ident.Table.t = Ident.Table.create ()
+let builder_state = ref (None : builder_state_type option)
 
 let reset () : unit =
   Ident.Table.clear blocks;
@@ -42,45 +26,45 @@ let emit (l : Ssa.let_binding) : unit =
 let begin_block ?may_append:(may_append = true) (l: Ssa.label) : value list =
   assert (l.Ssa.arg_types <> []);
   match !builder_state with
+  | Some _ -> failwith "block already started"
   | None ->
-    let values =
-      match Ident.Table.find predecessors l.Ssa.name with
-      | Some [Ssa.Direct(l1, args, lets, vv, l')] when may_append ->
-        assert (l.Ssa.name = l'.Ssa.name);
-        Ident.Table.remove blocks l1.Ssa.name;
-        Ident.Table.remove_multi predecessors l.Ssa.name;
-        builder_state := Some { cur_label = l1; cur_arg = args; cur_lets = lets; cur_implicit_args = vv };
-        List.zip_exn vv l'.Ssa.arg_types
-      | _ ->
-        let args = List.map ~f:(fun _ -> Ident.fresh "x") l.Ssa.arg_types in
-        let iargs = List.map ~f:(fun x -> Ssa.Var x) args in
-        builder_state := Some { cur_label = l; cur_arg = args; cur_lets = []; cur_implicit_args = iargs };
-        List.zip_exn iargs l.Ssa.arg_types in
-    values
-  | Some _ ->
-     assert false
+    match Ident.Table.find predecessors l.Ssa.name with
+    | Some [Ssa.Direct(lpred, args, lets, vv, l')] when may_append ->
+      (* don't define new block, but append to lpred *)
+      assert (l.Ssa.name = l'.Ssa.name);
+      assert (List.for_all2_exn ~f:Basetype.equals l.Ssa.arg_types l'.Ssa.arg_types);
+      Ident.Table.remove blocks lpred.Ssa.name;
+      Ident.Table.remove_multi predecessors l.Ssa.name;
+      builder_state := Some { cur_label = lpred; cur_arg = args; cur_lets = lets };
+      List.zip_exn vv l.Ssa.arg_types
+    | _ ->
+      let args = List.map ~f:(fun _ -> Ident.fresh "x") l.Ssa.arg_types in
+      let vv = List.map ~f:(fun x -> Ssa.Var x) args in
+      builder_state := Some { cur_label = l; cur_arg = args; cur_lets = [] };
+      List.zip_exn vv l.Ssa.arg_types
 
-let begin_blockn ?may_append:(may_append = true) (n: int) (l: Ssa.label) : value list =
-  List.rev (List.take (List.rev (begin_block ~may_append:may_append l)) n)
-
-let begin_block1 ?may_append:(may_append = true) (l: Ssa.label) : value =
-  match begin_blockn ~may_append:may_append 1 l with
-  | [v] -> v
+let begin_block1 ?may_append:(may_append = true) (l: Ssa.label)
+  : value * value list=
+  match begin_block ~may_append:may_append l with
+  | v :: vv -> v, vv
   | _ -> assert false
 
-let begin_block2 ?may_append:(may_append = true) (l: Ssa.label) : value * value =
-  match begin_blockn ~may_append:may_append 2 l with
-  | [v1; v2] -> v1, v2
+let begin_block2 ?may_append:(may_append = true) (l: Ssa.label)
+  : value * value * value list=
+  match begin_block ~may_append:may_append l with
+  | v1 :: v2 :: vv -> v1, v2, vv
   | _ -> assert false
 
-let begin_block3 ?may_append:(may_append = true) (l: Ssa.label) : value * value * value =
-  match begin_blockn ~may_append:may_append 3 l with
-  | [v1; v2; v3] -> v1, v2, v3
+let begin_block3 ?may_append:(may_append = true) (l: Ssa.label)
+  : value * value * value * value list =
+  match begin_block ~may_append:may_append l with
+  | v1 :: v2 :: v3 :: vv -> v1, v2, v3, vv
   | _ -> assert false
 
-let begin_block4 ?may_append:(may_append = true) (l: Ssa.label) : value * value * value * value =
-  match begin_blockn ~may_append:may_append 4 l with
-  | [v1; v2; v3; v4] -> v1, v2, v3, v4
+let begin_block4 ?may_append:(may_append = true) (l: Ssa.label)
+  : value * value * value * value * value list =
+  match begin_block ~may_append:may_append l with
+  | v1 :: v2 :: v3 :: v4 :: vv -> v1, v2, v3, v4, vv
   | _ -> assert false
 
 let unit : value =
@@ -149,6 +133,11 @@ let primop (c: Ssa.op_const) (v: value) : value =
   emit (Ssa.Let(prim, Ssa.Const(c, vv)));
   Ssa.Var prim, vb
 
+let unTupleB a =
+  match Basetype.case a with
+  | Basetype.Sgn (Basetype.TupleB bs) -> bs
+  | _ -> assert false
+
 let tuple (vs: value list) : value =
   let values, types = List.unzip vs in
   Ssa.Tuple values,
@@ -175,6 +164,11 @@ let proj (v: value) (i: int) : value =
   match vv with
   | Ssa.Tuple vs -> List.nth_exn vs i, List.nth_exn bs i
   | _ -> Ssa.Proj(vv, i, bs), List.nth_exn bs i
+
+let unDataB a =
+  match Basetype.case a with
+  | Basetype.Sgn (Basetype.DataB(id, params)) -> id, params
+  | _ -> assert false
 
 let inj (i: int) (v: value) (data: Basetype.t) : value =
   let vv, _ = v in
@@ -242,19 +236,12 @@ let embed (v: value) (a: Basetype.t) : value =
       box (inj i v c)
     | _ -> assert false
 
-let fill_args (args : Ssa.value list) (v : value list) (dst : Ssa.label)
-  : Ssa.value list =
-  let vv = List.map ~f:(fun (vv, va) -> vv) v in
-  let need_args = List.length dst.Ssa.arg_types - List.length v in
-  let needed_args = List.take args need_args in
-  needed_args @ vv
-
 (* TODO: add assertions to check types *)
 let end_block_jump (dst: Ssa.label) (v: value list) : unit =
   match !builder_state with
   | None -> assert false
   | Some s ->
-    let argv = fill_args s.cur_implicit_args v dst in
+    let argv = List.map ~f:(fun (vv, va) -> vv) v in
     let block = Ssa.Direct(s.cur_label, s.cur_arg, s.cur_lets, argv, dst) in
     builder_state := None;
     Ident.Table.add_exn blocks ~key:s.cur_label.Ssa.name ~data:block;
@@ -278,22 +265,19 @@ let end_block_case (v: value) (targets: (value -> Ssa.label * (value list)) list
   | Some s ->
      let id, params = unDataB va in
      let cs = Basetype.Data.constructor_types id params in
-     let branches =
-       List.map (List.zip_exn targets cs)
-                ~f:(fun (t, a) ->
-                    let x = Ident.fresh "x" in
-                    let vx = Ssa.Var x, a in
-                    let dst, arg = t vx in
-                    let argv = fill_args s.cur_implicit_args arg dst in
-                    x, argv, dst
-           ) in
+     let branches = List.map (List.zip_exn targets cs) ~f:(fun (t, a) ->
+         let x = Ident.fresh "x" in
+         let vx = Ssa.Var x, a in
+         let dst, arg = t vx in
+         let argv = List.map ~f:(fun (vv, va) -> vv) arg in
+         x, argv, dst
+       ) in
      let block = Ssa.Branch(s.cur_label, s.cur_arg, s.cur_lets,
                             (id, params, vv, branches)) in
      builder_state := None;
      Ident.Table.add_exn blocks ~key:s.cur_label.Ssa.name ~data:block;
-     List.iter branches
-       ~f:(fun (_, _, dst) ->
-           Ident.Table.add_multi predecessors ~key:dst.Ssa.name ~data:block)
+     List.iter branches ~f:(fun (_, _, dst) ->
+         Ident.Table.add_multi predecessors ~key:dst.Ssa.name ~data:block)
 
 let end_block_return (v: value) : unit =
   let vv, va = v in

@@ -7,7 +7,7 @@ type stage = Basetype.t list
 
 let fresh_label (ms: stage) (name: string) (loc) (a : Basetype.t): Ssa.label =
   { Ssa.name = Ident.fresh name;
-    Ssa.arg_types = List.rev (a :: ms);
+    Ssa.arg_types = a :: ms;
     Ssa.debug_loc = loc
   }
 
@@ -16,7 +16,14 @@ let fresh_label (ms: stage) (name: string) (loc) (a : Basetype.t): Ssa.label =
    1 = type of first stage,
    ... *)
 let type_of_stage l n =
-  List.nth_exn (List.rev l.Ssa.arg_types) n
+  List.nth_exn l.Ssa.arg_types n
+
+let focus n args =
+  let h, t = List.split_n args n in
+  List.rev h, t
+
+let unfocus h t =
+  List.rev h @ t
 
 (** Representation and manipulation of interfaces to access encoded values. *)
 module Access : sig
@@ -75,14 +82,11 @@ struct
     let ls = List.map ~f:labels xs |> List.transpose_exn in
     List.iter2_exn (labels a) ls ~f:f
 
-  let forward_with a b ~f:f : unit =
-    iter2_exn a b
-      ~f:(fun (la, da) (lb, db) ->
-        let arg = Builder.begin_blockn (da + 1) la in
-        f arg (lb, db))
-
   let forward a b : unit =
-    forward_with a b ~f:(fun arg (lb, _) -> Builder.end_block_jump lb arg)
+    iter2_exn a b
+      ~f:(fun (la, _) (lb, _) ->
+          let args = Builder.begin_block la in
+          Builder.end_block_jump lb args)
 
   let unreachable a : unit =
     iter a
@@ -97,12 +101,13 @@ struct
         let dsts, mults = List.unzip ls in
         let outermults = List.map ls ~f:(fun (l, d) -> type_of_stage l d) in
         let tsum = Basetype.sumB outermults in
-        match Builder.begin_blockn (da + 1) la with
+        let va, args = focus (da + 1) (Builder.begin_block la) in
+        match va with
         | [] -> assert false
         | vm :: vv ->
           let vm' = Builder.project vm tsum in
           let cases = List.map dsts ~f:(fun dst ->
-            fun c -> dst, c :: vv) in
+            fun c -> dst, unfocus (c :: vv) args) in
           Builder.end_block_case vm' cases
       )
 
@@ -116,11 +121,12 @@ struct
         List.iteri ls
           ~f:(fun i (src, src_mults) ->
             let n = src_mults + 1 in
-            match Builder.begin_blockn n src with
+            let va, args = focus n (Builder.begin_block src) in
+            match va with
             | vm :: vv ->
               let vi = Builder.inj i vm tsum in
               let vm' = Builder.embed vi dst_outermult in
-              Builder.end_block_jump dst (vm' :: vv)
+              Builder.end_block_jump dst (unfocus (vm' :: vv) args)
             | _ -> assert false
           )
       )
@@ -130,13 +136,14 @@ struct
     iter2_exn a b
       ~f:(fun (la, da) (lb, db) ->
         let tb = type_of_stage lb db in
-        match Builder.begin_blockn (da + 1) la with
+        let ww, args = focus (da + 1) (Builder.begin_block la) in
+        match ww with
         | vc :: vv ->
           (* ta is the first type in the context *)
           let ta = type_of_stage lb (db + 1) in
           let vm' = Builder.project vc (Basetype.pairB ta tb) in
           let va, vb = Builder.unpair vm' in
-          Builder.end_block_jump lb (va :: vb :: vv)
+          Builder.end_block_jump lb (unfocus (va :: vb :: vv) args)
         | _ -> assert false
       )
 
@@ -145,10 +152,11 @@ struct
     iter2_exn a b
       ~f:(fun (la, da) (lb, db) ->
         let tc = type_of_stage lb db in
-        match Builder.begin_blockn (da + 2) la with
+        let ww, args = focus (da + 2) (Builder.begin_block la) in
+        match ww with
         | va :: vb :: vv ->
           let vc = Builder.embed (Builder.pair va vb) tc in
-          Builder.end_block_jump lb (vc :: vv)
+          Builder.end_block_jump lb (unfocus (vc :: vv) args)
         | _ -> assert false
       )
 
@@ -156,21 +164,22 @@ struct
   let pop_discard a b : unit =
     iter2_exn a b
       ~f:(fun (la, da) (lb, _) ->
-        match Builder.begin_blockn (da + 2) la with
-        | _ :: vv ->
-          Builder.end_block_jump lb vv
-        | _ -> assert false
-      )
+          let ww, args = focus (da + 2) (Builder.begin_block la) in
+          match ww with
+          | _ :: vv ->
+            Builder.end_block_jump lb (unfocus vv args)
+          | _ -> assert false
+        )
 
   (* Gamma |- A.X to Gamma, C |- A.X where unit <= C *)
   let push_unit_embed a b : unit =
     iter2_exn a b
       ~f:(fun (la, da) (lb, db) ->
-        let vv = Builder.begin_blockn (da + 1) la in
-        let tc = type_of_stage lb (db + 1) in
-        let vc = Builder.embed Builder.unit tc in
-        Builder.end_block_jump lb (vc :: vv)
-      )
+          let vv, args = focus (da + 1) (Builder.begin_block la) in
+          let tc = type_of_stage lb (db + 1) in
+          let vc = Builder.embed Builder.unit tc in
+          Builder.end_block_jump lb (unfocus (vc :: vv) args)
+        )
 
   let rec fresh_entry (ms: stage) (n: string) (a: Cbvtype.t): t =
     match Cbvtype.case a with
@@ -508,12 +517,12 @@ let rec split_entry (a: Access.t) (a1: Access.t) (a2: Access.t) : unit =
     split_entry y y1 y2;
     let d12 = Basetype.sumB [d1; d2] in
     begin
-      let vs, vdx = Builder.begin_block2 eval in
+      let vdx, vs, args = Builder.begin_block2 eval in
       let vd, vx = Builder.unpair vdx in
       let vd12 = Builder.project vd d12 in
       Builder.end_block_case vd12
-        [ (fun vd1 -> eval1, [vs; Builder.pair vd1 vx]);
-          (fun vd2 -> eval2, [vs; Builder.pair vd2 vx])
+        [ (fun vd1 -> eval1, Builder.pair vd1 vx :: vs :: args);
+          (fun vd2 -> eval2, Builder.pair vd2 vx :: vs :: args)
         ]
     end
   | Access.Base, _, _
@@ -539,14 +548,14 @@ let rec join_exit (a1: Access.t) (a2: Access.t) (a: Access.t) : unit =
     Access.join_embed [x1; x2] x;
     join_exit y1 y2 y;
     begin
-      let vs, vres = Builder.begin_block2 res1 in
+      let vres, vs, args = Builder.begin_block2 res1 in
       let vy = join_code `Left vres y1 y2 y in
-      Builder.end_block_jump res [vs; vy]
+      Builder.end_block_jump res (vy :: vs :: args)
     end;
     begin
-      let vs, vres = Builder.begin_block2 res2 in
+      let vres, vs, args = Builder.begin_block2 res2 in
       let vy = join_code `Right vres y1 y2 y in
-      Builder.end_block_jump res [vs; vy]
+      Builder.end_block_jump res (vy :: vs :: args)
     end
   | Access.Base, _, _
   | Access.Tuple _, _, _
@@ -557,18 +566,18 @@ let rec join_exit (a1: Access.t) (a2: Access.t) (a: Access.t) : unit =
 let rec build_blocks (ms: stage) (t: term_with_interface) : unit =
   match t.desc with
   | Var x ->
-    let va, vgamma = Builder.begin_block2 t.eval.entry in
+    let vgamma, va, args = Builder.begin_block2 t.eval.entry in
     let vx = List.Assoc.find_exn (Context.decode t.term.t_context vgamma) x in
-    Builder.end_block_jump t.eval.exit [va; vx]
+    Builder.end_block_jump t.eval.exit (vx :: va :: args)
   | Contr(((x, a), xs), s) ->
     let x_access = List.Assoc.find_exn t.context x in
     begin (* Eval block *)
-      let vstack, vgamma = Builder.begin_block2 t.eval.entry in
+      let vgamma, vstack, args = Builder.begin_block2 t.eval.entry in
       let vdelta =
         let delta = List.map s.term.t_context
             ~f:(fun (y, a) -> (if List.mem xs y then x else y), a) in
         Context.build_map t.term.t_context delta vgamma in
-      Builder.end_block_jump s.eval.entry [vstack; vdelta]
+      Builder.end_block_jump s.eval.entry (vdelta :: vstack :: args)
     end;
     (* project blocks *)
     begin
@@ -586,8 +595,8 @@ let rec build_blocks (ms: stage) (t: term_with_interface) : unit =
     (* body *)
     build_blocks ms s;
     (* eval exit *)
-    let arg = Builder.begin_block1 s.eval.exit in
-    Builder.end_block_jump t.eval.exit [arg];
+    let args = Builder.begin_block s.eval.exit in
+    Builder.end_block_jump t.eval.exit args;
     (* inject blocks *)
     begin
       match xs with
@@ -601,34 +610,34 @@ let rec build_blocks (ms: stage) (t: term_with_interface) : unit =
     end
   | Const(Ast.Cboolconst b, []) ->
     begin (* eval *)
-      let vstack, _ = Builder.begin_block2 t.eval.entry in
-      Builder.end_block_jump t.eval.exit [vstack; Builder.boolconst b]
+      let _, vstack, args = Builder.begin_block2 t.eval.entry in
+      Builder.end_block_jump t.eval.exit (Builder.boolconst b :: vstack :: args)
     end
   | Const(Ast.Cintconst i, []) ->
     begin
-      let vstack, _ = Builder.begin_block2 t.eval.entry in
+      let _, vstack, args = Builder.begin_block2 t.eval.entry in
       let vi = Builder.intconst i in
-      Builder.end_block_jump t.eval.exit [vstack; vi]
+      Builder.end_block_jump t.eval.exit (vi :: vstack :: args)
     end
   | Const(Ast.Cintconst _, _) ->
     assert false
   | Const(Ast.Cprint s, _) ->
     begin (* print *)
-      let vstack, vi = Builder.begin_block2 t.eval.entry in
+      let vi, vstack, args = Builder.begin_block2 t.eval.entry in
       ignore (Builder.primop (Ssa.Cprint s) Builder.unit);
-      Builder.end_block_jump t.eval.exit [vstack; Builder.intconst 0]
+      Builder.end_block_jump t.eval.exit (Builder.intconst 0 :: vstack :: args)
     end
   | Const(Ast.Cintprint, [s]) ->
     begin (* eval entry *)
-      let arg = Builder.begin_block1 t.eval.entry in
-      Builder.end_block_jump s.eval.entry [arg]
+      let args = Builder.begin_block t.eval.entry in
+      Builder.end_block_jump s.eval.entry args
     end;
     (* argument *)
     build_blocks ms s;
     begin (* print *)
-      let vstack, vi = Builder.begin_block2 s.eval.exit in
+      let vi, vstack, args = Builder.begin_block2 s.eval.exit in
       ignore (Builder.primop (Ssa.Cintprint) vi);
-      Builder.end_block_jump t.eval.exit [vstack; vi]
+      Builder.end_block_jump t.eval.exit (vi :: vstack :: args)
     end
   | Const(Ast.Cintprint, _) ->
     assert false
@@ -645,30 +654,30 @@ let rec build_blocks (ms: stage) (t: term_with_interface) : unit =
       | Ast.Cintconst _ -> assert false
       | Ast.Cintprint -> assert false in
     begin (* eval1 *)
-      let vstack, vgamma = Builder.begin_block2 t.eval.entry in
+      let vgamma, vstack, args = Builder.begin_block2 t.eval.entry in
       let vgamma1 = Context.build_map t.term.t_context s1.term.t_context vgamma in
       let vgamma2 = Context.build_map t.term.t_context s2.term.t_context vgamma in
       let vstack1 = Builder.embed (Builder.pair vstack vgamma2) s1.term.t_ann in
-      Builder.end_block_jump s1.eval.entry [vstack1; vgamma1]
+      Builder.end_block_jump s1.eval.entry (vgamma1 :: vstack1 :: args)
     end;
     build_blocks ms s1;
     begin (* eval2 *)
-      let vstack1, vn1 = Builder.begin_block2 s1.eval.exit in
+      let vn1, vstack1, args = Builder.begin_block2 s1.eval.exit in
       let vp = Builder.project vstack1
           (Basetype.pairB t.term.t_ann (Context.code s2.term.t_context)) in
       let vstack, vgamma2 = Builder.unpair vp in
       let vstack2 = Builder.embed (Builder.pair vstack vn1) s2.term.t_ann in
-      Builder.end_block_jump s2.eval.entry [vstack2; vgamma2]
+      Builder.end_block_jump s2.eval.entry (vgamma2 :: vstack2 :: args)
     end;
     build_blocks ms s2;
     (* eval result *)
     begin
-      let vstack2, vn2 = Builder.begin_block2 s2.eval.exit in
+      let vn2, vstack2, args = Builder.begin_block2 s2.eval.exit in
       let vp = Builder.project vstack2
                  (Basetype.pairB t.term.t_ann (Cbvtype.code s1.term.t_type)) in
       let vstack, vn1 = Builder.unpair vp in
       let veq = Builder.primop primop (Builder.pair vn1 vn2) in
-      Builder.end_block_jump t.eval.exit [vstack; veq]
+      Builder.end_block_jump t.eval.exit (veq :: vstack :: args)
     end
   | Const(_, _) ->
     assert false
@@ -676,21 +685,21 @@ let rec build_blocks (ms: stage) (t: term_with_interface) : unit =
     (* TODO: nimmt an, dass x im context von s vorkommt. *)
     let x_access = List.Assoc.find_exn s.context x in
     begin (* eval *)
-      let vstack, vgamma = Builder.begin_block2 t.eval.entry in
+      let vgamma, vstack, args = Builder.begin_block2 t.eval.entry in
       let vclosure = Builder.embed vgamma (Cbvtype.code t.term.t_type) in
-      Builder.end_block_jump t.eval.exit [vstack; vclosure]
+      Builder.end_block_jump t.eval.exit (vclosure :: vstack :: args)
     end;
     begin (* access  *)
       match t.access.entry with
       | Access.Fun(_, eval, arg_exit, res_entry) ->
         begin
-          let ve, va, vdx = Builder.begin_block3 eval in
+          let vdx, va, ve, args = Builder.begin_block3 eval in
           let vd, vx = Builder.unpair vdx in
           let vgamma = Builder.project vd (Context.code t.term.t_context) in
           let vdelta =
             Context.encode s.term.t_context
               ((x, vx) :: Context.decode t.term.t_context vgamma) in
-          Builder.end_block_jump s.eval.entry [ve; va; vdelta]
+          Builder.end_block_jump s.eval.entry (vdelta :: va :: ve :: args)
         end;
         (* TODO: forward kann man sich sparen? *)
         Access.forward res_entry s.access.entry;
@@ -710,29 +719,29 @@ let rec build_blocks (ms: stage) (t: term_with_interface) : unit =
         Access.forward s.access.exit res_exit;
         Access.forward x_access.entry arg_entry;
         begin (* s eval exit *)
-          let ve, va, vr = Builder.begin_block3 s.eval.exit in
-          Builder.end_block_jump res [ve; va; vr]
+          let vr, va, ve, args = Builder.begin_block3 s.eval.exit in
+          Builder.end_block_jump res (vr :: va :: ve :: args)
         end;
       | _ -> assert false
     end
   | App(t1, t2) ->
     begin (* eval *)
-      let vu, vgammadelta = Builder.begin_block2 t.eval.entry in
+      let vgammadelta, vu, args = Builder.begin_block2 t.eval.entry in
       let vgamma = Context.build_map t.term.t_context t1.term.t_context vgammadelta in
       let vdelta = Context.build_map t.term.t_context t2.term.t_context vgammadelta in
       let embed_val = Builder.embed (Builder.pair vu vdelta) t1.term.t_ann in
-      Builder.end_block_jump t1.eval.entry [embed_val; vgamma]
+      Builder.end_block_jump t1.eval.entry (vgamma :: embed_val :: args)
     end;
     (* TODO: wäre besser, wenn der eval-Block von t2 hier schon konstruiert waere *)
     build_blocks ms t1;
     begin (* block 2 *)
-      let ve, vf = Builder.begin_block2 t1.eval.exit in
+      let vf, ve, args = Builder.begin_block2 t1.eval.exit in
       let vu_delta = Builder.project ve
           (Basetype.pairB t.term.t_ann (Context.code t2.term.t_context)) in
       let vu, vdelta = Builder.unpair vu_delta in
       let vu_f = Builder.pair vu vf in
       let ve' = Builder.embed vu_f t2.term.t_ann in
-      Builder.end_block_jump t2.eval.entry [ve'; vdelta]
+      Builder.end_block_jump t2.eval.entry (vdelta :: ve' :: args)
     end;
     begin
       match t1.access.exit with
@@ -740,9 +749,9 @@ let rec build_blocks (ms: stage) (t: term_with_interface) : unit =
         Access.pop_discard y_exit t.access.exit;
         Access.pop_discard x_entry t2.access.entry;
         begin (* block 8 *)
-          let _, vs, vres = Builder.begin_block3 res1 in
+          let vres, vs, _, args = Builder.begin_block3 res1 in
           let vu = Builder.project vs t.term.t_ann in
-          Builder.end_block_jump t.eval.exit [vu; vres]
+          Builder.end_block_jump t.eval.exit (vres :: vu :: args)
         end
       | _ ->
         assert false
@@ -754,12 +763,12 @@ let rec build_blocks (ms: stage) (t: term_with_interface) : unit =
         let ts = type_of_stage apply 1 in
         let td = type_of_stage apply 2 in
         begin (* block 3 *)
-          let ve, vx = Builder.begin_block2 t2.eval.exit in
+          let vx, ve, args = Builder.begin_block2 t2.eval.exit in
           let vu_f = Builder.project ve (Basetype.pairB t.term.t_ann (Cbvtype.code t1.term.t_type)) in
           let vu, vf = Builder.unpair vu_f in
           let vs = Builder.embed vu ts in
           let vd = Builder.embed Builder.unit td in
-          Builder.end_block_jump apply [vd; vs; Builder.pair vf vx]
+          Builder.end_block_jump apply (Builder.pair vf vx :: vs :: vd :: args)
         end;
         Access.push_unit_embed t.access.entry y_entry;
         Access.push_unit_embed t2.access.exit x_exit
@@ -770,9 +779,9 @@ let rec build_blocks (ms: stage) (t: term_with_interface) : unit =
     let x_access = List.Assoc.find_exn s.context x in
     let f_access = List.Assoc.find_exn s.context f in
     begin (* eval *)
-      let vstack, vgamma = Builder.begin_block2 t.eval.entry in
+      let vgamma, vstack, args = Builder.begin_block2 t.eval.entry in
       let vclosure = Builder.embed vgamma (Cbvtype.code t.term.t_type) in
-      Builder.end_block_jump t.eval.exit [vstack; vclosure]
+      Builder.end_block_jump t.eval.exit (vclosure :: vstack :: args)
     end;
     (* E + H *G *)
     let tcons =
@@ -787,36 +796,40 @@ let rec build_blocks (ms: stage) (t: term_with_interface) : unit =
     let stack_singleton src dst =
       Access.iter2_exn src dst
         ~f:(fun (ls, ds) (ld, _) ->
-            match Builder.begin_blockn (ds + 2) ls with (* 2 to include E on stack! *)
+            (* 2 to include E on stack! *)
+            let ww, args = focus (ds + 2) (Builder.begin_block ls) in
+            match ww with
             | ve :: vv ->
               let vh = build_singleton ve in
-              Builder.end_block_jump ld (vh :: vv)
+              Builder.end_block_jump ld (unfocus (vh :: vv) args)
             | _ -> assert false) in
     let stack_push src dst =
       Access.iter2_exn src dst
         ~f:(fun (ls, ds) (ld, _) ->
             (* 3 to include H, E on stack! *)
-            match Builder.begin_blockn (ds + 3) ls with
+            let ww, args = focus (ds + 3) (Builder.begin_block ls) in
+            match ww with
             | vh :: vg :: vv ->
               let vpushed = build_push vh vg in
-              Builder.end_block_jump ld (vpushed :: vv)
+              Builder.end_block_jump ld (unfocus (vpushed :: vv) args)
             | _ -> assert false) in
     let stack_case src dst1 dst2 =
       Access.iter2_list_exn src [dst1; dst2]
         ~f:(fun (la, da) ls ->
             match ls with
             | [(dst1, _); (dst2, _)] ->
-              (* 2 to include H on stack!*)
               begin
-                match Builder.begin_blockn (da + 2) la with
+                (* 2 to include H on stack!*)
+                let ww, args = focus (da + 2) (Builder.begin_block la) in
+                match ww with
                 | [] -> assert false
                 | vh :: vv ->
                   let vcons = Builder.project vh tcons in
                   Builder.end_block_case vcons
-                    [ (fun ve -> dst1, ve :: vv);
+                    [ (fun ve -> dst1, unfocus (ve :: vv) args);
                       (fun vhg ->
                          let vh, vg = Builder.unpair vhg in
-                         dst2, vh :: vg :: vv)
+                         dst2, unfocus (vh :: vg :: vv) args)
                     ]
               end
             | _ -> assert false) in
@@ -827,13 +840,13 @@ let rec build_blocks (ms: stage) (t: term_with_interface) : unit =
       let tx = Cbvtype.code xty in
       fresh_label (ts :: th :: ms) "fix_eval_body" None (Basetype.pairB td tx) in
     begin
-      let vh, va, vdx = Builder.begin_block3 eval_body_block in
+      let vdx, va, vh, args = Builder.begin_block3 eval_body_block in
       let vd, vx = Builder.unpair vdx in
       let vgamma = Builder.project vd (Context.code t.term.t_context) in
       let vdelta =
         Context.encode s.term.t_context
           ((x, vx) :: (f, vd) :: Context.decode t.term.t_context vgamma) in
-      Builder.end_block_jump s.eval.entry [vh; va; vdelta]
+      Builder.end_block_jump s.eval.entry (vdelta :: va :: vh :: args)
     end;
     (* body *)
     build_blocks (th :: ms) s;
@@ -842,9 +855,9 @@ let rec build_blocks (ms: stage) (t: term_with_interface) : unit =
       match t.access.entry with
       | Access.Fun(_, eval, arg_exit, res_entry) ->
         begin
-          let ve, va, vr = Builder.begin_block3 eval in
+          let vr, va, ve, args = Builder.begin_block3 eval in
           let vh = build_singleton ve in
-          Builder.end_block_jump eval_body_block [vh; va; vr]
+          Builder.end_block_jump eval_body_block (vr :: va :: vh :: args)
         end;
         stack_singleton arg_exit x_access.exit;
         stack_singleton res_entry s.access.entry
@@ -857,14 +870,14 @@ let rec build_blocks (ms: stage) (t: term_with_interface) : unit =
       | Access.Fun(_, res, arg_exit, res_entry),
         Access.Fun(_, rec_call, _, _) ->
         begin
-          let vh, va, vm = Builder.begin_block3 s.eval.exit in
+          let vm, va, vh, args = Builder.begin_block3 s.eval.exit in
           let vcons = Builder.project vh tcons in
           Builder.end_block_case
             vcons
-            [ (fun ve -> res, [ve; va; vm]);
+            [ (fun ve -> res, (vm :: va :: ve :: args));
               (fun vhg ->
                  let vh, vg = Builder.unpair vhg in
-                 rec_call, [vh; vg; va; vm])
+                 rec_call, (vm :: va :: vg :: vh :: args))
             ]
         end
       | _ ->
@@ -875,9 +888,9 @@ let rec build_blocks (ms: stage) (t: term_with_interface) : unit =
       | Access.Fun(_, eval, arg_exit, res_entry),
         Access.Fun(_, rec_eval, rec_arg_exit, rec_res_entry) ->
         begin
-          let vh, vg, va, vm = Builder.begin_block4 rec_eval in
+          let vm, va, vg, vh, args = Builder.begin_block4 rec_eval in
           let vpushed = build_push vh vg in
-          Builder.end_block_jump eval_body_block [vpushed; va; vm]
+          Builder.end_block_jump eval_body_block (vm :: va :: vpushed :: args)
         end;
         stack_push rec_arg_exit x_access.exit;
         stack_push rec_res_entry s.access.entry
@@ -900,15 +913,15 @@ let rec build_blocks (ms: stage) (t: term_with_interface) : unit =
   | Tailfix((th, f, x, xty), s) ->
     (* TODO: check order *)
     begin (* eval *)
-      let vstack, vgamma = Builder.begin_block2 t.eval.entry in
+      let vgamma, vstack, args = Builder.begin_block2 t.eval.entry in
       let vclosure = Builder.embed vgamma (Cbvtype.code t.term.t_type) in
-      Builder.end_block_jump t.eval.exit [vstack; vclosure]
+      Builder.end_block_jump t.eval.exit (vclosure :: vstack :: args)
     end;
     begin
       match t.access.entry with
       | Access.Fun(_, eval, a1, a2) ->
         begin (* eval_body *)
-          let ve, va, vdx = Builder.begin_block3 ~may_append:false eval in
+          let vdx, va, ve, args = Builder.begin_block3 ~may_append:false eval in
           let vd, vx = Builder.unpair vdx in
           let vgamma = Builder.project vd (Context.code t.term.t_context) in
           let vdelta =
@@ -916,7 +929,7 @@ let rec build_blocks (ms: stage) (t: term_with_interface) : unit =
               ((x, vx) :: (f, vd) :: Context.decode t.term.t_context vgamma) in
           let vh = Builder.embed (Builder.pair ve va) th in
           let vu = Builder.embed Builder.unit s.term.t_ann in
-          Builder.end_block_jump s.eval.entry [vh; vu; vdelta]
+          Builder.end_block_jump s.eval.entry (vdelta :: vu :: vh :: args)
         end;
       | _ ->
         assert false
@@ -934,10 +947,10 @@ let rec build_blocks (ms: stage) (t: term_with_interface) : unit =
         Access.unreachable s.access.exit;
         Access.unreachable x_access.entry;
         begin (* s eval exit *)
-          let vh, vu, vm = Builder.begin_block3 s.eval.exit in
+          let vm, vu, vh, args = Builder.begin_block3 s.eval.exit in
           let vea = Builder.project vh (Basetype.pairB te ta) in
           let ve, va = Builder.unpair vea in
-          Builder.end_block_jump res [ve; va; vm]
+          Builder.end_block_jump res (vm :: va :: ve :: args)
         end;
       | _ ->
         assert false
@@ -950,21 +963,21 @@ let rec build_blocks (ms: stage) (t: term_with_interface) : unit =
         let ta = type_of_stage eval 1 in
         let te = type_of_stage eval 2 in
         begin (* f access entry *)
-          let vh, vg, vs, vm = Builder.begin_block4 feval in
+          let vm, vs, vg, vh, args = Builder.begin_block4 feval in
           let vea = Builder.project vh (Basetype.pairB te ta) in
           let ve, va = Builder.unpair vea in
-          Builder.end_block_jump eval [ve; va; vm]
+          Builder.end_block_jump eval (vm :: va :: ve :: args)
         end
       | _ ->
         assert false
     end
   | Pair(t1, t2) ->
     begin (* eval *)
-      let vu, vgammadelta = Builder.begin_block2 t.eval.entry in
+      let vgammadelta, vu, args = Builder.begin_block2 t.eval.entry in
       let vgamma = Context.build_map t.term.t_context t1.term.t_context vgammadelta in
       let vdelta = Context.build_map t.term.t_context t2.term.t_context vgammadelta in
       let embed_val = Builder.embed (Builder.pair vu vdelta) t1.term.t_ann in
-      Builder.end_block_jump t1.eval.entry [embed_val; vgamma]
+      Builder.end_block_jump t1.eval.entry (vgamma :: embed_val :: args)
     end;
     (* access entry *)
     begin
@@ -978,20 +991,20 @@ let rec build_blocks (ms: stage) (t: term_with_interface) : unit =
     build_blocks ms t1;
     build_blocks ms t2;
     begin (* block 2 *)
-      let ve, vf = Builder.begin_block2 t1.eval.exit in
+      let vf, ve, args = Builder.begin_block2 t1.eval.exit in
       let vu_delta = Builder.project ve
           (Basetype.pairB t.term.t_ann (Context.code t2.term.t_context)) in
       let vu, vdelta = Builder.unpair vu_delta in
       let vu_f = Builder.pair vu vf in
       let ve' = Builder.embed vu_f t2.term.t_ann in
-      Builder.end_block_jump t2.eval.entry [ve'; vdelta]
+      Builder.end_block_jump t2.eval.entry (vdelta :: ve' :: args)
     end;
     begin (* block 3*)
-      let ve, v2 = Builder.begin_block2 t2.eval.exit in
+      let v2, ve, args = Builder.begin_block2 t2.eval.exit in
       let vu_f = Builder.project ve (Basetype.pairB t.term.t_ann
                                        (Cbvtype.code t1.term.t_type)) in
       let vu, v1 = Builder.unpair vu_f in
-      Builder.end_block_jump t.eval.exit [vu; Builder.pair v1 v2]
+      Builder.end_block_jump t.eval.exit (Builder.pair v1 v2 :: vu :: args)
     end;
     (* access exit *)
     begin
@@ -1004,8 +1017,8 @@ let rec build_blocks (ms: stage) (t: term_with_interface) : unit =
     end
   | Proj(t1, i) ->
     begin (* eval entry *)
-      let arg = Builder.begin_block1 t.eval.entry in
-      Builder.end_block_jump t1.eval.entry [arg]
+      let args = Builder.begin_block t.eval.entry in
+      Builder.end_block_jump t1.eval.entry args
     end;
     (* access entry *)
     begin
@@ -1020,9 +1033,9 @@ let rec build_blocks (ms: stage) (t: term_with_interface) : unit =
     (* Body *)
     build_blocks ms t1;
     begin (* eval exit *)
-      let vm, vp = Builder.begin_block2 t1.eval.exit in
+      let vp, vm, args = Builder.begin_block2 t1.eval.exit in
       let vp1 = Builder.proj vp i in
-      Builder.end_block_jump t.eval.exit [vm; vp1]
+      Builder.end_block_jump t.eval.exit (vp1 :: vm :: args)
     end;
     (* access exit *)
     begin
@@ -1040,16 +1053,16 @@ let rec build_blocks (ms: stage) (t: term_with_interface) : unit =
     end
   | If(tc, t1, t2) ->
     begin (* eval 1 *)
-      let vstack, vgamma = Builder.begin_block2 t.eval.entry in
+      let vgamma, vstack, args = Builder.begin_block2 t.eval.entry in
       let vgammac = Context.build_map t.term.t_context tc.term.t_context vgamma in
       let vgamma1 = Context.build_map t.term.t_context t1.term.t_context vgamma in
       let vgamma2 = Context.build_map t.term.t_context t2.term.t_context vgamma in
       let vstack1 = Builder.embed (Builder.tuple [vstack; vgamma1; vgamma2]) tc.term.t_ann in
-      Builder.end_block_jump tc.eval.entry [vstack1; vgammac]
+      Builder.end_block_jump tc.eval.entry (vgammac :: vstack1 :: args)
     end;
     build_blocks ms tc;
     begin (* eval c *)
-      let vstack1, vz = Builder.begin_block2 tc.eval.exit in
+      let vz, vstack1, args = Builder.begin_block2 tc.eval.exit in
       let vp = Builder.project vstack1
                  (Basetype.(newty (TupleB [t.term.t_ann;
                                            Context.code t1.term.t_context;
@@ -1057,22 +1070,22 @@ let rec build_blocks (ms: stage) (t: term_with_interface) : unit =
       match Builder.untuple vp with
       | [vstack; vgamma1; vgamma2] ->
         Builder.end_block_case vz
-          [ (fun _ -> t1.eval.entry, [vstack; vgamma1]);
-            (fun _ -> t2.eval.entry, [vstack; vgamma2]) ]
+          [ (fun _ -> t1.eval.entry, (vgamma1 :: vstack :: args));
+            (fun _ -> t2.eval.entry, (vgamma2 :: vstack :: args)) ]
       | _ -> assert false
     end;
     split_entry t.access.entry t1.access.entry t2.access.entry;
     build_blocks ms t1;
     build_blocks ms t2;
     begin (* eval rt *)
-      let vstack, vn = Builder.begin_block2 t1.eval.exit in
+      let vn, vstack, args = Builder.begin_block2 t1.eval.exit in
       let vc = join_code `Left vn t1.access.entry t2.access.entry t.access.entry in
-      Builder.end_block_jump t.eval.exit [vstack; vc]
+      Builder.end_block_jump t.eval.exit (vc :: vstack :: args)
     end;
     begin (* eval rf *)
-      let vstack, vn = Builder.begin_block2 t2.eval.exit in
+      let vn, vstack, args = Builder.begin_block2 t2.eval.exit in
       let vc = join_code `Right vn t1.access.entry t2.access.entry t.access.entry in
-      Builder.end_block_jump t.eval.exit [vstack; vc]
+      Builder.end_block_jump t.eval.exit (vc :: vstack :: args)
     end;
     (* access c *)
     Access.unreachable tc.access.exit;
@@ -1085,8 +1098,8 @@ let to_ssa t =
   build_blocks ms f;
   let ret_ty = type_of_stage f.eval.exit 0 in
   (* return *)
-  let arg = Builder.begin_block1 f.eval.exit in
-  Builder.end_block_return arg;
+  let v, arg = Builder.begin_block1 f.eval.exit in
+  Builder.end_block_return v;
   (* access exit *)
   Access.unreachable f.access.exit;
   Ssa.make
