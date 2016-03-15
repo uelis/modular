@@ -2,6 +2,8 @@ open Core_kernel.Std
 
 type value = Ssa.value * Basetype.t
 
+let typeof = snd
+
 type builder_state_type = {
     cur_label: Ssa.label;
     cur_arg: Ident.t list;

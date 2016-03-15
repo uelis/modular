@@ -18,7 +18,7 @@ let fresh_label (ms: stage) (name: string) (loc) (a : Basetype.t): Ssa.label =
 let type_of_stage l n =
   List.nth_exn l.Ssa.arg_types n
 
-let focus n args =
+let focus (n: int) (args: Builder.value list) =
   let h, t = List.split_n args n in
   List.rev h, t
 
@@ -236,15 +236,14 @@ struct
     Typing.code_of_context gamma
 
   let decode (gamma : t) (v: Builder.value) : (Builder.value Typing.context) =
-    let vv, va = v in
-    assert (Basetype.equals va (code gamma));
+    assert (Basetype.equals (Builder.typeof v) (code gamma));
     List.mapi gamma ~f:(fun i (x, _) -> x, Builder.proj v i)
 
   let encode (gamma : t) (vs: Builder.value Typing.context) : Builder.value =
     let vs =
       List.map gamma ~f:(fun (x, a) ->
           let vx = List.Assoc.find_exn vs x in
-          assert (Basetype.equals (snd vx) (Cbvtype.code a));
+          assert (Basetype.equals (Builder.typeof vx) (Cbvtype.code a));
           vx) in
     Builder.tuple vs
 
