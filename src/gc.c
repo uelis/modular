@@ -58,29 +58,33 @@ typedef union {
 static inline
 tag_t
 get_tag(void *record) {
-  return *((tag_t*)record);
+  tag_t tag;
+  memcpy(&tag, record, sizeof(tag_t));
+  return tag;
 }
 
 static inline
 void
 set_tag(void *record, tag_t tag) {
-  *((tag_t*)record) = tag;
+  memcpy(record, &tag, sizeof(tag_t));
 }
 
 static inline
-char*
+void*
 get_pointer(void *record, int i) {
   void *rec_wo_tag = (tag_t*)record + 1;
-  void **pointers = (void**)rec_wo_tag;
-  return pointers[i];
+  void **pointers = rec_wo_tag;
+  void *pointeri;
+  memcpy(&pointeri, pointers + i, sizeof(void*));
+  return pointeri;
 }
 
 static inline
 void
-set_pointer(void *record, int i, char *ptr) {
+set_pointer(void *record, int i, void *ptr) {
   void *rec_wo_tag = (tag_t*)record + 1;
-  void **pointers = (void**)rec_wo_tag;
-  pointers[i] = ptr;
+  void **pointers = rec_wo_tag;
+  memcpy(pointers + i, &ptr, sizeof(void*));
 }
 
 static inline
