@@ -83,14 +83,12 @@ struct
     List.iter2_exn (labels a) ls ~f:f
 
   let forward a b : unit =
-    iter2_exn a b
-      ~f:(fun (la, _) (lb, _) ->
-          let args = Builder.begin_block la in
-          Builder.end_block_jump lb args)
+    iter2_exn a b ~f:(fun (la, _) (lb, _) ->
+        let args = Builder.begin_block la in
+        Builder.end_block_jump lb args)
 
   let unreachable a : unit =
-    iter a
-      ~f:(fun (l, _) ->
+    iter a ~f:(fun (l, _) ->
         ignore (Builder.begin_block1 l);
         Builder.end_block_unreachable ())
 
@@ -604,13 +602,15 @@ let rec build_blocks (ms: stage) (t: term_with_interface) : unit =
         let y_access = List.Assoc.find_exn s.context y in
         Access.forward y_access.entry x_access.entry
       | _ ->
-        let xs_entries = List.map xs ~f:(fun x' -> (List.Assoc.find_exn s.context x').entry) in
+        let xs_entries = List.map xs ~f:(fun x' ->
+            (List.Assoc.find_exn s.context x').entry) in
         Access.join_embed xs_entries x_access.entry
     end
   | Const(Ast.Cboolconst b, []) ->
     begin (* eval *)
       let _, vstack, args = Builder.begin_block2 t.eval.entry in
-      Builder.end_block_jump t.eval.exit (Builder.boolconst b :: vstack :: args)
+      let vb = Builder.boolconst b in
+      Builder.end_block_jump t.eval.exit (vb :: vstack :: args)
     end
   | Const(Ast.Cintconst i, []) ->
     begin

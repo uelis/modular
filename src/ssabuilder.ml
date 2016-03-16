@@ -272,8 +272,7 @@ let end_block_case (v: value) (targets: (value -> Ssa.label * (value list)) list
          let vx = Ssa.Var x, a in
          let dst, arg = t vx in
          let argv = List.map ~f:(fun (vv, va) -> vv) arg in
-         x, argv, dst
-       ) in
+         x, argv, dst) in
      let block = Ssa.Branch(s.cur_label, s.cur_arg, s.cur_lets,
                             (id, params, vv, branches)) in
      builder_state := None;
