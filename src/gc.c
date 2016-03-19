@@ -9,11 +9,11 @@
 
 #define MEM_SIZE 1024*1024
 
-static uint8_t from_space_mem[MEM_SIZE];
-static uint8_t to_space_mem[MEM_SIZE];
+static char from_space_mem[MEM_SIZE];
+static char to_space_mem[MEM_SIZE];
 
-void *from_space = from_space_mem;
-void *to_space = to_space_mem;
+char *from_space = from_space_mem;
+char *to_space = to_space_mem;
 
 int next_free = 0;
 
@@ -26,14 +26,14 @@ raise_out_of_memory()
 
 static inline
 bool
-in_from_space(void *p)
+in_from_space(char *p)
 {
   return (from_space <= p) && (p < from_space + MEM_SIZE);
 }
 
 static inline
 bool
-in_to_space(void *p)
+in_to_space(char *p)
 {
   return (to_space <= p) && (p < to_space + MEM_SIZE);
 }
@@ -52,12 +52,12 @@ in_to_space(void *p)
 
 typedef union {
   uint64_t as_uint64;
-  void *as_forward_pointer;
+  char *as_forward_pointer;
 } tag_t;
 
 static inline
 tag_t
-get_tag(void *record) {
+get_tag(char *record) {
   tag_t tag;
   memcpy(&tag, record, sizeof(tag_t));
   return tag;
@@ -65,26 +65,24 @@ get_tag(void *record) {
 
 static inline
 void
-set_tag(void *record, tag_t tag) {
+set_tag(char *record, tag_t tag) {
   memcpy(record, &tag, sizeof(tag_t));
 }
 
 static inline
 void*
-get_pointer(void *record, int i) {
-  void *rec_wo_tag = (tag_t*)record + 1;
-  void **pointers = rec_wo_tag;
-  void *pointeri;
-  memcpy(&pointeri, pointers + i, sizeof(void*));
-  return pointeri;
+get_pointer(char *record, int i) {
+  void *res;
+  char *pi = record + sizeof(tag_t) + i * sizeof(char*);
+  memcpy(&res, pi, sizeof(char*));
+  return res;
 }
 
 static inline
 void
-set_pointer(void *record, int i, void *ptr) {
-  void *rec_wo_tag = (tag_t*)record + 1;
-  void **pointers = rec_wo_tag;
-  memcpy(pointers + i, &ptr, sizeof(void*));
+set_pointer(char *record, int i, void *ptr) {
+  char *pi = record + sizeof(tag_t) + i * sizeof(char*);
+  memcpy(pi, &ptr, sizeof(char*));
 }
 
 static inline
@@ -113,7 +111,7 @@ __attribute__((always_inline))
 char*
 gc_alloc(size_t size)
 {
-  void *chunk = from_space + next_free;
+  char *chunk = from_space + next_free;
   next_free += size;
   if (next_free >= MEM_SIZE) {
     chunk = NULL;
@@ -126,7 +124,7 @@ gc_alloc(size_t size)
  * Assumes that record points to from_space and next points to to_space
  */
 static void
-copy_record(void *record, void *next)
+copy_record(char *record, char *next)
 {
   assert( in_from_space(record) );
   assert( in_to_space(next) );
@@ -148,7 +146,7 @@ void
 gc_collect(size_t bytes_needed, uint64_t rootc, ...)
 {
 
-  uint8_t *next;
+  char *next;
   next = to_space;
 
   /* copy roots */
@@ -166,7 +164,7 @@ gc_collect(size_t bytes_needed, uint64_t rootc, ...)
 
   /* copy reachable */
 
-  uint8_t *scan;
+  char *scan;
   scan = to_space;
 
   while (scan < next) {
@@ -192,11 +190,11 @@ gc_collect(size_t bytes_needed, uint64_t rootc, ...)
     scan += tag_size(tag);
   }
 
-  next_free = next - (uint8_t*)to_space;
+  next_free = next - to_space;
   if (bytes_needed > MEM_SIZE - next_free)
     raise_out_of_memory();
 
-  uint8_t *tmp = from_space;
+  char *tmp = from_space;
   from_space = to_space;
   to_space = tmp;
 }
