@@ -250,7 +250,7 @@ struct
       if n = 0 then [] else
         match l with
         | [] ->
-          Llvm.undef (Lltype.to_lltype i) :: (fill_cut i [] (n-1))
+          Llvm.const_null (Lltype.to_lltype i) :: (fill_cut i [] (n-1))
         | x::xs -> x :: (fill_cut i xs (n-1)) in
     Profile.mapi profile
       ~f:(fun ~key:i ~data:n ->
