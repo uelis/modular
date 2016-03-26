@@ -44,67 +44,6 @@ type value =
 type term =
   | Const of op_const * value
 
-let string_of_op_const (c: op_const) : string =
-  let open Ast in
-  match c with
-  | Cprint s -> "print(\"" ^ (String.escaped s) ^ "\")"
-  | Cintadd -> "intadd"
-  | Cintsub -> "intsub"
-  | Cintmul -> "intmul"
-  | Cintdiv -> "intdiv"
-  | Cinteq -> "inteq"
-  | Cintlt -> "intlt"
-  | Cintslt -> "intslt"
-  | Cintshl -> "intshl"
-  | Cintshr -> "intshr"
-  | Cintsar -> "intsar"
-  | Cintand -> "intand"
-  | Cintor  -> "intor"
-  | Cintxor -> "intxor"
-  | Cintprint -> "print"
-  | Cgcalloc(_) -> "gcalloc"
-  | Calloc(_) -> "alloc"
-  | Cfree(_) -> "free"
-  | Cload(_) -> "load"
-  | Cstore(_) -> "store"
-  | Cpush a -> "push{" ^ (Printing.string_of_basetype a) ^ "}"
-  | Cpop a -> "pop{" ^ (Printing.string_of_basetype a) ^ "}"
-  | Ccall(f, a, b) -> "call(" ^ f ^ ": " ^ (Printing.string_of_basetype a) ^
-                      " -> " ^ (Printing.string_of_basetype b) ^ ") "
-
-let rec fprint_value (oc: Out_channel.t) (v: value) : unit =
-  match v with
-  | Var(x) ->
-    Printf.fprintf oc "%s" (Ident.to_string x)
-  | Tuple(vs) ->
-    Out_channel.output_string oc "(";
-    List.iter vs
-      ~f:(let sep = ref "" in
-          fun v ->
-            Out_channel.output_string oc !sep;
-            fprint_value oc v;
-            sep := ", ");
-    Out_channel.output_string oc ")"
-  | In((id, k, t), _) ->
-    let cname = List.nth_exn (Basetype.Data.constructor_names id) k in
-    Out_channel.output_string oc (Ident.to_string cname);
-    Out_channel.output_string oc "(";
-    fprint_value oc t;
-    Out_channel.output_string oc ")"
-  | Proj(t, i, _) ->
-    fprint_value oc t;
-    Printf.fprintf oc ".%i" i
-  | Select(t, _, i) ->
-    Out_channel.output_string oc "select(";
-    fprint_value oc t;
-    Printf.fprintf oc ").%i" i
-  | Undef(a) ->
-    Out_channel.output_string oc "undef(";
-    Out_channel.output_string oc (Printing.string_of_basetype a);
-    Out_channel.output_string oc ")"
-  | IntConst(n) ->
-    Printf.fprintf oc "%i" n
-
 let rec subst_value (rho: Ident.t -> value) (v: value) =
   match v with
   | Var(x) -> rho x
@@ -189,88 +128,6 @@ let targets_of_block (b : block) : label list =
   | Branch(_, _ , _, (_, _, _, cases)) -> List.map cases ~f:(fun (_, _, l) -> l)
   | Return(_, _, _, _, _) -> []
 
-let fprint_term (oc: Out_channel.t) (t: term) : unit =
-  match t with
-  | Const(c, v) ->
-    Out_channel.output_string oc (string_of_op_const c);
-    Out_channel.output_string oc "(";
-    fprint_value oc v;
-    Out_channel.output_string oc ")"
-
-let fprint_letbndgs (oc: Out_channel.t) (bndgs: let_bindings) : unit =
-  List.iter (List.rev bndgs)
-    ~f:(function
-      | Let(x, t) ->
-        Printf.fprintf oc "   let %s = " (Ident.to_string x);
-        fprint_term oc t;
-        Out_channel.output_string oc "\n"
-    )
-
-let param_string (labels: Ident.t list) (types: Basetype.t list) : string =
-  List.zip_exn labels types
-  |> List.map ~f:(fun (l, t) ->
-    Printf.sprintf "%s: %s"
-      (Ident.to_string l)
-      (Printing.string_of_basetype t))
-  |> String.concat ~sep:", "
-
-let fprint_block (oc: Out_channel.t) (b: block) : unit =
-  let rec fprint_values oc values =
-    match values with
-    | [] -> ()
-    | v :: vs ->
-      fprint_value oc v;
-      if vs <> [] then Printf.fprintf oc ", ";
-      fprint_values oc vs in
-  match b with
-    | Unreachable(l) ->
-      Printf.fprintf oc " l%s(...) = unreachable\n"
-        (Ident.to_string l.name)
-    | Direct(l, x, bndgs, body, goal) ->
-      Printf.fprintf oc " l%s(%s) =\n"
-        (Ident.to_string l.name)
-        (param_string x l.arg_types);
-      fprint_letbndgs oc bndgs;
-      Printf.fprintf oc "   l%s(" (Ident.to_string goal.name);
-      fprint_values oc body;
-      Printf.fprintf oc ")\n"
-    | Branch(la, x, bndgs, (id, _, cond, cases)) ->
-      let constructor_names = Basetype.Data.constructor_names id in
-      Printf.fprintf oc " l%s(%s) =\n"
-        (Ident.to_string la.name)
-        (param_string x la.arg_types);
-      fprint_letbndgs oc bndgs;
-      Printf.fprintf oc "   case ";
-      fprint_value oc cond;
-      Printf.fprintf oc " of\n";
-      List.iter2_exn constructor_names cases
-        ~f:(fun cname (l, lb, lg) ->
-          Printf.fprintf oc "   | %s(%s) -> l%s(" (Ident.to_string cname)
-            (Ident.to_string l) (Ident.to_string lg.name);
-          fprint_values oc lb;
-          Printf.fprintf oc ")\n")
-    | Return(l, x, bndgs, body, _) ->
-      Printf.fprintf oc " l%s(%s) =\n"
-        (Ident.to_string l.name)
-        (param_string x l.arg_types);
-      fprint_letbndgs oc bndgs;
-      Printf.fprintf oc "   return ";
-      fprint_value oc body;
-      Printf.fprintf oc "\n"
-
-let fprint_func (oc: Out_channel.t) (func: t) : unit =
-  let xs = List.map func.entry_label.arg_types ~f:(fun _ -> Ident.fresh "x") in
-  Printf.fprintf oc "%s(%s) : %s = l%s(%s)\n\n"
-    func.func_name
-    (param_string xs func.entry_label.arg_types)
-    (Printing.string_of_basetype func.return_type)
-    (Ident.to_string func.entry_label.name)
-    (String.concat ~sep:", " (List.map xs ~f:Ident.to_string));
-  Ident.Table.iteri func.blocks
-    ~f:(fun ~key:l ~data:block ->
-      fprint_block oc block;
-      Out_channel.output_string oc "\n")
-
 let rec typeof_value
           (gamma: Basetype.t Typing.context)
           (v: value)
@@ -299,7 +156,6 @@ let rec typeof_value
          | Some b' -> equals_exn b b'
          | None -> failwith "internal ssa.ml: wrong constructor type")
       | _ ->
-        fprint_value stderr v;
         failwith "internal ssa.ml: data type expected"
     end;
     a
@@ -406,14 +262,8 @@ let rec typecheck_let_bindings
 
 let typecheck_block (blocks: block Ident.Table.t) (b: block) : unit =
   let equals_exn a1 a2 =
-    if Basetype.equals a1 a2 then () else
-      begin
-        fprint_block stderr b;
-        Printf.fprintf stderr "   %s\n!= %s\n"
-          (Printing.string_of_basetype a1)
-          (Printing.string_of_basetype a2);
-        failwith "ssa.ml, typecheck_block: type mismatch"
-      end in
+    if Basetype.equals a1 a2 then ()
+    else failwith "ssa.ml, typecheck_block: type mismatch" in
   let check_label_exn l a =
     match Ident.Table.find blocks l.name with
     | Some block ->
@@ -478,3 +328,145 @@ let make ~func_name:(func_name: string)
     entry_label = entry_label;
     blocks = blocks;
     return_type = return_type }
+
+let string_of_op_const (c: op_const) : string =
+  let open Ast in
+  match c with
+  | Cprint s -> "print(\"" ^ (String.escaped s) ^ "\")"
+  | Cintadd -> "intadd"
+  | Cintsub -> "intsub"
+  | Cintmul -> "intmul"
+  | Cintdiv -> "intdiv"
+  | Cinteq -> "inteq"
+  | Cintlt -> "intlt"
+  | Cintslt -> "intslt"
+  | Cintshl -> "intshl"
+  | Cintshr -> "intshr"
+  | Cintsar -> "intsar"
+  | Cintand -> "intand"
+  | Cintor  -> "intor"
+  | Cintxor -> "intxor"
+  | Cintprint -> "print"
+  | Cgcalloc(_) -> "gcalloc"
+  | Calloc(_) -> "alloc"
+  | Cfree(_) -> "free"
+  | Cload(_) -> "load"
+  | Cstore(_) -> "store"
+  | Cpush a -> "push{" ^ (Printing.string_of_basetype a) ^ "}"
+  | Cpop a -> "pop{" ^ (Printing.string_of_basetype a) ^ "}"
+  | Ccall(f, a, b) -> "call(" ^ f ^ ": " ^ (Printing.string_of_basetype a) ^
+                      " -> " ^ (Printing.string_of_basetype b) ^ ") "
+
+let rec fprint_value (oc: Out_channel.t) (v: value) : unit =
+  match v with
+  | Var(x) ->
+    Printf.fprintf oc "%s" (Ident.to_string x)
+  | Tuple(vs) ->
+    Out_channel.output_string oc "(";
+    List.iter vs
+      ~f:(let sep = ref "" in
+          fun v ->
+            Out_channel.output_string oc !sep;
+            fprint_value oc v;
+            sep := ", ");
+    Out_channel.output_string oc ")"
+  | In((id, k, t), _) ->
+    let cname = List.nth_exn (Basetype.Data.constructor_names id) k in
+    Out_channel.output_string oc (Ident.to_string cname);
+    Out_channel.output_string oc "(";
+    fprint_value oc t;
+    Out_channel.output_string oc ")"
+  | Proj(t, i, _) ->
+    fprint_value oc t;
+    Printf.fprintf oc ".%i" i
+  | Select(t, _, i) ->
+    Out_channel.output_string oc "select(";
+    fprint_value oc t;
+    Printf.fprintf oc ").%i" i
+  | Undef(a) ->
+    Out_channel.output_string oc "undef(";
+    Out_channel.output_string oc (Printing.string_of_basetype a);
+    Out_channel.output_string oc ")"
+  | IntConst(n) ->
+    Printf.fprintf oc "%i" n
+
+let fprint_term (oc: Out_channel.t) (t: term) : unit =
+  match t with
+  | Const(c, v) ->
+    Out_channel.output_string oc (string_of_op_const c);
+    Out_channel.output_string oc "(";
+    fprint_value oc v;
+    Out_channel.output_string oc ")"
+
+let fprint_letbndgs (oc: Out_channel.t) (bndgs: let_bindings) : unit =
+  List.iter (List.rev bndgs)
+    ~f:(function
+      | Let(x, t) ->
+        Printf.fprintf oc "   let %s = " (Ident.to_string x);
+        fprint_term oc t;
+        Out_channel.output_string oc "\n"
+    )
+
+let param_string (labels: Ident.t list) (types: Basetype.t list) : string =
+  List.zip_exn labels types
+  |> List.map ~f:(fun (l, t) ->
+    Printf.sprintf "%s: %s"
+      (Ident.to_string l)
+      (Printing.string_of_basetype t))
+  |> String.concat ~sep:", "
+
+let fprint_block (oc: Out_channel.t) (b: block) : unit =
+  let rec fprint_values oc values =
+    match values with
+    | [] -> ()
+    | v :: vs ->
+      fprint_value oc v;
+      if vs <> [] then Printf.fprintf oc ", ";
+      fprint_values oc vs in
+  match b with
+    | Unreachable(l) ->
+      Printf.fprintf oc " l%s(...) = unreachable\n"
+        (Ident.to_string l.name)
+    | Direct(l, x, bndgs, body, goal) ->
+      Printf.fprintf oc " l%s(%s) =\n"
+        (Ident.to_string l.name)
+        (param_string x l.arg_types);
+      fprint_letbndgs oc bndgs;
+      Printf.fprintf oc "   l%s(" (Ident.to_string goal.name);
+      fprint_values oc body;
+      Printf.fprintf oc ")\n"
+    | Branch(la, x, bndgs, (id, _, cond, cases)) ->
+      let constructor_names = Basetype.Data.constructor_names id in
+      Printf.fprintf oc " l%s(%s) =\n"
+        (Ident.to_string la.name)
+        (param_string x la.arg_types);
+      fprint_letbndgs oc bndgs;
+      Printf.fprintf oc "   case ";
+      fprint_value oc cond;
+      Printf.fprintf oc " of\n";
+      List.iter2_exn constructor_names cases
+        ~f:(fun cname (l, lb, lg) ->
+          Printf.fprintf oc "   | %s(%s) -> l%s(" (Ident.to_string cname)
+            (Ident.to_string l) (Ident.to_string lg.name);
+          fprint_values oc lb;
+          Printf.fprintf oc ")\n")
+    | Return(l, x, bndgs, body, _) ->
+      Printf.fprintf oc " l%s(%s) =\n"
+        (Ident.to_string l.name)
+        (param_string x l.arg_types);
+      fprint_letbndgs oc bndgs;
+      Printf.fprintf oc "   return ";
+      fprint_value oc body;
+      Printf.fprintf oc "\n"
+
+let fprint_func (oc: Out_channel.t) (func: t) : unit =
+  let xs = List.map func.entry_label.arg_types ~f:(fun _ -> Ident.fresh "x") in
+  Printf.fprintf oc "%s(%s) : %s = l%s(%s)\n\n"
+    func.func_name
+    (param_string xs func.entry_label.arg_types)
+    (Printing.string_of_basetype func.return_type)
+    (Ident.to_string func.entry_label.name)
+    (String.concat ~sep:", " (List.map xs ~f:Ident.to_string));
+  iter_reachable_blocks func ~f:(fun block ->
+    fprint_block oc block;
+    Out_channel.output_string oc "\n")
