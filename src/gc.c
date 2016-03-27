@@ -9,12 +9,13 @@
 
 #define MEM_SIZE 1024*1024
 
-static char from_space_mem[MEM_SIZE];
-static char to_space_mem[MEM_SIZE];
+static int8_t from_space_mem[MEM_SIZE] __attribute__((aligned(4)));
+static int8_t to_space_mem[MEM_SIZE] __attribute__((aligned(4)));
 
-char *from_space = from_space_mem;
-char *to_space = to_space_mem;
+int8_t *from_space = from_space_mem;
+int8_t *to_space = to_space_mem;
 
+// invariant: divisible by 4 to guarantee alignment
 int next_free = 0;
 
 void
@@ -26,14 +27,14 @@ raise_out_of_memory()
 
 static inline
 bool
-in_from_space(char *p)
+in_from_space(int8_t *p)
 {
   return (from_space <= p) && (p < from_space + MEM_SIZE);
 }
 
 static inline
 bool
-in_to_space(char *p)
+in_to_space(int8_t *p)
 {
   return (to_space <= p) && (p < to_space + MEM_SIZE);
 }
@@ -44,20 +45,18 @@ in_to_space(char *p)
  *  | tag (64 bits)  | pointer 1 | ... | pointer n | data |
  *  +----------------+-----------+-----+-----------+------+
  *
- *  If the last bit of the tag is 1, then it contains the following data:
+ *  If the least significant bit of the tag is 1, then it 
+ *  contains the following data:
  *  - highermost 32 bits: record size (including tag)
  *  - next 31 bits: number of pointers, i.e. n
  *  If the last bit of the tag is 0, then it is a forward pointer.
  */
 
-typedef union {
-  uint64_t as_uint64;
-  char *as_forward_pointer;
-} tag_t;
+typedef uint64_t tag_t;
 
 static inline
 tag_t
-get_tag(char *record) {
+get_tag(int8_t *record) {
   tag_t tag;
   memcpy(&tag, record, sizeof(tag_t));
   return tag;
@@ -65,42 +64,54 @@ get_tag(char *record) {
 
 static inline
 void
-set_tag(char *record, tag_t tag) {
+set_tag(int8_t *record, tag_t tag) {
   memcpy(record, &tag, sizeof(tag_t));
 }
 
 static inline
-void*
-get_pointer(char *record, int i) {
-  void *res;
-  char *pi = record + sizeof(tag_t) + i * sizeof(char*);
-  memcpy(&res, pi, sizeof(char*));
+int8_t*
+get_pointer(int8_t *record, int i) {
+  int8_t *res;
+  int8_t *pi = record + sizeof(tag_t) + i * sizeof(int8_t*);
+  memcpy(&res, pi, sizeof(int8_t*));
   return res;
 }
 
 static inline
 void
-set_pointer(char *record, int i, void *ptr) {
-  char *pi = record + sizeof(tag_t) + i * sizeof(char*);
-  memcpy(pi, &ptr, sizeof(char*));
+set_pointer(int8_t *record, int i, int8_t *ptr) {
+  int8_t *pi = record + sizeof(tag_t) + i * sizeof(int8_t*);
+  memcpy(pi, &ptr, sizeof(int8_t*));
 }
 
 static inline
 uint64_t
 tag_size(tag_t tag) {
-  return tag.as_uint64 >> 32;
+  return tag >> 32;
 }
 
 static inline
 uint64_t
 tag_pointer_count(tag_t tag) {
-  return (tag.as_uint64 & 0xFFFFFFFF) >> 1;
+  return (tag & 0xFFFFFFFF) >> 1;
 }
 
 static inline
 bool
 tag_is_fwd_pointer(tag_t tag) {
-  return !(tag.as_uint64 & 0x1);
+  return !(tag & 0x1);
+}
+
+static inline
+bool
+is_aligned(void *x) {
+  return ((int64_t)x & 0x03) == 0;
+}
+
+static inline
+int
+add_align(int x) {
+  return (x | 0x03) + 1;
 }
 
 /*
@@ -108,11 +119,11 @@ tag_is_fwd_pointer(tag_t tag) {
  * Returns NULL if memory is full.
  */
 __attribute__((always_inline))
-char*
+int8_t*
 gc_alloc(size_t size)
 {
-  char *chunk = from_space + next_free;
-  next_free += size;
+  int8_t *chunk = from_space + next_free;
+  next_free += add_align(size);  
   if (next_free >= MEM_SIZE) {
     chunk = NULL;
   }
@@ -124,7 +135,7 @@ gc_alloc(size_t size)
  * Assumes that record points to from_space and next points to to_space
  */
 static void
-copy_record(char *record, char *next)
+copy_record(int8_t *record, int8_t *next)
 {
   assert( in_from_space(record) );
   assert( in_to_space(next) );
@@ -132,7 +143,7 @@ copy_record(char *record, char *next)
   uint64_t size = tag_size(tag);
   memcpy(next, record, size);
   /* forward pointer */
-  tag_t fwd = { .as_forward_pointer = next };
+  tag_t fwd = (int64_t)next;
   set_tag(record, fwd);
 }
 
@@ -146,7 +157,7 @@ void
 gc_collect(size_t bytes_needed, uint64_t rootc, ...)
 {
 
-  char *next;
+  int8_t *next;
   next = to_space;
 
   /* copy roots */
@@ -154,17 +165,17 @@ gc_collect(size_t bytes_needed, uint64_t rootc, ...)
   va_list roots;
   va_start(roots, rootc);
   for (int i = 0; i < rootc; i++) {
-    void *root = va_arg(roots, void*);
+    int8_t *root = va_arg(roots, int8_t*);
     assert( root != NULL && in_from_space(root) );
     tag_t tag = get_tag(root);
     copy_record(root, next);
-    next += tag_size(tag);
+    next += add_align(tag_size(tag));
   }
   va_end(roots);
 
   /* copy reachable */
 
-  char *scan;
+  int8_t *scan;
   scan = to_space;
 
   while (scan < next) {
@@ -172,7 +183,7 @@ gc_collect(size_t bytes_needed, uint64_t rootc, ...)
     uint64_t ptr_count = tag_pointer_count(tag);
 
     for (int i = 0; i < ptr_count; i++) {
-      void *p = get_pointer(scan, i);
+      int8_t *p = get_pointer(scan, i);
       if (p != NULL && in_from_space(p)) {
         tag_t tag_p = get_tag(p);
 
@@ -181,20 +192,22 @@ gc_collect(size_t bytes_needed, uint64_t rootc, ...)
           if (!in_to_space(next + p_size))
             raise_out_of_memory();
           copy_record(p, next);
-          next += p_size;
+          next += add_align(p_size);
+          assert (is_aligned(next));
           tag_p = get_tag(p);
         }
-        set_pointer(scan, i, tag_p.as_forward_pointer);
+        set_pointer(scan, i, (int8_t*)tag_p);
       }
     }
-    scan += tag_size(tag);
+    scan += add_align(tag_size(tag));
+    assert (is_aligned(scan));
   }
 
   next_free = next - to_space;
   if (bytes_needed > MEM_SIZE - next_free)
     raise_out_of_memory();
 
-  char *tmp = from_space;
+  int8_t *tmp = from_space;
   from_space = to_space;
   to_space = tmp;
 }
