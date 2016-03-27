@@ -58,14 +58,14 @@ static inline
 tag_t
 get_tag(int8_t *record) {
   tag_t tag;
-  memcpy(&tag, record, sizeof(tag_t));
+  memcpy(&tag, record, sizeof(tag));
   return tag;
 }
 
 static inline
 void
 set_tag(int8_t *record, tag_t tag) {
-  memcpy(record, &tag, sizeof(tag_t));
+  memcpy(record, &tag, sizeof(tag));
 }
 
 static inline
@@ -73,7 +73,7 @@ int8_t*
 get_pointer(int8_t *record, int i) {
   int8_t *res;
   int8_t *pi = record + sizeof(tag_t) + i * sizeof(int8_t*);
-  memcpy(&res, pi, sizeof(int8_t*));
+  memcpy(&res, pi, sizeof(res));
   return res;
 }
 
@@ -81,7 +81,7 @@ static inline
 void
 set_pointer(int8_t *record, int i, int8_t *ptr) {
   int8_t *pi = record + sizeof(tag_t) + i * sizeof(int8_t*);
-  memcpy(pi, &ptr, sizeof(int8_t*));
+  memcpy(pi, &ptr, sizeof(ptr));
 }
 
 static inline
@@ -143,6 +143,7 @@ copy_record(int8_t *record, int8_t *next)
   uint64_t size = tag_size(tag);
   memcpy(next, record, size);
   /* forward pointer */
+  assert ( is_aligned(next) );
   tag_t fwd = (int64_t)next;
   set_tag(record, fwd);
 }
@@ -193,14 +194,14 @@ gc_collect(size_t bytes_needed, uint64_t rootc, ...)
             raise_out_of_memory();
           copy_record(p, next);
           next += add_align(p_size);
-          assert (is_aligned(next));
+          assert ( is_aligned(next) );
           tag_p = get_tag(p);
         }
         set_pointer(scan, i, (int8_t*)tag_p);
       }
     }
     scan += add_align(tag_size(tag));
-    assert (is_aligned(scan));
+    assert ( is_aligned(scan) );
   }
 
   next_free = next - to_space;
