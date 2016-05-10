@@ -106,7 +106,7 @@ tag_is_fwd_pointer(tag_t tag) {
 static inline
 bool
 is_aligned(void *x) {
-  return ((uint64_t)x & 0x03) == 0;
+  return ((uint64_t)x & 0x07) == 0;
 }
 
 static inline
@@ -155,16 +155,16 @@ gc_alloc(size_t size)
  * Assumes that record points to from_space and next points to to_space
  */
 static void
-copy_record(int8_t *record, int8_t *next)
+copy_record(int8_t *dst, int8_t *record)
 {
   assert( in_from_space(record) );
-  assert( in_to_space(next) );
+  assert( in_to_space(dst) );
   tag_t tag = get_tag(record);
   uint64_t size = tag_size(tag);
-  memcpy(next, record, size);
+  memcpy(dst, record, size);
   /* forward pointer */
-  assert( is_aligned(next) );
-  tag_t fwd = (uint64_t)next;
+  assert( is_aligned(dst) );
+  tag_t fwd = (uint64_t)dst;
   set_tag(record, fwd);
 }
 
@@ -191,7 +191,7 @@ gc_collect(size_t bytes_needed, uint64_t rootc, ...)
       assert( is_aligned(root) );
       assert( in_from_space(root) );
       tag_t tag = get_tag(root);
-      copy_record(root, next);
+      copy_record(next, root);
       next += add_align(tag_size(tag));
     }
   }
@@ -215,7 +215,7 @@ gc_collect(size_t bytes_needed, uint64_t rootc, ...)
           uint64_t p_size = tag_size(tag_p);
           if (!in_to_space(next + add_align(p_size)))
             raise_out_of_memory();
-          copy_record(p, next);
+          copy_record(next, p);
           next += add_align(p_size);
           assert ( is_aligned(next) );
           tag_p = get_tag(p);
