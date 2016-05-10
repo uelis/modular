@@ -9,13 +9,13 @@
 
 #define MEM_SIZE 1024*1024*100
 
-static int8_t from_space_mem[MEM_SIZE] __attribute__((aligned(4)));
-static int8_t to_space_mem[MEM_SIZE] __attribute__((aligned(4)));
+static int8_t from_space_mem[MEM_SIZE] __attribute__((aligned(8)));
+static int8_t to_space_mem[MEM_SIZE] __attribute__((aligned(8)));
 
 int8_t *from_space = from_space_mem;
 int8_t *to_space = to_space_mem;
 
-// invariant: divisible by 4 to guarantee alignment
+// invariant: divisible by 8 to guarantee alignment
 int next_free = 0;
 
 void
