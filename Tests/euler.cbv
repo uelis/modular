@@ -1,0 +1,60 @@
+let cons = fun x -> fun xs ->
+  fun i -> if i = 0 then x else xs (i-1)
+
+let head = fun xs -> xs 0
+
+let tail = fun xs -> fun i -> xs (i+1)
+
+let rec aux n = fun i -> cons 1 (cons n (cons 1 (aux (n+2)))) i
+
+let eContFrac = cons 2 (aux 2)
+
+let signum = fun x -> if x < 0 then 0-1 else if x = 0 then 0 else 1
+let abs = fun x -> if x < 0 then 0-x else x
+let neg = fun x -> if x then false else true
+let andalso = fun x -> fun y ->
+  if x then (if y then true else false) else false
+let orelse = fun x -> fun y ->
+  if x then true else y
+
+let rec ratTrans arg =
+    let av = #1 arg in
+    let arg2 = #2 arg in
+    let bv = #1 arg2 in
+    let arg3 = #2 arg2 in
+    let cv = #1 arg3 in
+    let arg4 = #2 arg3 in
+    let dv = #1 arg4 in
+    let arg5 = #2 arg4 in
+    let xs = #1 arg5 in
+    let iv = #2 arg5 in
+    let qv = if dv = 0 then 1 else bv / dv in
+    if andalso (orelse (signum cv = signum dv) (abs cv < abs dv))
+               (andalso ((cv+dv)*qv < av+bv+1)
+                        (av+bv < (cv+dv)*qv + (cv+dv)))
+    then
+      (if iv = 0 then qv else
+          ratTrans (cv, (dv, (av-qv*cv, (bv-qv*dv, (xs,  iv-1))))))
+    else
+      let xv = xs 0 in
+      ratTrans (bv, (av+xv*bv, (dv, (cv+xv*dv, (tail xs, iv)))))
+
+let rec toDigits arg =
+    let l = #1 arg in
+    let i = #2 arg in
+    if i = 0 then l i else toDigits (fun j -> ratTrans (10, (0, (0, (1, (tail l, j))))), i-1)
+
+let e = fun i -> toDigits (eContFrac, i)
+
+let main =
+  let u = print (e 0) in
+  let u = print (e 1) in
+  let u = print (e 2) in
+  let u = print (e 3) in
+  let u = print (e 4) in
+  let u = print (e 5) in
+  let u = print (e 6) in
+  let u = print (e 7) in
+  let u = print (e 8) in
+  let u = print (e 9) in
+  0
