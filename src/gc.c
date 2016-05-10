@@ -7,13 +7,13 @@
 #include <string.h>
 #include <assert.h>
 
-#define MEM_SIZE 1024*1024*100
+#define MEM_SIZE 1024*1024
 
 static int8_t from_space_mem[MEM_SIZE] __attribute__((aligned(8)));
 static int8_t to_space_mem[MEM_SIZE] __attribute__((aligned(8)));
 
-int8_t *from_space = from_space_mem;
-int8_t *to_space = to_space_mem;
+static int8_t *from_space = from_space_mem;
+static int8_t *to_space = to_space_mem;
 
 // invariant: divisible by 8 to guarantee alignment
 int next_free = 0;
@@ -127,7 +127,13 @@ print_from_space()
     uint64_t size = tag_size(tag);
     uint64_t ptr_count = tag_pointer_count(tag);
     assert ( !tag_is_fwd_pointer(tag) );
-    printf(" [ %" PRId64 ", %" PRId64 "] ", size, ptr_count);
+    printf(" [ %li (%" PRIu64 ")", scan - from_space, size);
+    for (int i = 0; i < ptr_count; i++) {
+      int8_t *p = get_pointer(scan, i);
+      printf(", %li", p ==0 ? -1 : p - from_space);
+      assert ( p == NULL || in_from_space(p));
+    }
+    printf(" ] ");
     scan += add_align(size);
     assert ( is_aligned(scan) );
   }
@@ -146,7 +152,7 @@ gc_alloc(size_t size)
     return NULL;
   }
   int8_t *chunk = from_space + next_free;
-  next_free += add_align(size);  
+  next_free += add_align(size);
   return chunk;
 }
 
@@ -177,7 +183,6 @@ copy_record(int8_t *dst, int8_t *record)
 void
 gc_collect(size_t bytes_needed, uint64_t rootc, ...)
 {
-
   int8_t *next;
   next = to_space;
 
@@ -191,8 +196,10 @@ gc_collect(size_t bytes_needed, uint64_t rootc, ...)
       assert( is_aligned(root) );
       assert( in_from_space(root) );
       tag_t tag = get_tag(root);
-      copy_record(next, root);
-      next += add_align(tag_size(tag));
+      if (!tag_is_fwd_pointer(tag)) {
+        copy_record(next, root);
+        next += add_align(tag_size(tag));
+      }
     }
   }
   va_end(roots);
@@ -218,6 +225,7 @@ gc_collect(size_t bytes_needed, uint64_t rootc, ...)
           copy_record(next, p);
           next += add_align(p_size);
           assert ( is_aligned(next) );
+          assert ( in_to_space(next) );
           tag_p = get_tag(p);
           // after copy_record tag_p must be fwd pointer
         }
@@ -226,10 +234,11 @@ gc_collect(size_t bytes_needed, uint64_t rootc, ...)
     }
     scan += add_align(tag_size(tag));
     assert ( is_aligned(scan) );
+    assert ( in_to_space(scan) );
   }
 
   next_free = next - to_space;
-  if (bytes_needed > MEM_SIZE - next_free)
+  if (next_free + add_align(bytes_needed) >= MEM_SIZE)
     raise_out_of_memory();
 
   int8_t *tmp = from_space;
