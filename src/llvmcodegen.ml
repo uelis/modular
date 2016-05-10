@@ -671,10 +671,22 @@ let build_letbinding
                       Llvm.pointer_type (Lltype.to_lltype Lltype.Pointer) in
                     let mem_ptr =
                       Llvm.build_bitcast v ptr_type "fwdptr" builder in
-                    Llvm.build_load mem_ptr "fwd" builder
+                    let null_ptr = Llvm.const_null ptr_type in
+                    let null = Llvm.build_icmp (Llvm.Icmp.Eq) mem_ptr null_ptr "null" builder in
+                    let block = Llvm.insertion_block builder in
+                    let nonnull_block = Llvm.append_block context "nonnull" func in
+                    let next_block = Llvm.append_block context "null_end" func in
+                    ignore (Llvm.build_cond_br null next_block nonnull_block builder);
+                    Llvm.position_at_end nonnull_block builder;
+                    let followed = Llvm.build_load mem_ptr "fwd" builder in
+                    ignore (Llvm.build_br next_block builder);
+                    Llvm.position_at_end next_block builder;
+                    let res = Llvm.build_phi [(followed, nonnull_block); (nullptr, block)] "res" builder in
+                    res
                 )
           )
         ) in
+    let collect_block_end = Llvm.insertion_block builder in
     ignore (Llvm.build_br end_block builder);
 
     (* end block *)
@@ -683,10 +695,10 @@ let build_letbinding
                     ~f:(fun (x, xenc) ->
                       let phi = Mixedvector.build_phi (xenc, alloc_block) builder in
                       let xenc' = List.Assoc.find_exn ctx1 x in
-                      Mixedvector.add_incoming (xenc', collect_block) phi;
+                      Mixedvector.add_incoming (xenc', collect_block_end) phi;
                       (x, phi)
                     ) in
-    let addr_phi = Llvm.build_phi [(addr, alloc_block); (addr1, collect_block)]
+    let addr_phi = Llvm.build_phi [(addr, alloc_block); (addr1, collect_block_end)]
                      "addr" builder in
     let tenc = Mixedvector.singleton Lltype.Pointer addr_phi in
     (x, tenc) :: ctx_phi

@@ -7,7 +7,7 @@
 #include <string.h>
 #include <assert.h>
 
-#define MEM_SIZE 1024*1024
+#define MEM_SIZE 1024*1024*100
 
 static int8_t from_space_mem[MEM_SIZE] __attribute__((aligned(4)));
 static int8_t to_space_mem[MEM_SIZE] __attribute__((aligned(4)));
@@ -65,6 +65,7 @@ get_tag(int8_t *record) {
 static inline
 void
 set_tag(int8_t *record, tag_t tag) {
+  assert (tag != 0);
   memcpy(record, &tag, sizeof(tag));
 }
 
@@ -105,13 +106,32 @@ tag_is_fwd_pointer(tag_t tag) {
 static inline
 bool
 is_aligned(void *x) {
-  return ((int64_t)x & 0x03) == 0;
+  return ((uint64_t)x & 0x03) == 0;
 }
 
 static inline
 int
 add_align(int x) {
-  return (x | 0x03) + 1;
+  return (x + 0x07) & ~0x07;
+}
+
+static
+void
+print_from_space()
+{
+  int8_t *scan;
+  scan = from_space;
+
+  while (scan < from_space + next_free) {
+    tag_t tag = get_tag(scan);
+    uint64_t size = tag_size(tag);
+    uint64_t ptr_count = tag_pointer_count(tag);
+    assert ( !tag_is_fwd_pointer(tag) );
+    printf(" [ %" PRId64 ", %" PRId64 "] ", size, ptr_count);
+    scan += add_align(size);
+    assert ( is_aligned(scan) );
+  }
+  printf("\n");
 }
 
 /*
@@ -122,11 +142,11 @@ __attribute__((always_inline))
 int8_t*
 gc_alloc(size_t size)
 {
+  if (next_free + add_align(size) >= MEM_SIZE) {
+    return NULL;
+  }
   int8_t *chunk = from_space + next_free;
   next_free += add_align(size);  
-  if (next_free >= MEM_SIZE) {
-    chunk = NULL;
-  }
   return chunk;
 }
 
@@ -143,8 +163,8 @@ copy_record(int8_t *record, int8_t *next)
   uint64_t size = tag_size(tag);
   memcpy(next, record, size);
   /* forward pointer */
-  assert ( is_aligned(next) );
-  tag_t fwd = (int64_t)next;
+  assert( is_aligned(next) );
+  tag_t fwd = (uint64_t)next;
   set_tag(record, fwd);
 }
 
@@ -167,10 +187,13 @@ gc_collect(size_t bytes_needed, uint64_t rootc, ...)
   va_start(roots, rootc);
   for (int i = 0; i < rootc; i++) {
     int8_t *root = va_arg(roots, int8_t*);
-    assert( root != NULL && in_from_space(root) );
-    tag_t tag = get_tag(root);
-    copy_record(root, next);
-    next += add_align(tag_size(tag));
+    if (root != NULL) {
+      assert( is_aligned(root) );
+      assert( in_from_space(root) );
+      tag_t tag = get_tag(root);
+      copy_record(root, next);
+      next += add_align(tag_size(tag));
+    }
   }
   va_end(roots);
 
@@ -190,12 +213,13 @@ gc_collect(size_t bytes_needed, uint64_t rootc, ...)
 
         if (!tag_is_fwd_pointer(tag_p)) {
           uint64_t p_size = tag_size(tag_p);
-          if (!in_to_space(next + p_size))
+          if (!in_to_space(next + add_align(p_size)))
             raise_out_of_memory();
           copy_record(p, next);
           next += add_align(p_size);
           assert ( is_aligned(next) );
           tag_p = get_tag(p);
+          // after copy_record tag_p must be fwd pointer
         }
         set_pointer(scan, i, (int8_t*)tag_p);
       }
@@ -212,3 +236,4 @@ gc_collect(size_t bytes_needed, uint64_t rootc, ...)
   from_space = to_space;
   to_space = tmp;
 }
+

@@ -41,7 +41,7 @@ configure:
 # OASIS_STOP
 
 rt/gc.bc: src/gc.c
-	cd rt; clang -c -emit-llvm ../src/gc.c
+	cd rt; clang -target x86_64-pc-linux-gnu -c -emit-llvm ../src/gc.c
 
 rt/stack.bc: src/stack.c
-	cd rt; clang -c -emit-llvm ../src/stack.c
+	cd rt; clang -target x86_64-pc-linux-gnu -c -emit-llvm ../src/stack.c
