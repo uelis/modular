@@ -27,14 +27,14 @@ raise_out_of_memory()
 
 static inline
 bool
-in_from_space(int8_t *p)
+in_from_space(const int8_t *p)
 {
   return (from_space <= p) && (p < from_space + MEM_SIZE);
 }
 
 static inline
 bool
-in_to_space(int8_t *p)
+in_to_space(const int8_t *p)
 {
   return (to_space <= p) && (p < to_space + MEM_SIZE);
 }
@@ -56,7 +56,7 @@ typedef uint64_t tag_t;
 
 static inline
 tag_t
-get_tag(int8_t *record) {
+get_tag(const int8_t *record) {
   tag_t tag;
   memcpy(&tag, record, sizeof(tag));
   return tag;
@@ -71,16 +71,16 @@ set_tag(int8_t *record, tag_t tag) {
 
 static inline
 int8_t*
-get_pointer(int8_t *record, int i) {
+get_pointer(const int8_t *record, int i) {
   int8_t *res;
-  int8_t *pi = record + sizeof(tag_t) + i * sizeof(int8_t*);
+  const int8_t *pi = record + sizeof(tag_t) + i * sizeof(int8_t*);
   memcpy(&res, pi, sizeof(res));
   return res;
 }
 
 static inline
 void
-set_pointer(int8_t *record, int i, int8_t *ptr) {
+set_pointer(int8_t *record, int i, const int8_t *ptr) {
   int8_t *pi = record + sizeof(tag_t) + i * sizeof(int8_t*);
   memcpy(pi, &ptr, sizeof(ptr));
 }
@@ -105,7 +105,7 @@ tag_is_fwd_pointer(tag_t tag) {
 
 static inline
 bool
-is_aligned(void *x) {
+is_aligned(const void *x) {
   return ((uint64_t)x & 0x07) == 0;
 }
 
@@ -165,13 +165,12 @@ copy_record(int8_t *dst, int8_t *record)
 {
   assert( in_from_space(record) );
   assert( in_to_space(dst) );
-  tag_t tag = get_tag(record);
-  uint64_t size = tag_size(tag);
+  const tag_t tag = get_tag(record);
+  const uint64_t size = tag_size(tag);
   memcpy(dst, record, size);
   /* forward pointer */
   assert( is_aligned(dst) );
-  tag_t fwd = (uint64_t)dst;
-  set_tag(record, fwd);
+  set_tag(record, (uint64_t)dst);
 }
 
 /*
@@ -195,7 +194,7 @@ gc_collect(size_t bytes_needed, uint64_t rootc, ...)
     if (root != NULL) {
       assert( is_aligned(root) );
       assert( in_from_space(root) );
-      tag_t tag = get_tag(root);
+      const tag_t tag = get_tag(root);
       if (!tag_is_fwd_pointer(tag)) {
         copy_record(next, root);
         next += add_align(tag_size(tag));
@@ -210,8 +209,8 @@ gc_collect(size_t bytes_needed, uint64_t rootc, ...)
   scan = to_space;
 
   while (scan < next) {
-    tag_t tag = get_tag(scan);
-    uint64_t ptr_count = tag_pointer_count(tag);
+    const tag_t tag = get_tag(scan);
+    const uint64_t ptr_count = tag_pointer_count(tag);
 
     for (int i = 0; i < ptr_count; i++) {
       int8_t *p = get_pointer(scan, i);
@@ -219,7 +218,7 @@ gc_collect(size_t bytes_needed, uint64_t rootc, ...)
         tag_t tag_p = get_tag(p);
 
         if (!tag_is_fwd_pointer(tag_p)) {
-          uint64_t p_size = tag_size(tag_p);
+          const uint64_t p_size = tag_size(tag_p);
           if (!in_to_space(next + add_align(p_size)))
             raise_out_of_memory();
           copy_record(next, p);
