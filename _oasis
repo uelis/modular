@@ -34,7 +34,7 @@ Executable "test"
     llvm,
     llvm.bitwriter,
     oUnit
-    
+
 Test "test_all"
   TestTools: test
   Command: $test

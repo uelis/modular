@@ -74,6 +74,7 @@ may be done as follows:
 Having installed these dependencies, the translation may be compiled and invoked as:
 
 ```
+  oasis setup
   make
   ./modular.native Test/fib.cbv
 ```
@@ -120,7 +121,7 @@ For example, the following program prints the 20-th Fibonacci number
     if x1 = 0 then 1 else
     if x2 = 0 then 1 else
     (fib x1) +  (fib x2)
-    
+
   let main =
     print (fib 20)
 ```
@@ -178,9 +179,9 @@ gives the following types
   fib : ['g](Nat[unit * 'f + 'e] -{box<(conty0<unit>)>, unit}-> Nat['d])
   main : Nat['k]
 ```
-  
+
 where
-  
+
 ```
   type conty0<'a> = conty0_0 of box<(conty0<'a>)> * (unit * int * 'a)
                   | conty0_1 of box<(conty0<'a>)> * int
@@ -191,7 +192,7 @@ where
 
 A few example programs can be found in the `Tests` directory. The programs
 `mandelbrot.cbv`, `raytrace.cbv` and `raytrace_inline.cbv` produce output that
-can be interpreted as images in PPM format. The produced images should look as 
+can be interpreted as images in PPM format. The produced images should look as
 follows.
 
 ![Raytrace](http://www2.tcs.ifi.lmu.de/~schoepp/raytrace.png)

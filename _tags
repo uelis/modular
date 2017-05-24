@@ -1,11 +1,11 @@
-<**/*.ml{,i}>: warn(-40), no_alias_deps
-<**/*>: thread
+true: thread
+<**/*.ml{,i}>: warn(-40)
+<**/*.ml{,i}>: ppx(ppx-jane -as-ppx)
 # true: profile
 # This prevents the implicit addition of -ppx options by ocamlfind
-<**/*.ml{,i}>: predicate(ppx_driver)
-<src/*.ml{,i}>: ppx-driver(ppx_sexp_conv)
+
 # OASIS_START
-# DO NOT EDIT (digest: 7852915104bc858debcdd58ccba6aa79)
+# DO NOT EDIT (digest: b1d99de0d897f34ab0f343061478f236)
 # Ignore VCS directories, you can use the same kind of rule outside
 # OASIS_START/STOP if you want to exclude directories that contains
 # useless stuff for the build process
@@ -23,8 +23,18 @@ true: annot, bin_annot
 # Executable modular
 "src/modular.native": package(core_kernel)
 "src/modular.native": package(llvm)
+"src/modular.native": package(llvm.bitwriter)
 "src/modular.native": package(sexplib)
 <src/*.ml{,i,y}>: package(core_kernel)
+# Executable test
+"src/test.native": package(core)
+"src/test.native": package(llvm)
+"src/test.native": package(llvm.bitwriter)
+"src/test.native": package(oUnit)
+"src/test.native": package(sexplib)
+<src/*.ml{,i,y}>: package(core)
 <src/*.ml{,i,y}>: package(llvm)
+<src/*.ml{,i,y}>: package(llvm.bitwriter)
+<src/*.ml{,i,y}>: package(oUnit)
 <src/*.ml{,i,y}>: package(sexplib)
 # OASIS_STOP
