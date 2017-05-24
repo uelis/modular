@@ -143,8 +143,8 @@ without further linking one can currently run only programs of base type. It is
 possible to link `fib.bc` to an assembly module implementing the function
 argument, but one needs to do the linking by hand, currently.
 
-To generate an executable from `main.bc` using the LLVM compiler tools, one may
-invoke the script `llvm_compile.sh` as follows:
+To generate an executable from `main.bc` using the LLVM compiler tools (and also clang
+for linking), one may invoke the script `llvm_compile.sh` as follows:
 
 ```
   > ./llvm_compile main
