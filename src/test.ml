@@ -2,20 +2,18 @@ open Core
 open OUnit2
 
 let files_in_dir dir_name extension =
-  let files = ref [] in
   let dir = Unix.opendir dir_name in
-  begin
-    try
-      while true do
-        let file = Unix.readdir dir in
-        if String.is_suffix ~suffix:extension file then
-          files := (dir_name ^ "/" ^ file) :: !files
-      done
-    with
-    | End_of_file ->
-      Unix.closedir dir
-  end;
-  !files
+  let rec files acc =
+    match Unix.readdir_opt dir with
+    | Some file ->
+       let acc' = if String.is_suffix ~suffix:extension file then
+                    ((dir_name ^ "/" ^ file) :: acc)
+                  else acc in
+       files acc'
+    | None ->
+       Unix.closedir dir;
+       acc in
+  files []
 
 let parse s =
   let lexbuf = Lexing.from_string s in
