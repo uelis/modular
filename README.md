@@ -53,31 +53,30 @@ synthesis.
 The translation is written in OCaml and uses LLVM for code generation. It
 depends on Jane Street's Core_kernel library and the OCaml LLVM bindings.
 
-On Ubuntu, LLVM can be installed using `apt-get install llvm`. The OCaml
-libraries are most easily installed using the OCaml Package Manager (OPAM),
-which can be obtained from (http://opam.ocamlpro.com). On Ubuntu, OPAM can be
-installed with `apt-get install opam`.
+The installation of OCaml packages should work most easily using the OCaml
+Package Manager (OPAM), which can be obtained from (http://opam.ocamlpro.com).
+On Ubuntu, OPAM can be installed with `apt-get install opam`.
+
+Second, LLVM needs to be installed. On Ubuntu, LLVM can be installed using
+`apt-get install llvm`. It may be necessary to pin the LLVM bindings for OCaml
+to the version of LLVM that is installed on the system (see `llc -version`).
+For example, pinning the LLVM binding to version 3.8 may be done as follows:
 
 ```
-  opam install core oasis ounit
-  opam install llvm
+  opam pin add llvm 3.8
 ```
 
-It may be necessary to pin the LLVM binding to the version of LLVM that is
-installed on the system (see `llc -version`). For example, pinning the LLVM binding to version 3.6
-may be done as follows:
+Once OPAM and LLVM are installed, the translation can be installed and tested
+as follows:
 
 ```
-  opam pin add llvm 3.6
+  git clone git://github.com/uelis/modular.git
+  opam pin add modular
+  cd modular
+  modular Test/fib.cbv
 ```
 
-Having installed these dependencies, the translation may be compiled and invoked as:
-
-```
-  oasis setup
-  make
-  ./modular.native Test/fib.cbv
-```
+This should compile the source `fib.cbv` to a file `main.bc`.
 
 ## Source Language
 
