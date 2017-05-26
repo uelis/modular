@@ -370,7 +370,7 @@ let rec build_value
           (t: Ssa.value) : encoded_value =
   match t with
   | Ssa.Var(x) ->
-    List.Assoc.find_exn ctx x
+    List.Assoc.find_exn ~equal:(=) ctx x
   | Ssa.IntConst(i) ->
     let vali = Llvm.const_int (int_lltype) i in
     Mixedvector.singleton Lltype.int_type vali
@@ -694,7 +694,7 @@ let build_letbinding
     let ctx_phi = List.map ctx
                     ~f:(fun (x, xenc) ->
                       let phi = Mixedvector.build_phi (xenc, alloc_block) builder in
-                      let xenc' = List.Assoc.find_exn ctx1 x in
+                      let xenc' = List.Assoc.find_exn ~equal:(=) ctx1 x in
                       Mixedvector.add_incoming (xenc', collect_block_end) phi;
                       (x, phi)
                     ) in

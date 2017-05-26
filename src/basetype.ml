@@ -143,7 +143,7 @@ struct
     assert (List.length ps = List.length newparams);
     let param_subst alpha =
       let l = List.zip_exn ps newparams in
-      List.Assoc.find l alpha
+      List.Assoc.find l alpha ~equal:(=)
       |> Option.value ~default:alpha in
     List.map ~f:(fun a -> subst a param_subst) ts
 
@@ -238,7 +238,7 @@ struct
     (* replace given parameters by private parameters *)
     let param_subst alpha =
       let l = List.zip_exn paramvars d.params in
-      List.Assoc.find l alpha
+      List.Assoc.find l alpha ~equal:(=)
       |> Option.value ~default:alpha in
     let argtype' = subst argtype param_subst in
     let d' = { d with constructors = d.constructors @ [name, argtype'] } in

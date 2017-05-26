@@ -240,7 +240,7 @@ struct
   let encode (gamma : t) (vs: Builder.value Typing.context) : Builder.value =
     let vs =
       List.map gamma ~f:(fun (x, a) ->
-          let vx = List.Assoc.find_exn vs x in
+          let vx = List.Assoc.find_exn ~equal:(=) vs x in
           assert (Basetype.equals (Builder.typeof vx) (Cbvtype.code a));
           vx) in
     Builder.tuple vs
@@ -311,7 +311,7 @@ let rec add_interface (ms : stage) (t : Cbvterm.t) : term_with_interface =
       access = si.access;
       context = (x, x_access) ::
                 (List.filter si.context
-                   ~f:(fun (x, _) -> not (List.mem xs x)));
+                   ~f:(fun (x, _) -> not (List.mem ~equal:(=) xs x)));
       term = t
     }
   | Const(Ast.Cboolconst b, []) ->
@@ -455,7 +455,7 @@ let rec project_context
   : unit =
   List.iter inner
     ~f:(fun (y, y_access) ->
-      let y_outer_access = List.Assoc.find_exn outer y in
+      let y_outer_access = List.Assoc.find_exn ~equal:(=) outer y in
       Access.project_push y_outer_access.exit y_access.exit)
 
 let rec embed_context
@@ -464,7 +464,7 @@ let rec embed_context
   : unit =
   List.iter inner
     ~f:(fun (y, y_access) ->
-      let y_outer_access = List.Assoc.find_exn outer y in
+      let y_outer_access = List.Assoc.find_exn ~equal:(=) outer y in
       Access.pop_embed y_access.entry y_outer_access.entry)
 
 let rec join_code (k: [> `Left | `Right]) (v: Builder.value)
@@ -564,15 +564,15 @@ let rec build_blocks (ms: stage) (t: term_with_interface) : unit =
   match t.desc with
   | Var x ->
     let vgamma, va, args = Builder.begin_block2 t.eval.entry in
-    let vx = List.Assoc.find_exn (Context.decode t.term.t_context vgamma) x in
+    let vx = List.Assoc.find_exn ~equal:(=) (Context.decode t.term.t_context vgamma) x in
     Builder.end_block_jump t.eval.exit (vx :: va :: args)
   | Contr(((x, a), xs), s) ->
-    let x_access = List.Assoc.find_exn t.context x in
+    let x_access = List.Assoc.find_exn ~equal:(=) t.context x in
     begin (* Eval block *)
       let vgamma, vstack, args = Builder.begin_block2 t.eval.entry in
       let vdelta =
         let delta = List.map s.term.t_context
-            ~f:(fun (y, a) -> (if List.mem xs y then x else y), a) in
+            ~f:(fun (y, a) -> (if List.mem ~equal:(=) xs y then x else y), a) in
         Context.build_map t.term.t_context delta vgamma in
       Builder.end_block_jump s.eval.entry (vdelta :: vstack :: args)
     end;
@@ -582,11 +582,11 @@ let rec build_blocks (ms: stage) (t: term_with_interface) : unit =
       | [] -> (* variable unused; dummy block *)
         Access.unreachable x_access.exit
       | [y] -> (* singleton: no sum type *)
-        let y_access = List.Assoc.find_exn s.context y in
+        let y_access = List.Assoc.find_exn ~equal:(=) s.context y in
         Access.forward x_access.exit y_access.exit
       | _ -> (* general case *)
         let xs_exits =
-          List.map xs ~f:(fun x' -> (List.Assoc.find_exn s.context x').exit) in
+          List.map xs ~f:(fun x' -> (List.Assoc.find_exn ~equal:(=) s.context x').exit) in
         Access.project_split x_access.exit xs_exits
     end;
     (* body *)
@@ -599,11 +599,11 @@ let rec build_blocks (ms: stage) (t: term_with_interface) : unit =
       match xs with
       | [] -> () (* no block needed *)
       | [y] -> (* singleton, no injection *)
-        let y_access = List.Assoc.find_exn s.context y in
+        let y_access = List.Assoc.find_exn ~equal:(=) s.context y in
         Access.forward y_access.entry x_access.entry
       | _ ->
         let xs_entries = List.map xs ~f:(fun x' ->
-            (List.Assoc.find_exn s.context x').entry) in
+            (List.Assoc.find_exn ~equal:(=) s.context x').entry) in
         Access.join_embed xs_entries x_access.entry
     end
   | Const(Ast.Cboolconst b, []) ->
@@ -682,7 +682,7 @@ let rec build_blocks (ms: stage) (t: term_with_interface) : unit =
     assert false
   | Fun((x, xty), s) ->
     (* TODO: nimmt an, dass x im context von s vorkommt. *)
-    let x_access = List.Assoc.find_exn s.context x in
+    let x_access = List.Assoc.find_exn ~equal:(=) s.context x in
     begin (* eval *)
       let vgamma, vstack, args = Builder.begin_block2 t.eval.entry in
       let vclosure = Builder.embed vgamma (Cbvtype.code t.term.t_type) in
@@ -775,8 +775,8 @@ let rec build_blocks (ms: stage) (t: term_with_interface) : unit =
         assert false
     end
   | Fix((th, f, x, xty), s) ->
-    let x_access = List.Assoc.find_exn s.context x in
-    let f_access = List.Assoc.find_exn s.context f in
+    let x_access = List.Assoc.find_exn ~equal:(=) s.context x in
+    let f_access = List.Assoc.find_exn ~equal:(=) s.context f in
     begin (* eval *)
       let vgamma, vstack, args = Builder.begin_block2 t.eval.entry in
       let vclosure = Builder.embed vgamma (Cbvtype.code t.term.t_type) in
@@ -785,7 +785,7 @@ let rec build_blocks (ms: stage) (t: term_with_interface) : unit =
     (* E + H *G *)
     let tcons =
       let te = Cbvtype.multiplicity t.term.t_type in
-      let tg = Cbvtype.multiplicity (List.Assoc.find_exn s.term.t_context f) in
+      let tg = Cbvtype.multiplicity (List.Assoc.find_exn ~equal:(=) s.term.t_context f) in
       let thg = Basetype.pairB th tg in
       Basetype.newty (Basetype.DataB(Basetype.Data.sumid 2, [te; thg])) in
     let build_singleton ve =
@@ -906,7 +906,7 @@ let rec build_blocks (ms: stage) (t: term_with_interface) : unit =
       | _ ->
         assert false
     end;
-    let gamma = List.Assoc.remove (List.Assoc.remove s.context x) f in
+    let gamma = List.Assoc.remove ~equal:(=) (List.Assoc.remove ~equal:(=) s.context x) f in
     project_context t.context gamma;
     embed_context t.context gamma;
   | Tailfix((th, f, x, xty), s) ->
@@ -942,7 +942,7 @@ let rec build_blocks (ms: stage) (t: term_with_interface) : unit =
       | Access.Fun(_, res, a1, a2) ->
         let ta = type_of_stage res 1 in
         let te = type_of_stage res 2 in
-        let x_access = List.Assoc.find_exn s.context x in
+        let x_access = List.Assoc.find_exn ~equal:(=) s.context x in
         Access.unreachable s.access.exit;
         Access.unreachable x_access.entry;
         begin (* s eval exit *)
@@ -954,7 +954,7 @@ let rec build_blocks (ms: stage) (t: term_with_interface) : unit =
       | _ ->
         assert false
     end;
-    let f_access = List.Assoc.find_exn s.context f in
+    let f_access = List.Assoc.find_exn ~equal:(=) s.context f in
     begin
       match t.access.entry, f_access.entry with
       | Access.Fun(_, eval, a1, a2),

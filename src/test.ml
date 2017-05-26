@@ -1,4 +1,4 @@
-open Core.Std
+open Core
 open OUnit2
 
 let files_in_dir dir_name extension =

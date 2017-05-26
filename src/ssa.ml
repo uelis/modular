@@ -138,7 +138,7 @@ let rec typeof_value
   match v with
   | Var(x) ->
     begin
-      match List.Assoc.find gamma x with
+      match List.Assoc.find ~equal:(=) gamma x with
       | Some b -> b
       | None -> failwith ("internal ssa.ml: undefined variable " ^ (Ident.to_string x))
     end

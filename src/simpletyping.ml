@@ -38,7 +38,7 @@ let contract_instances
   let xs_types, gamma =
     List.partition_map
       t.linear_term.t_context
-      ~f:(fun (y, a) -> if List.mem xs y then `Fst a else `Snd (y, a)) in
+      ~f:(fun (y, a) -> if List.mem xs y ~equal:(=) then `Fst a else `Snd (y, a)) in
   List.iter xs_types
     ~f:(fun b -> Simpletype.unify_exn a b);
   { linear_term = {
@@ -89,7 +89,7 @@ let rec linearize (phi: Simpletype.t context) (t: Ast.t)
   match t.Ast.desc with
   | Ast.Var(v: Ident.t) ->
     let a =
-      match List.Assoc.find phi v with
+      match List.Assoc.find phi v ~equal:(=) with
       | Some a -> a
       | None ->
         let msg = "Variable '" ^ (Ident.to_string v) ^ "' not bound." in

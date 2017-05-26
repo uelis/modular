@@ -57,7 +57,7 @@ let substitute ?head:(head=false) (s: t) (x: Ident.t) (t: t) : t option =
    * variables of t to suitably fresh variables. *)
   let fvs = free_vars s in
   let apply sigma y =
-    List.Assoc.find sigma y
+    List.Assoc.find sigma y ~equal:(=)
     |> Option.value ~default:y in
   let substituted = ref false in
   let rec sub sigma term =
@@ -102,7 +102,7 @@ let substitute ?head:(head=false) (s: t) (x: Ident.t) (t: t) : t option =
     | [y'], u -> y', u
     | _ -> assert false
   and abs_list sigma (l, t1) =
-    if List.mem l x then (l, t1)
+    if List.mem l x ~equal:(=) then (l, t1)
     else if List.for_all l ~f:(fun y -> not (Ident.Set.mem fvs y)) then
       (* no capture *)
       (l, sub sigma t1)

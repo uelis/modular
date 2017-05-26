@@ -111,7 +111,7 @@ let shortcut_block blocks i0 =
   let block = Ident.Table.find_exn blocks i0 in
   let subst xs vs =
     let rho = List.zip_exn xs vs in
-    fun y -> List.Assoc.find rho y
+    fun y -> List.Assoc.find ~equal:(=) rho y
              |> Option.value ~default:(Var y) in
 
   let shortcut_value (i : label) v =

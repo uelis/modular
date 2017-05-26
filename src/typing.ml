@@ -368,7 +368,7 @@ let infer_annotations (t: Cbvterm.t) : Cbvterm.t =
       let e, (x, a, d, y) = Cbvtype.unFun t.t_type in
       (* note: the bound variable cannot appear in t.t_context *)
       Cbvtype.unify_exn x xa;
-      Cbvtype.unify_exn x (List.Assoc.find_exn as1.t_context v);
+      Cbvtype.unify_exn x (List.Assoc.find_exn as1.t_context v ~equal:(=));
       Cbvtype.unify_exn y s.t_type;
       Basetype.unify_exn a s.t_ann;
       let outer_context =
@@ -378,7 +378,7 @@ let infer_annotations (t: Cbvterm.t) : Cbvterm.t =
       let context_cs =
         List.map outer_context
           ~f:(fun (y, a) ->
-              let a' = List.Assoc.find_exn as1.t_context y in
+              let a' = List.Assoc.find_exn as1.t_context y ~equal:(=) in
               let m' = Cbvtype.multiplicity a' in
               Cbvtype.unify_exn a (freshen_multiplicity a');
               { lower = Basetype.(newty (TupleB [e; m']));
@@ -462,12 +462,12 @@ let infer_annotations (t: Cbvterm.t) : Cbvterm.t =
     | Fix((h, f, v, va), s) ->
       let as1, cs1 = constraints s in
       let e, (x, a, d, y) = Cbvtype.unFun t.t_type in
-      let g, (x', a', d', y') = Cbvtype.unFun (List.Assoc.find_exn as1.t_context f) in
+      let g, (x', a', d', y') = Cbvtype.unFun (List.Assoc.find_exn ~equal:(=) as1.t_context f) in
       Basetype.unify_exn a a';
       Basetype.unify_exn d d';
       Cbvtype.unify_exn x x';
       Cbvtype.unify_exn x va;
-      Cbvtype.unify_exn x (List.Assoc.find_exn as1.t_context v);
+      Cbvtype.unify_exn x (List.Assoc.find_exn ~equal:(=) as1.t_context v);
       Cbvtype.unify_exn y y';
       Cbvtype.unify_exn y s.t_type;
       Basetype.unify_exn a s.t_ann;
@@ -478,7 +478,7 @@ let infer_annotations (t: Cbvterm.t) : Cbvterm.t =
       let context_cs =
         List.map outer_context
           ~f:(fun (y, a) ->
-              let a' = List.Assoc.find_exn as1.t_context y in
+              let a' = List.Assoc.find_exn ~equal:(=) as1.t_context y in
               let m' = Cbvtype.multiplicity a' in
               Cbvtype.unify_exn a (freshen_multiplicity a');
               { lower = Basetype.(newty (TupleB [h; m']));
@@ -504,11 +504,11 @@ let infer_annotations (t: Cbvterm.t) : Cbvterm.t =
       (* TODO: verify tail position and that x and y are first-order types. *)
       let as1, cs1 = constraints s in
       let e, (x, a, d, y) = Cbvtype.unFun t.t_type in
-      let g, (x', _, d', y') = Cbvtype.unFun (List.Assoc.find_exn as1.t_context f) in
+      let g, (x', _, d', y') = Cbvtype.unFun (List.Assoc.find_exn ~equal:(=) as1.t_context f) in
       Basetype.unify_exn d d';
       Cbvtype.unify_exn x x';
       Cbvtype.unify_exn x va;
-      Cbvtype.unify_exn x (List.Assoc.find_exn as1.t_context v);
+      Cbvtype.unify_exn x (List.Assoc.find_exn ~equal:(=) as1.t_context v);
       Cbvtype.unify_exn y y';
       Cbvtype.unify_exn y s.t_type;
       Basetype.unify_exn as1.t_ann (Basetype.unitB);
@@ -519,7 +519,7 @@ let infer_annotations (t: Cbvterm.t) : Cbvterm.t =
       let context_cs =
         List.map outer_context
           ~f:(fun (y, a) ->
-              let a' = List.Assoc.find_exn as1.t_context y in
+              let a' = List.Assoc.find_exn ~equal:(=) as1.t_context y in
               let m' = Cbvtype.multiplicity a' in
               Cbvtype.unify_exn a (freshen_multiplicity a');
               { lower = Basetype.(newty (TupleB [h; m']));
@@ -543,8 +543,8 @@ let infer_annotations (t: Cbvterm.t) : Cbvterm.t =
       @ cs1 @ context_cs
     | Contr(((x, a), [y]), s) ->
       let as1, cs1 = constraints s in
-      let yt = List.Assoc.find_exn as1.t_context y in
-      let gamma = List.Assoc.remove as1.t_context y in
+      let yt = List.Assoc.find_exn ~equal:(=) as1.t_context y in
+      let gamma = List.Assoc.remove as1.t_context y ~equal:(=) in
       Cbvtype.unify_exn t.t_type s.t_type;
       Basetype.unify_exn t.t_ann s.t_ann;
       Cbvtype.unify_exn a yt;
@@ -557,7 +557,7 @@ let infer_annotations (t: Cbvterm.t) : Cbvterm.t =
       let as1, cs1 = constraints s in
       let m = Cbvtype.multiplicity a in
       let delta, gamma =
-        List.partition_tf as1.t_context ~f:(fun (y, _) -> List.mem xs y) in
+        List.partition_tf as1.t_context ~f:(fun (y, _) -> List.mem ~equal:(=) xs y) in
       let sum =
         let ms = List.map delta ~f:(fun (_, a) -> Cbvtype.multiplicity a) in
         let n = List.length ms in
