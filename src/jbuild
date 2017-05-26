@@ -1,0 +1,20 @@
+(jbuild_version 1)
+
+(ocamllex (lexer))
+(ocamlyacc (parser))
+
+(executables
+ ((names (modular test))
+  (libraries (core llvm llvm.bitwriter oUnit))
+  (preprocess (pps (ppx_jane)))
+ )
+)
+
+(alias
+ ((name    runtest)
+  (deps    (test.exe))
+  (action  (chdir ${ROOT} (run ${<})))))
+
+(install
+ ((section bin)
+  (files ((modular.exe as modular)))))
