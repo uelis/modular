@@ -109,3 +109,5 @@ val fprint_term : Out_channel.t -> term -> unit
 val fprint_letbndgs : Out_channel.t -> let_bindings -> unit
 val fprint_block : Out_channel.t -> block -> unit
 val fprint_func : Out_channel.t -> t -> unit
+
+val to_json : t -> Yojson.Basic.json

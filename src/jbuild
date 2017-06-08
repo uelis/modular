@@ -5,7 +5,7 @@
 
 (executables
  ((names (modular test))
-  (libraries (core llvm llvm.bitwriter oUnit))
+  (libraries (core yojson llvm llvm.bitwriter oUnit))
   (preprocess (pps (ppx_jane)))
  )
 )

@@ -56,11 +56,17 @@ let compile (d: Decl.t) : unit =
       if !Opts.keep_ssa then
         Out_channel.with_file (f_name ^ ".ssa")
           ~f:(fun c -> Ssa.fprint_func c ssa);
+      if !Opts.keep_json then
+        Out_channel.with_file (f_name ^ ".json")
+          ~f:(fun c -> Yojson.Basic.pretty_to_channel c (Ssa.to_json ssa));
       let ssa_traced = Trace.trace ssa in
       let ssa_shortcut = Trace.shortcut_jumps ssa_traced in
       if !Opts.keep_ssa then
         Out_channel.with_file (f_name ^ ".simpl.ssa")
           ~f:(fun c -> Ssa.fprint_func c ssa_shortcut);
+      if !Opts.keep_json then
+        Out_channel.with_file (f_name ^ ".simpl.json")
+          ~f:(fun c -> Yojson.Basic.pretty_to_channel c (Ssa.to_json ssa_traced));
       let llvm_module = Llvmcodegen.llvm_compile ssa_shortcut in
       let target = Printf.sprintf "%s.bc" f_name in
       ignore (Llvm_bitwriter.write_bitcode_file llvm_module target)
@@ -72,6 +78,7 @@ let arg_spec =
   [("--type-details", Arg.Set Opts.print_type_details,
     "Print full type details, including subexponentials.");
    ("--ssa", Arg.Set Opts.keep_ssa, "Write intermediate ssa files.");
+   ("--json", Arg.Set Opts.keep_json, "Write intermediate code in JSON format.");
    ("--verbose", Arg.Set Opts.verbose, "Print compilation details.");
    ("--print-annotated-term", Arg.Set Opts.print_annotated_term,
     "Print program term with type annotations.")

@@ -447,4 +447,99 @@ let fprint_func (oc: Out_channel.t) (func: t) : unit =
     (String.concat ~sep:", " (List.map xs ~f:Ident.to_string));
   iter_reachable_blocks func ~f:(fun block ->
     fprint_block oc block;
-    Out_channel.output_string oc "\n")
+Out_channel.output_string oc "\n")
+
+let rec to_json_type (a : Basetype.t) : Yojson.Basic.json =
+  let open Basetype in
+  let open Yojson.Basic in
+  match case a with
+  | Var -> `Assoc ["var_type", `Int (repr_id a)]
+  | Sgn(DataB(id, params)) ->
+    `Assoc ["data_type", `Assoc ["type_id", `String (Ident.to_string id);
+                            "type_params", `List (List.map params ~f:to_json_type)]]
+  | Sgn(TupleB(bs)) ->
+    `Assoc ["tuple_type", `List (List.map bs ~f:to_json_type)]
+  | Sgn(IntB) ->
+    `String "int_type"
+  | Sgn(BoxB(b)) ->
+    `Assoc ["box_type", to_json_type b]
+
+let rec to_json_constructor ((i, (id, params)) : constructor) : Yojson.Basic.json =
+  `Assoc ["number", `Int i;
+          "type_id", `String (Ident.to_string id);
+          "type_params", `List (List.map params ~f:to_json_type) ]
+
+let rec to_json_value (v: value) : Yojson.Basic.json =
+  let open Yojson.Basic in
+  match v with
+  | Var(x) ->
+    `Assoc ["Var", `String (Ident.to_string x)]
+  | Tuple(vs) ->
+    `Assoc ["Tuple", `List (List.map ~f:to_json_value vs)]
+  | In(c, t) ->
+    `Assoc ["In", `Assoc ["constructor", to_json_constructor c;
+                          "arg", to_json_value t]]
+  | Proj(t, i, bs) ->
+    `Assoc ["Proj", `Assoc ["arg", to_json_value t;
+                            "tuple_type", `List (List.map bs ~f:to_json_type);
+                            "index", `Int i ]]
+  | Select(c, t) ->
+    `Assoc ["Select", `Assoc ["constructor", to_json_constructor c;
+                              "arg", to_json_value t]]
+  | Undef(a) ->
+    `String "Undefined"
+  | IntConst(n) ->
+    `Assoc ["int", `Int n]
+
+let to_json_term (t: term) : Yojson.Basic.json =
+  let open Yojson.Basic in
+  match t with
+  | Const(c, v) ->
+    `Assoc ["primop", `String (string_of_op_const c);
+            "arg", to_json_value v]
+
+let to_json_letbndgs (bndgs: let_bindings) : Yojson.Basic.json =
+  `List (List.map (List.rev bndgs)
+           ~f:(function
+               | Let(x, t) ->
+                 `Assoc [Ident.to_string x, to_json_term t]
+             ))
+
+let param_json (labels: Ident.t list) (types: Basetype.t list) : Yojson.Basic.json =
+  List.zip_exn labels types
+  |> List.map ~f:(fun (l, t) ->
+      `Assoc [Ident.to_string l, to_json_type t])
+  |> fun x -> `List x
+
+let to_json_block (b: block) : Yojson.Basic.json =
+  let jump =
+  match b.jump with
+  | Unreachable ->
+    `String "Unreachable"
+  | Direct(goal, body) ->
+    `Assoc ["direct", `String (Ident.to_string goal.name);
+            "args", `List (List.map ~f:to_json_value body)]
+  | Branch(cond, (id, params), cases) ->
+    `Assoc ["match", to_json_value cond;
+            "type_id", `String (Ident.to_string id);
+            "type_params", `List (List.map params ~f:to_json_type);
+            "cases", `List (List.map cases ~f:(fun (l, lg, lb) ->
+                `Assoc ["arg", `String (Ident.to_string l);
+                        "direct", `String (Ident.to_string lg.name);
+                        "args", `List (List.map ~f:to_json_value lb)]))]
+  | Return(body, a) ->
+    `Assoc ["return", to_json_value body;
+            "return_type", to_json_type a] in
+  `Assoc ["block", `String (Ident.to_string b.label.name);
+          "args", param_json b.args b.label.arg_types;
+          "lets", to_json_letbndgs b.body;
+          "jump", jump]
+
+let to_json (func: t) : Yojson.Basic.json =
+  let xs = List.map func.entry_label.arg_types ~f:(fun _ -> Ident.fresh "x") in
+  `Assoc ["name", `String func.func_name;
+          "args", param_json xs func.entry_label.arg_types;
+          "return_type", to_json_type func.return_type;
+          "entry_block", `String (Ident.to_string func.entry_label.name);
+          "blocks", `List (List.map ~f:(fun (_, b) -> to_json_block b)
+                             (Ident.Table.to_alist func.blocks))]

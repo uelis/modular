@@ -13,5 +13,6 @@ depends: [
   "jbuilder" { build }
   "core" { build & >= "v0.9.0"}
   "llvm" { build }
+  "yojson" { build }
   "ounit" { build }
 ]
