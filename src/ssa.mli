@@ -30,15 +30,17 @@ type op_const =
   | Cpop of Basetype.t
   | Ccall of string * Basetype.t * Basetype.t
 
+type constructor = int * (Basetype.Data.id * Basetype.t list)
+
 (** SSA values and terms *)
 type value =
+  | IntConst of int
   | Var of Ident.t
   | Tuple of value list
-  | In of (Basetype.Data.id * int * value) * Basetype.t
   | Proj of value * int * Basetype.t list
-  | Select of value * (Basetype.Data.id * Basetype.t list) * int
+  | In of constructor * value
+  | Select of constructor * value
   | Undef of Basetype.t
-  | IntConst of int
 
 type term =
   | Const of op_const * value
@@ -63,17 +65,18 @@ type label = {
   debug_loc: Ast.Location.t
 }
 
+type transfer =
+  | Unreachable
+  | Direct of label * (value list)
+  | Branch of value * (Basetype.Data.id * Basetype.t list) * (Ident.t * label * (value list)) list
+  | Return of value * Basetype.t
+
 (** Program blocks *)
 type block =
-    Unreachable of label
-  | Direct of label * (Ident.t list) * let_bindings * (value list) * label
-  | Branch of label * (Ident.t list) * let_bindings *
-              (Basetype.Data.id * Basetype.t list * value *
-               (Ident.t * (value list) * label) list)
-  | Return of label * (Ident.t list) * let_bindings * value * Basetype.t
-
-(** Return the label defined by a block *)
-val label_of_block: block -> label
+  { label : label;
+    args : Ident.t list;
+    body : let_bindings;
+    jump : transfer }
 
 (** Return the jump targets of a block *)
 val targets_of_block: block -> label list

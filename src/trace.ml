@@ -8,7 +8,7 @@ let fresh_var _ = Ident.fresh "z"
 *)
 let trace_block blocks i0 =
   let block = Ident.Table.find_exn blocks i0 in
-  let l0 = label_of_block block in
+  let l0 = block.label in
   let x0 = List.map ~f:fresh_var l0.arg_types in
 
   (* substitution *)
@@ -36,8 +36,11 @@ let trace_block blocks i0 =
     match Ident.Table.find visited i with
     | Some i when i > !Opts.trace_loop_threshold ->
       let lets = flush_lets () in
-      let dst = label_of_block block in
-      Direct(l0, x0, lets, vs, dst)
+      let dst = block.label in
+      { label = l0;
+        args = x0;
+        body = lets;
+        jump = Direct(dst, vs) }
     | _ ->
       begin
         Ident.Table.change visited i (function None -> Some 1
@@ -46,19 +49,23 @@ let trace_block blocks i0 =
           List.iter2_exn xs vs
             ~f:(fun x v -> Ident.Table.set rho ~key:x ~data:v);
           trace_lets lets in
-        match block with
-        | Unreachable(_) -> Unreachable(l0)
-        | Direct(_, xs, lets, vr, dst) ->
-          block_body xs lets;
+        match block.jump with
+        | Unreachable ->
+          { label = l0;
+            args = x0;
+            body = [];
+            jump = Unreachable }
+        | Direct(dst, vr) ->
+          block_body block.args block.body;
           let vr' = List.map vr ~f:(subst_value (Ident.Table.find_exn rho)) in
           trace_block dst.name vr'
-        | Branch(_, xs, lets, (id, params, vc, cases)) ->
-          block_body xs lets;
+        | Branch(vc, (id, params), cases) ->
+          block_body block.args block.body;
           let vc' = subst_value (Ident.Table.find_exn rho) vc in
           begin
             match vc' with
-            | In((_, i, vi), _) ->
-              let (y, vd, dst) = List.nth_exn cases i in
+            | In((i, _), vi) ->
+              let (y, dst, vd) = List.nth_exn cases i in
               Ident.Table.set rho ~key:y ~data:vi;
               let vd' = List.map vd ~f:(subst_value (Ident.Table.find_exn rho)) in
               trace_block dst.name vd'
@@ -66,18 +73,24 @@ let trace_block blocks i0 =
               let lets = flush_lets () in
               let cases' =
                 List.map cases
-                  ~f:(fun (y, vd, dst) ->
+                  ~f:(fun (y, dst, vd) ->
                     let y' = fresh_var () in
                     Ident.Table.set rho ~key:y ~data:(Var y');
                     let vd' = List.map vd ~f:(subst_value (Ident.Table.find_exn rho)) in
-                    (y', vd', dst)) in
-              Branch(l0, x0, lets, (id, params, vc', cases'))
+                    (y', dst, vd')) in
+              { label = l0;
+                args = x0;
+                body = lets;
+                jump = Branch(vc', (id, params), cases') }
           end
-        | Return(_, xs, lets, vr, a) ->
-          block_body xs lets;
+        | Return(vr, a) ->
+          block_body block.args block.body;
           let vr' = subst_value (Ident.Table.find_exn rho) vr in
           let lets = flush_lets () in
-          Return(l0, x0, lets, vr', a)
+          { label = l0;
+            args = x0;
+            body = lets;
+            jump = Return(vr', a) }
       end in
   let v0 = List.map x0 ~f:(fun x -> Var x) in
   List.iter2_exn x0 v0
@@ -94,7 +107,7 @@ let trace (func : Ssa.t) =
         Ident.Table.set traced ~key:i ~data:();
 
         let b = trace_block blocks i in
-        Ident.Table.set res_blocks (label_of_block b).name b;
+        Ident.Table.set res_blocks b.label.name b;
         List.iter (targets_of_block b) ~f:(fun l -> trace_blocks l.name)
       end in
   trace_blocks (func.entry_label.name);
@@ -123,42 +136,42 @@ let shortcut_block blocks i0 =
         begin
           Ident.Table.add_exn visited ~key:i.name ~data:();
           let block = Ident.Table.find_exn blocks i.name in
-          match block with
-          | Direct(_, x, [], vr, dst) ->
-            let vr' = List.map vr ~f:(subst_value (subst x v)) in
+          match block.body, block.jump with
+          | [], Direct(dst, vr) ->
+            let vr' = List.map vr ~f:(subst_value (subst block.args v)) in
             shortcut_value dst vr'
-          | Branch(_, x, [], (_, _, vc, cases)) ->
-            let vc' = subst_value (subst x v) vc in
+          | [], Branch(vc, _, cases) ->
+            let vc' = subst_value (subst block.args v) vc in
             begin
               match vc' with
-              | In((_, i, vi), _) ->
-                let (y, vd, dst) = List.nth_exn cases i in
+              | In((i, _), vi) ->
+                let (y, dst, vd) = List.nth_exn cases i in
                 let vd' = List.map vd ~f:(fun w ->
                   subst_value
                     (fun z -> if y = z then vi else Var z)
-                    (subst_value (subst x v) w)) in
+                    (subst_value (subst block.args v) w)) in
                 shortcut_value dst vd'
               | _ ->
                 i, v
             end
-          | Unreachable _
-          | Direct _
-          | Branch _
-          | Return _ ->
+          | _, Unreachable
+          | _, Direct _
+          | _, Branch _
+          | _, Return _ ->
             i, v
         end in
     shortcut_value i v in
 
-  match block with
-  | Direct(l, x, lets, vr, dst) ->
+  match block.jump with
+  | Direct(dst, vr) ->
     let dst', vr' = shortcut_value dst vr in
-    Direct(l, x, lets, vr', dst')
-  | Branch(l, x, lets, (id, params, vc, cases)) ->
-    let cases' = List.map cases ~f:(fun (y, vd, dst) ->
+    { block with jump = Direct(dst', vr') }
+  | Branch(vc, (id, params), cases) ->
+    let cases' = List.map cases ~f:(fun (y, dst, vd) ->
       let dst', vd' = shortcut_value dst vd in
-      (y, vd', dst')) in
-    Branch(l, x, lets, (id, params, vc, cases'))
-  | Unreachable _
+      (y, dst', vd')) in
+    { block with jump = Branch(vc, (id, params), cases') }
+  | Unreachable
   | Return _ -> block
 
 let shortcut_jumps (func : Ssa.t) =
@@ -171,7 +184,7 @@ let shortcut_jumps (func : Ssa.t) =
         Ident.Table.set traced ~key:i ~data:();
 
         let b = shortcut_block blocks i in
-        Ident.Table.set res_blocks (label_of_block b).name b;
+        Ident.Table.set res_blocks b.label.name b;
         List.iter (targets_of_block b) ~f:(fun l -> shortcut_blocks l.name)
       end in
   shortcut_blocks (func.entry_label.name);

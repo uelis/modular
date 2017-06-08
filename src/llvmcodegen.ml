@@ -380,19 +380,19 @@ let rec build_value
       ~f:(fun enc t ->
         let tenc = build_value the_module ctx t in
         Mixedvector.concatenate enc tenc)
-  | Ssa.In((id, _, t), a) when
+  | Ssa.In((_, (id, params)), t) when
       Basetype.Data.constructor_count id = 1 ||
       not (Basetype.Data.is_discriminated id) ->
     let tenc = build_value the_module ctx t in
-    build_truncate_extend tenc a
-  | Ssa.In((id, i, t), a) ->
+    build_truncate_extend tenc (Basetype.(newty (DataB(id, params))))
+  | Ssa.In((i, (id, params)), t) ->
     let n = Basetype.Data.constructor_count id in
     let tenc = build_value the_module ctx t in
     let branch = Llvm.const_int (Llvm.integer_type context (log n)) i in
     let denc = Mixedvector.concatenate
                  (Mixedvector.singleton (Lltype.Integer (log n)) branch)
                  tenc in
-    build_truncate_extend denc a
+    build_truncate_extend denc (Basetype.(newty (DataB(id, params))))
   | Ssa.Proj(t, i, bs) ->
     let tenc = build_value the_module ctx t in
     let rec drop i bs enc =
@@ -408,13 +408,13 @@ let rec build_value
           drop (i - 1) rest t2
       | [] -> assert false in
     drop i bs tenc
-  | Ssa.Select(t, (id, params), i)
+  | Ssa.Select((i, (id, params)), t)
     when not (Basetype.Data.is_discriminated id) ->
     let tenc = build_value the_module ctx t in
     let case_types = Basetype.Data.constructor_types id params in
     let ai = List.nth_exn case_types i in
     build_truncate_extend tenc ai
-  | Ssa.Select(t, (id, params), i) ->
+  | Ssa.Select((i, (id, params)), t) ->
     let tenc = build_value the_module ctx t in
     let n = Basetype.Data.constructor_count id in
     if n = 1 then
@@ -736,7 +736,7 @@ let build_ssa_blocks
   let predecessors = Ident.Table.create () in
   Ssa.iter_reachable_blocks ssa_func
     ~f:(fun b ->
-      let l = Ssa.label_of_block b in
+      let l = b.Ssa.label in
       Ident.Table.set label_types ~key:l.Ssa.name ~data:l.Ssa.arg_types;
       List.iter (Ssa.targets_of_block b)
         ~f:(fun p -> Ident.Table.change predecessors p.Ssa.name
@@ -787,31 +787,31 @@ let build_ssa_blocks
   let open Ssa in
   Ssa.iter_reachable_blocks ssa_func
     ~f:(fun block ->
-      match block with
-      | Unreachable(src) ->
-        Llvm.position_at_end (get_block src.name) builder;
+      match block.jump with
+      | Unreachable ->
+        Llvm.position_at_end (get_block block.label.name) builder;
         ignore (Llvm.build_unreachable builder)
-      | Direct(src, xs, lets, body, dst) ->
-        Llvm.position_at_end (get_block src.name) builder;
-        let senc = Ident.Table.find_exn phi_nodes src.name in
-        assert_types senc src.arg_types;
-        let gamma = List.zip_exn xs senc in
-        let ev = build_body the_module func gamma lets body in
+      | Direct(dst, vd) ->
+        Llvm.position_at_end (get_block block.label.name) builder;
+        let senc = Ident.Table.find_exn phi_nodes block.label.name in
+        assert_types senc block.label.arg_types;
+        let gamma = List.zip_exn block.args senc in
+        let ev = build_body the_module func gamma block.body vd in
         let src_block = Llvm.insertion_block builder in
         ignore (Llvm.build_br (get_block dst.name) builder);
         connect_to src_block ev dst.name
-      | Branch(src, x, lets, (id, params, body, cases)) ->
+      | Branch(vc, (id, params), cases) ->
         begin
-          Llvm.position_at_end (get_block src.name) builder;
-          let xenc = Ident.Table.find_exn phi_nodes src.name in
-          assert_types xenc src.arg_types;
-          let gamma = List.zip_exn x xenc in
-          let ctx = build_letbindings the_module func gamma lets in
-          let ebody = build_value the_module ctx body in
+          Llvm.position_at_end (get_block block.label.name) builder;
+          let xenc = Ident.Table.find_exn phi_nodes block.label.name in
+          assert_types xenc block.label.arg_types;
+          let gamma = List.zip_exn block.args xenc in
+          let ctx = build_letbindings the_module func gamma block.body in
+          let ebody = build_value the_module ctx vc in
           let n = List.length cases in
           assert (n > 0);
           match cases with
-          | [(y, vs, dst)] ->
+          | [(y, dst, vs)] ->
             let venc =
               List.map vs
                 ~f:(fun v -> build_value the_module ((y, ebody)::ctx) v) in
@@ -839,7 +839,7 @@ let build_ssa_blocks
               Llvm.build_switch cond default_block (n-1) builder in
             (* build case blocks *)
             List.iteri (List.zip_exn case_blocks jump_targets)
-              ~f:(fun i (block, ((y, yenc), vs, dst)) ->
+              ~f:(fun i (block, ((y, yenc), dst, vs)) ->
                 if i > 0 then
                   Llvm.add_case switch
                     (Llvm.const_int (Llvm.integer_type context (log n)) i)
@@ -852,12 +852,12 @@ let build_ssa_blocks
                 connect_to this_block venc dst.name
               )
         end
-      | Return(src, x, lets, body, return_type) ->
-        Llvm.position_at_end (get_block src.name) builder;
-        let xenc = Ident.Table.find_exn phi_nodes src.name in
-        let gamma = List.zip_exn x xenc in
-        let gamma1 = build_letbindings the_module func gamma lets in
-        let ev = build_value the_module gamma1 body in
+      | Return(vr, return_type) ->
+        Llvm.position_at_end (get_block block.label.name) builder;
+        let xenc = Ident.Table.find_exn phi_nodes block.label.name in
+        let gamma = List.zip_exn block.args xenc in
+        let gamma1 = build_letbindings the_module func gamma block.body in
+        let ev = build_value the_module gamma1 vr in
         let pev = pack_encoded_value ev return_type in
         ignore (Llvm.build_ret pev builder)
     )

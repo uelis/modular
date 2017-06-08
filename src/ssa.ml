@@ -32,14 +32,17 @@ type op_const =
   | Cpop of Basetype.t
   | Ccall of string * Basetype.t * Basetype.t
 
+type constructor = int * (Basetype.Data.id * Basetype.t list)
+
+(** SSA values and terms *)
 type value =
+  | IntConst of int
   | Var of Ident.t
   | Tuple of value list
-  | In of (Basetype.Data.id * int * value) * Basetype.t
   | Proj of value * int * Basetype.t list
-  | Select of value * (Basetype.Data.id * Basetype.t list) * int
+  | In of constructor * value
+  | Select of constructor * value
   | Undef of Basetype.t
-  | IntConst of int
 
 type term =
   | Const of op_const * value
@@ -48,31 +51,25 @@ let rec subst_value (rho: Ident.t -> value) (v: value) =
   match v with
   | Var(x) -> rho x
   | Tuple(vs) -> Tuple(List.map ~f:(subst_value rho) vs)
-  | In((id, i, v), a) -> In((id, i, subst_value rho v), a)
+  | In(c, v) -> In(c, subst_value rho v)
   | Proj(v, i, b) ->
     begin
       match subst_value rho v with
       | Tuple(vs) -> List.nth_exn vs i
       | w -> Proj(w, i, b)
     end
-  | Select(v1, a, i) ->
+  | Select((i, a), v1) ->
     begin
       match subst_value rho v1 with
-      | In((_, j, w), a) ->
+      | In((j, (id, params)), w) ->
         (* TODO: this is used in cbv.intml. Check that it's really ok. *)
         if i=j then w else
           (* undefined *)
-          let ai =
-            match Basetype.case a with
-            | Basetype.Sgn (Basetype.DataB(id, params)) ->
-              begin
-                match List.nth (Basetype.Data.constructor_types id params) i with
-                | Some b -> b
-                | None -> assert false
-              end
-            | _ -> assert false in
+          let ai = match List.nth (Basetype.Data.constructor_types id params) i with
+            | Some b -> b
+            | None -> assert false in
           Undef(ai)
-      | w -> Select(w, a, i)
+      | w -> Select((i, a), w)
     end
   | Undef(a) -> Undef(a)
   | IntConst(i) -> IntConst(i)
@@ -95,13 +92,18 @@ type label = {
   debug_loc: Ast.Location.t
 }
 
+type transfer =
+  | Unreachable
+  | Direct of label * (value list)
+  | Branch of value * (Basetype.Data.id * Basetype.t list) * (Ident.t * label * (value list)) list
+  | Return of value * Basetype.t
+
+(** Program blocks *)
 type block =
-    Unreachable of label
-  | Direct of label * (Ident.t list) * let_bindings * (value list) * label
-  | Branch of label * (Ident.t list) * let_bindings *
-              (Basetype.Data.id * Basetype.t list * value *
-               (Ident.t * (value list) * label) list)
-  | Return of label * (Ident.t list) * let_bindings * value * Basetype.t
+  { label : label;
+    args : Ident.t list;
+    body : let_bindings;
+    jump : transfer }
 
 (** Invariant: Any block [b] in the list of blocks must
     be reachable from the entry label by blocks appearing
@@ -114,19 +116,15 @@ type t = {
   return_type: Basetype.t;
 }
 
-let label_of_block (b : block) : label =
-  match b with
-  | Unreachable(l)
-  | Direct(l, _, _, _, _)
-  | Branch(l, _ , _, _)
-  | Return(l, _, _, _, _) -> l
+let targets_of_transfer (t : transfer) : label list =
+  match t with
+  | Unreachable -> []
+  | Direct(l, _) -> [l]
+  | Branch(_, t, cases) -> List.map cases ~f:(fun (_, l, _) -> l)
+  | Return(_, _) -> []
 
 let targets_of_block (b : block) : label list =
-  match b with
-  | Unreachable(_) -> []
-  | Direct(_, _, _, _, l) -> [l]
-  | Branch(_, _ , _, (_, _, _, cases)) -> List.map cases ~f:(fun (_, _, l) -> l)
-  | Return(_, _, _, _, _) -> []
+  targets_of_transfer b.jump
 
 let rec typeof_value
           (gamma: Basetype.t Typing.context)
@@ -145,20 +143,13 @@ let rec typeof_value
   | Tuple(vs) ->
     let bs = List.map ~f:(typeof_value gamma) vs in
     newty (TupleB(bs))
-  | In((id, n, v), a) ->
+  | In((n, (id, params)), v) ->
     let b = typeof_value gamma v in
-    begin
-      match case a with
-      | Sgn (DataB(id', params)) ->
-        let constructor_types = Data.constructor_types id' params in
-        if (id <> id') then failwith "internal ssa.ml: wrong data type";
-        (match List.nth constructor_types n with
-         | Some b' -> equals_exn b b'
-         | None -> failwith "internal ssa.ml: wrong constructor type")
-      | _ ->
-        failwith "internal ssa.ml: data type expected"
-    end;
-    a
+    let constructor_types = Data.constructor_types id params in
+    (match List.nth constructor_types n with
+     | Some b' -> equals_exn b b'
+     | None -> failwith "internal ssa.ml: wrong constructor type");
+    Basetype.(newty (DataB(id, params)))
   | Proj(v, i, bs) ->
     let a1 = typeof_value gamma v in
     equals_exn a1 (newty (TupleB(bs)));
@@ -167,7 +158,7 @@ let rec typeof_value
       | None -> failwith "internal ssa.ml: projection out of bounds"
       | Some b -> b
     end
-  | Select(v, (id, params), n) ->
+  | Select((n, (id, params)), v) ->
     let a1 = typeof_value gamma v in
     let a = newty (DataB(id, params)) in
     equals_exn a a1;
@@ -267,38 +258,34 @@ let typecheck_block (blocks: block Ident.Table.t) (b: block) : unit =
   let check_label_exn l a =
     match Ident.Table.find blocks l.name with
     | Some block ->
-      let b = (label_of_block block).arg_types in
+      let b = block.label.arg_types in
       List.iter2_exn ~f:equals_exn a b;
       List.iter2_exn ~f:equals_exn a l.arg_types
     | None -> failwith "internal ssa.ml: wrong argument in jump" in
-  match b with
-  | Unreachable(_) -> ()
-  | Direct(s, x, l, v, d) ->
-    let gamma0 = List.zip_exn x s.arg_types in
-    let gamma = typecheck_let_bindings gamma0 l in
+  let gamma0 = List.zip_exn b.args b.label.arg_types in
+  let gamma = typecheck_let_bindings gamma0 b.body in
+  match b.jump with
+  | Unreachable -> ()
+  | Direct(d, v) ->
     let a = List.map ~f:(typeof_value gamma) v in
     check_label_exn d a
-  | Branch(s, x, l, (id, params, v, ds)) ->
+  | Branch(v, (id, params), cases) ->
     let constructor_types = Basetype.Data.constructor_types id params in
-    let bs = List.zip ds constructor_types in
+    let bs = List.zip cases constructor_types in
     begin
       match bs with
       | Some bs ->
-        let gamma0 = List.zip_exn x s.arg_types in
-        let gamma = typecheck_let_bindings gamma0 l in
         let va = typeof_value gamma v in
         equals_exn va (Basetype.newty
                          (Basetype.DataB(id, params)));
         List.iter bs
-          ~f:(fun ((x, v, d), a) ->
+          ~f:(fun ((x, d, v), a) ->
             let b = List.map ~f:(typeof_value ((x, a) :: gamma)) v in
             check_label_exn d b)
       | None ->
         failwith "internal ssa.ml: wrong number of cases in branch"
     end
-  | Return(s, x, l, v, a) ->
-    let gamma0 = List.zip_exn x s.arg_types in
-    let gamma = typecheck_let_bindings gamma0 l in
+  | Return(v, a) ->
     let b = typeof_value gamma v in
     equals_exn a b
 
@@ -370,7 +357,7 @@ let rec fprint_value (oc: Out_channel.t) (v: value) : unit =
             fprint_value oc v;
             sep := ", ");
     Out_channel.output_string oc ")"
-  | In((id, k, t), _) ->
+  | In((k, (id, params)), t) ->
     let cname = List.nth_exn (Basetype.Data.constructor_names id) k in
     Out_channel.output_string oc (Ident.to_string cname);
     Out_channel.output_string oc "(";
@@ -379,7 +366,7 @@ let rec fprint_value (oc: Out_channel.t) (v: value) : unit =
   | Proj(t, i, _) ->
     fprint_value oc t;
     Printf.fprintf oc ".%i" i
-  | Select(t, _, i) ->
+  | Select((i, _), t) ->
     Out_channel.output_string oc "select(";
     fprint_value oc t;
     Printf.fprintf oc ").%i" i
@@ -423,40 +410,31 @@ let fprint_block (oc: Out_channel.t) (b: block) : unit =
       fprint_value oc v;
       if vs <> [] then Printf.fprintf oc ", ";
       fprint_values oc vs in
-  match b with
-    | Unreachable(l) ->
-      Printf.fprintf oc " l%s(...) = unreachable\n"
-        (Ident.to_string l.name)
-    | Direct(l, x, bndgs, body, goal) ->
-      Printf.fprintf oc " l%s(%s) =\n"
-        (Ident.to_string l.name)
-        (param_string x l.arg_types);
-      fprint_letbndgs oc bndgs;
-      Printf.fprintf oc "   l%s(" (Ident.to_string goal.name);
-      fprint_values oc body;
+  Printf.fprintf oc " l%s(%s) =\n"
+    (Ident.to_string b.label.name)
+    (param_string b.args b.label.arg_types);
+  fprint_letbndgs oc b.body;
+  match b.jump with
+    | Unreachable ->
+      Printf.fprintf oc "unreachable\n"
+    | Direct(dst, vs) ->
+      Printf.fprintf oc "   l%s(" (Ident.to_string dst.name);
+      fprint_values oc vs;
       Printf.fprintf oc ")\n"
-    | Branch(la, x, bndgs, (id, _, cond, cases)) ->
+    | Branch(cond, (id, _), cases) ->
       let constructor_names = Basetype.Data.constructor_names id in
-      Printf.fprintf oc " l%s(%s) =\n"
-        (Ident.to_string la.name)
-        (param_string x la.arg_types);
-      fprint_letbndgs oc bndgs;
       Printf.fprintf oc "   case ";
       fprint_value oc cond;
       Printf.fprintf oc " of\n";
       List.iter2_exn constructor_names cases
-        ~f:(fun cname (l, lb, lg) ->
+        ~f:(fun cname (l, lg, lb) ->
           Printf.fprintf oc "   | %s(%s) -> l%s(" (Ident.to_string cname)
             (Ident.to_string l) (Ident.to_string lg.name);
           fprint_values oc lb;
           Printf.fprintf oc ")\n")
-    | Return(l, x, bndgs, body, _) ->
-      Printf.fprintf oc " l%s(%s) =\n"
-        (Ident.to_string l.name)
-        (param_string x l.arg_types);
-      fprint_letbndgs oc bndgs;
+    | Return(v, _) ->
       Printf.fprintf oc "   return ";
-      fprint_value oc body;
+      fprint_value oc v;
       Printf.fprintf oc "\n"
 
 let fprint_func (oc: Out_channel.t) (func: t) : unit =
