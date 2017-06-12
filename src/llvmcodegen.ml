@@ -380,12 +380,12 @@ let rec build_value
       ~f:(fun enc t ->
         let tenc = build_value the_module ctx t in
         Mixedvector.concatenate enc tenc)
-  | Ssa.In((_, (id, params)), t) when
+  | Ssa.Inj((_, (id, params)), t) when
       Basetype.Data.constructor_count id = 1 ||
       not (Basetype.Data.is_discriminated id) ->
     let tenc = build_value the_module ctx t in
     build_truncate_extend tenc (Basetype.(newty (DataB(id, params))))
-  | Ssa.In((i, (id, params)), t) ->
+  | Ssa.Inj((i, (id, params)), t) ->
     let n = Basetype.Data.constructor_count id in
     let tenc = build_value the_module ctx t in
     let branch = Llvm.const_int (Llvm.integer_type context (log n)) i in
@@ -408,13 +408,13 @@ let rec build_value
           drop (i - 1) rest t2
       | [] -> assert false in
     drop i bs tenc
-  | Ssa.Select((i, (id, params)), t)
+  | Ssa.Out(t, (i, (id, params)))
     when not (Basetype.Data.is_discriminated id) ->
     let tenc = build_value the_module ctx t in
     let case_types = Basetype.Data.constructor_types id params in
     let ai = List.nth_exn case_types i in
     build_truncate_extend tenc ai
-  | Ssa.Select((i, (id, params)), t) ->
+  | Ssa.Out(t, (i, (id, params))) ->
     let tenc = build_value the_module ctx t in
     let n = Basetype.Data.constructor_count id in
     if n = 1 then
@@ -436,7 +436,7 @@ let build_term
       (ctx: (Ident.t * encoded_value) list)
       (t: Ssa.term) : encoded_value =
   match t with
-  | Ssa.Const(Ssa.Cpush(a), v) ->
+  | Ssa.PrimOp(Ssa.Cpush(a), v) ->
     let stack_alloc =
       match Llvm.lookup_function "stack_alloc" the_module with
       | Some stack_alloc -> stack_alloc
@@ -451,7 +451,7 @@ let build_term
     let v_packed = pack_encoded_value (build_truncate_extend venc a) a in
     ignore (Llvm.build_store v_packed mem_ptr builder);
     Mixedvector.null
-  | Ssa.Const(Ssa.Cpop(a), _) ->
+  | Ssa.PrimOp(Ssa.Cpop(a), _) ->
     let stack_pop =
       match Llvm.lookup_function "stack_pop" the_module with
       | Some stack_pop -> stack_pop
@@ -463,7 +463,7 @@ let build_term
                     "memstruct" builder in
     let lstruct = Llvm.build_load mem_ptr "lstruct" builder in
     unpack_encoded_value lstruct a
-  | Ssa.Const(Ssa.Cprint(s), _) ->
+  | Ssa.PrimOp(Ssa.Cprint(s), _) ->
     let str = Llvm.build_global_string s "s" builder in
     let strptr = Llvm.build_in_bounds_gep str
                    [| Llvm.const_null int_lltype; Llvm.const_null int_lltype |]
@@ -480,7 +480,7 @@ let build_term
     let args = Array.of_list [formatstrptr; strptrint] in
     ignore (Llvm.build_call printf args "i" builder);
     Mixedvector.null
-  | Ssa.Const(Ssa.Ccall(e, a, b), v) ->
+  | Ssa.PrimOp(Ssa.Ccall(e, a, b), v) ->
     let a_struct = packing_type a in
     let b_struct = packing_type b in
     let etype = Llvm.function_type b_struct (Array.of_list [a_struct]) in
@@ -490,25 +490,25 @@ let build_term
     let args = Array.of_list [v_packed] in
     let res_packed = Llvm.build_call efunc args e builder in
     unpack_encoded_value res_packed b
-  | Ssa.Const(Ssa.Cintadd as const, arg)
-  | Ssa.Const(Ssa.Cintsub as const, arg)
-  | Ssa.Const(Ssa.Cintmul as const, arg)
-  | Ssa.Const(Ssa.Cintdiv as const, arg)
-  | Ssa.Const(Ssa.Cinteq as const, arg)
-  | Ssa.Const(Ssa.Cintlt as const, arg)
-  | Ssa.Const(Ssa.Cintslt as const, arg)
-  | Ssa.Const(Ssa.Cintshl as const, arg)
-  | Ssa.Const(Ssa.Cintshr as const, arg)
-  | Ssa.Const(Ssa.Cintsar as const, arg)
-  | Ssa.Const(Ssa.Cintand as const, arg)
-  | Ssa.Const(Ssa.Cintor as const, arg)
-  | Ssa.Const(Ssa.Cintxor as const, arg)
-  | Ssa.Const(Ssa.Cintprint as const, arg)
-  | Ssa.Const(Ssa.Cgcalloc _ as const, arg)
-  | Ssa.Const(Ssa.Calloc _ as const, arg)
-  | Ssa.Const(Ssa.Cfree _ as const, arg)
-  | Ssa.Const(Ssa.Cload _ as const, arg)
-  | Ssa.Const(Ssa.Cstore _ as const, arg) ->
+  | Ssa.PrimOp(Ssa.Cintadd as const, arg)
+  | Ssa.PrimOp(Ssa.Cintsub as const, arg)
+  | Ssa.PrimOp(Ssa.Cintmul as const, arg)
+  | Ssa.PrimOp(Ssa.Cintdiv as const, arg)
+  | Ssa.PrimOp(Ssa.Cinteq as const, arg)
+  | Ssa.PrimOp(Ssa.Cintlt as const, arg)
+  | Ssa.PrimOp(Ssa.Cintslt as const, arg)
+  | Ssa.PrimOp(Ssa.Cintshl as const, arg)
+  | Ssa.PrimOp(Ssa.Cintshr as const, arg)
+  | Ssa.PrimOp(Ssa.Cintsar as const, arg)
+  | Ssa.PrimOp(Ssa.Cintand as const, arg)
+  | Ssa.PrimOp(Ssa.Cintor as const, arg)
+  | Ssa.PrimOp(Ssa.Cintxor as const, arg)
+  | Ssa.PrimOp(Ssa.Cintprint as const, arg)
+  | Ssa.PrimOp(Ssa.Cgcalloc _ as const, arg)
+  | Ssa.PrimOp(Ssa.Calloc _ as const, arg)
+  | Ssa.PrimOp(Ssa.Cfree _ as const, arg)
+  | Ssa.PrimOp(Ssa.Cload _ as const, arg)
+  | Ssa.PrimOp(Ssa.Cstore _ as const, arg) ->
     begin
       let argenc = build_value the_module ctx arg in
       let intargs = Mixedvector.llvalues_at_key argenc Lltype.int_type in
@@ -621,7 +621,7 @@ let build_letbinding
       (l: Ssa.let_binding) :
   (Ident.t * encoded_value) list =
   match l with
-  | Ssa.Let(x, Ssa.Const(Ssa.Cgcalloc a, _)) ->
+  | Ssa.Let(x, Ssa.PrimOp(Ssa.Cgcalloc a, _)) ->
     let alloc_block = Llvm.append_block context "gcalloc" func in
     let collect_block = Llvm.append_block context "gccollect" func in
     let end_block = Llvm.append_block context "gc_end" func in
@@ -710,7 +710,7 @@ let rec build_letbindings
           (the_module : Llvm.llmodule)
           (func : Llvm.llvalue)
           (ctx: (Ident.t * encoded_value) list)
-          (l: Ssa.let_bindings)
+          (l: Ssa.let_binding list)
   : (Ident.t * encoded_value) list =
   match l with
   | [] -> ctx
@@ -722,7 +722,7 @@ let build_body
       (the_module : Llvm.llmodule)
       (func : Llvm.llvalue)
       (ctx: (Ident.t * encoded_value) list)
-      (l: Ssa.let_bindings)
+      (l: Ssa.let_binding list)
       (vs: Ssa.value list)
   : encoded_value list =
   let ctx1 = build_letbindings the_module func ctx l in

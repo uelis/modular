@@ -64,7 +64,7 @@ let trace_block blocks i0 =
           let vc' = subst_value (Ident.Table.find_exn rho) vc in
           begin
             match vc' with
-            | In((i, _), vi) ->
+            | Inj((i, _), vi) ->
               let (y, dst, vd) = List.nth_exn cases i in
               Ident.Table.set rho ~key:y ~data:vi;
               let vd' = List.map vd ~f:(subst_value (Ident.Table.find_exn rho)) in
@@ -144,7 +144,7 @@ let shortcut_block blocks i0 =
             let vc' = subst_value (subst block.args v) vc in
             begin
               match vc' with
-              | In((i, _), vi) ->
+              | Inj((i, _), vi) ->
                 let (y, dst, vd) = List.nth_exn cases i in
                 let vd' = List.map vd ~f:(fun w ->
                   subst_value

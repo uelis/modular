@@ -3,10 +3,23 @@ open Core_kernel.Std
 (********************
  * Values
  ********************)
-type value_const =
-  | Cundef of Basetype.t
-  | Cintconst of int
+type constructor = int * (Basetype.Data.id * Basetype.t list)
 
+(** SSA values and terms *)
+type value =
+  | IntConst of int
+  | Var of Ident.t
+  | Tuple of value list
+  | Proj of value * int * Basetype.t list
+  | Inj of constructor * value
+  | Out of value * constructor
+  | Undef of Basetype.t
+
+(********************
+ * Statements
+ ********************)
+
+(** Primitive operations *)
 type op_const =
   | Cprint of string
   | Cintadd
@@ -32,36 +45,24 @@ type op_const =
   | Cpop of Basetype.t
   | Ccall of string * Basetype.t * Basetype.t
 
-type constructor = int * (Basetype.Data.id * Basetype.t list)
-
-(** SSA values and terms *)
-type value =
-  | IntConst of int
-  | Var of Ident.t
-  | Tuple of value list
-  | Proj of value * int * Basetype.t list
-  | In of constructor * value
-  | Select of constructor * value
-  | Undef of Basetype.t
-
 type term =
-  | Const of op_const * value
+  | PrimOp of op_const * value
 
 let rec subst_value (rho: Ident.t -> value) (v: value) =
   match v with
   | Var(x) -> rho x
   | Tuple(vs) -> Tuple(List.map ~f:(subst_value rho) vs)
-  | In(c, v) -> In(c, subst_value rho v)
+  | Inj(c, v) -> Inj(c, subst_value rho v)
   | Proj(v, i, b) ->
     begin
       match subst_value rho v with
       | Tuple(vs) -> List.nth_exn vs i
       | w -> Proj(w, i, b)
     end
-  | Select((i, a), v1) ->
+  | Out(v1, (i, a)) ->
     begin
       match subst_value rho v1 with
-      | In((j, (id, params)), w) ->
+      | Inj((j, (id, params)), w) ->
         (* TODO: this is used in cbv.intml. Check that it's really ok. *)
         if i=j then w else
           (* undefined *)
@@ -69,14 +70,14 @@ let rec subst_value (rho: Ident.t -> value) (v: value) =
             | Some b -> b
             | None -> assert false in
           Undef(ai)
-      | w -> Select((i, a), w)
+      | w -> Out(w, (i, a))
     end
   | Undef(a) -> Undef(a)
   | IntConst(i) -> IntConst(i)
 
 let subst_term (rho: Ident.t -> value) (t: term) =
   match t with
-  | Const(c, v) -> Const(c, subst_value rho v)
+  | PrimOp(c, v) -> PrimOp(c, subst_value rho v)
 
 (********************
  * Programs
@@ -84,7 +85,6 @@ let subst_term (rho: Ident.t -> value) (t: term) =
 
 type let_binding =
   | Let of Ident.t * term
-type let_bindings = let_binding list
 
 type label = {
   name: Ident.t;
@@ -102,7 +102,7 @@ type transfer =
 type block =
   { label : label;
     args : Ident.t list;
-    body : let_bindings;
+    body : let_binding list;
     jump : transfer }
 
 (** Invariant: Any block [b] in the list of blocks must
@@ -143,7 +143,7 @@ let rec typeof_value
   | Tuple(vs) ->
     let bs = List.map ~f:(typeof_value gamma) vs in
     newty (TupleB(bs))
-  | In((n, (id, params)), v) ->
+  | Inj((n, (id, params)), v) ->
     let b = typeof_value gamma v in
     let constructor_types = Data.constructor_types id params in
     (match List.nth constructor_types n with
@@ -158,7 +158,7 @@ let rec typeof_value
       | None -> failwith "internal ssa.ml: projection out of bounds"
       | Some b -> b
     end
-  | Select((n, (id, params)), v) ->
+  | Out(v, (n, (id, params))) ->
     let a1 = typeof_value gamma v in
     let a = newty (DataB(id, params)) in
     equals_exn a a1;
@@ -182,66 +182,66 @@ let typeof_term
   let equals_exn a b =
     if equals a b then () else failwith "internal ssa.ml: type mismatch" in
   match t with
-  | Const(Cprint(_), v) ->
+  | PrimOp(Cprint(_), v) ->
     let b = typeof_value gamma v in
     equals_exn b unitB;
     unitB
-  | Const(Cintadd, v)
-  | Const(Cintsub, v)
-  | Const(Cintmul, v)
-  | Const(Cintdiv, v)
-  | Const(Cintshl, v)
-  | Const(Cintshr, v)
-  | Const(Cintsar, v)
-  | Const(Cintand, v)
-  | Const(Cintor, v)
-  | Const(Cintxor, v) ->
+  | PrimOp(Cintadd, v)
+  | PrimOp(Cintsub, v)
+  | PrimOp(Cintmul, v)
+  | PrimOp(Cintdiv, v)
+  | PrimOp(Cintshl, v)
+  | PrimOp(Cintshr, v)
+  | PrimOp(Cintsar, v)
+  | PrimOp(Cintand, v)
+  | PrimOp(Cintor, v)
+  | PrimOp(Cintxor, v) ->
     let b = typeof_value gamma v in
     equals_exn b (newty (TupleB [intB; intB]));
     intB
-  | Const(Cinteq, v)
-  | Const(Cintlt, v)
-  | Const(Cintslt, v) ->
+  | PrimOp(Cinteq, v)
+  | PrimOp(Cintlt, v)
+  | PrimOp(Cintslt, v) ->
     let b = typeof_value gamma v in
     equals_exn b (newty (TupleB [intB; intB]));
     boolB
-  | Const(Cintprint, v) ->
+  | PrimOp(Cintprint, v) ->
     let b = typeof_value gamma v in
     equals_exn b intB;
     unitB
-  | Const(Cgcalloc(b), v)
-  | Const(Calloc(b), v) ->
+  | PrimOp(Cgcalloc(b), v)
+  | PrimOp(Calloc(b), v) ->
     let c = typeof_value gamma v in
     equals_exn c unitB;
     (newty (BoxB b))
-  | Const(Cfree(b), v) ->
+  | PrimOp(Cfree(b), v) ->
     let c = typeof_value gamma v in
     equals_exn c (newty (BoxB b));
     unitB
-  | Const(Cload(b), v) ->
+  | PrimOp(Cload(b), v) ->
     let c = typeof_value gamma v in
     equals_exn c (newty (BoxB b));
     b
-  | Const(Cstore(b), v) ->
+  | PrimOp(Cstore(b), v) ->
     let c = typeof_value gamma v in
     equals_exn c (newty (TupleB [newty (BoxB b); b]));
     unitB
-  | Const(Cpush(b), v) ->
+  | PrimOp(Cpush(b), v) ->
     let c = typeof_value gamma v in
     equals_exn c b;
     unitB
-  | Const(Cpop(b), v) ->
+  | PrimOp(Cpop(b), v) ->
     let c = typeof_value gamma v in
     equals_exn c unitB;
     b
-  | Const(Ccall(_, b1, b2), v) ->
+  | PrimOp(Ccall(_, b1, b2), v) ->
     let c = typeof_value gamma v in
     equals_exn c b1;
     b2
 
 let rec typecheck_let_bindings
       (gamma: Basetype.t Typing.context)
-      (l: let_bindings)
+      (l: let_binding list)
   : Basetype.t Typing.context =
   match l with
   | [] ->
@@ -357,7 +357,7 @@ let rec fprint_value (oc: Out_channel.t) (v: value) : unit =
             fprint_value oc v;
             sep := ", ");
     Out_channel.output_string oc ")"
-  | In((k, (id, params)), t) ->
+  | Inj((k, (id, params)), t) ->
     let cname = List.nth_exn (Basetype.Data.constructor_names id) k in
     Out_channel.output_string oc (Ident.to_string cname);
     Out_channel.output_string oc "(";
@@ -366,7 +366,7 @@ let rec fprint_value (oc: Out_channel.t) (v: value) : unit =
   | Proj(t, i, _) ->
     fprint_value oc t;
     Printf.fprintf oc ".%i" i
-  | Select((i, _), t) ->
+  | Out(t, (i, _)) ->
     Out_channel.output_string oc "select(";
     fprint_value oc t;
     Printf.fprintf oc ").%i" i
@@ -379,13 +379,13 @@ let rec fprint_value (oc: Out_channel.t) (v: value) : unit =
 
 let fprint_term (oc: Out_channel.t) (t: term) : unit =
   match t with
-  | Const(c, v) ->
+  | PrimOp(c, v) ->
     Out_channel.output_string oc (string_of_op_const c);
     Out_channel.output_string oc "(";
     fprint_value oc v;
     Out_channel.output_string oc ")"
 
-let fprint_letbndgs (oc: Out_channel.t) (bndgs: let_bindings) : unit =
+let fprint_letbndgs (oc: Out_channel.t) (bndgs: let_binding list) : unit =
   List.iter (List.rev bndgs)
     ~f:(function
       | Let(x, t) ->
@@ -476,15 +476,15 @@ let rec to_json_value (v: value) : Yojson.Basic.json =
     `Assoc ["Var", `String (Ident.to_string x)]
   | Tuple(vs) ->
     `Assoc ["Tuple", `List (List.map ~f:to_json_value vs)]
-  | In(c, t) ->
-    `Assoc ["In", `Assoc ["constructor", to_json_constructor c;
+  | Inj(c, t) ->
+    `Assoc ["Inj", `Assoc ["constructor", to_json_constructor c;
                           "arg", to_json_value t]]
   | Proj(t, i, bs) ->
     `Assoc ["Proj", `Assoc ["arg", to_json_value t;
                             "tuple_type", `List (List.map bs ~f:to_json_type);
                             "index", `Int i ]]
-  | Select(c, t) ->
-    `Assoc ["Select", `Assoc ["constructor", to_json_constructor c;
+  | Out(t, c) ->
+    `Assoc ["Out", `Assoc ["constructor", to_json_constructor c;
                               "arg", to_json_value t]]
   | Undef(a) ->
     `String "Undefined"
@@ -494,11 +494,11 @@ let rec to_json_value (v: value) : Yojson.Basic.json =
 let to_json_term (t: term) : Yojson.Basic.json =
   let open Yojson.Basic in
   match t with
-  | Const(c, v) ->
+  | PrimOp(c, v) ->
     `Assoc ["primop", `String (string_of_op_const c);
             "arg", to_json_value v]
 
-let to_json_letbndgs (bndgs: let_bindings) : Yojson.Basic.json =
+let to_json_letbndgs (bndgs: let_binding list) : Yojson.Basic.json =
   `List (List.map (List.rev bndgs)
            ~f:(function
                | Let(x, t) ->

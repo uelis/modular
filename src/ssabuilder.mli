@@ -25,7 +25,7 @@ val unpair: value -> value * value
 
 val proj: value -> int -> value
 val inj: int -> value -> Basetype.t -> value
-val select: value -> int -> value
+val out: value -> int -> value
 
 val box: value -> value
 val unbox: value ->value

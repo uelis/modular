@@ -4,11 +4,10 @@ type value = Ssa.value * Basetype.t
 
 let typeof = snd
 
-type builder_state_type = {
-    cur_label: Ssa.label;
+type builder_state_type =
+  { cur_label: Ssa.label;
     cur_arg: Ident.t list;
-    cur_lets: Ssa.let_bindings
-  }
+    cur_lets: Ssa.let_binding list }
 
 let blocks = Ident.Table.create ()
 let predecessors : (Ssa.block list) Ident.Table.t = Ident.Table.create ()
@@ -81,7 +80,7 @@ let intconst (i: int) =
 
 let boolconst (b: bool) =
   let i = if b then 0 else 1 in
-  Ssa.In((i, (Basetype.Data.boolid, [])), Ssa.Tuple []),
+  Ssa.Inj((i, (Basetype.Data.boolid, [])), Ssa.Tuple []),
   Basetype.boolB
 
 let primop (c: Ssa.op_const) (v: value) : value =
@@ -134,7 +133,7 @@ let primop (c: Ssa.op_const) (v: value) : value =
     | Ssa.Ccall(_, b1, b2) ->
       assert (equals va b1);
       b2 in
-  emit (Ssa.Let(prim, Ssa.Const(c, vv)));
+  emit (Ssa.Let(prim, Ssa.PrimOp(c, vv)));
   Ssa.Var prim, vb
 
 let unTupleB a =
@@ -177,9 +176,9 @@ let unDataB a =
 let inj (i: int) (v: value) (data: Basetype.t) : value =
   let vv, _ = v in
   let id, params = unDataB data in
-  Ssa.In((i, (id, params)), vv), data
+  Ssa.Inj((i, (id, params)), vv), data
 
-let select (v: value) (i: int) : value =
+let out (v: value) (i: int) : value =
   let vv, va = v in
   let id, params = unDataB va in
   let constructor_types = Basetype.Data.constructor_types id params in
@@ -188,7 +187,7 @@ let select (v: value) (i: int) : value =
     | Some b -> b
     | None ->
        failwith "internal translate.ml: unknown constructor" in
-  Ssa.Select((i, (id, params)), vv), b
+  Ssa.Out(vv, (i, (id, params))), b
 
 let box (v: value) : value =
   let _, va = v in
@@ -218,12 +217,12 @@ let project (v: value) (a: Basetype.t) : value =
     match Basetype.case typeof_v with
     | Basetype.Sgn(Basetype.DataB(id, params)) ->
       let i = index_of_ctor id params a in
-      select v i
+      out v i
     | Basetype.Sgn(Basetype.BoxB(c)) ->
       let id, params = unDataB c in
       let i = index_of_ctor id params a in
       let x = unbox v in
-      select x i
+      out x i
     | _ -> assert false
 
 let embed (v: value) (a: Basetype.t) : value =
