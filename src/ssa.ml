@@ -449,12 +449,15 @@ let fprint_func (oc: Out_channel.t) (func: t) : unit =
     fprint_block oc block;
 Out_channel.output_string oc "\n")
 
+let used_datatypes = Ident.Table.create ()
+
 let rec to_json_type (a : Basetype.t) : Yojson.Basic.json =
   let open Basetype in
   let open Yojson.Basic in
   match case a with
   | Var -> `Assoc ["var_type", `Int (repr_id a)]
   | Sgn(DataB(id, params)) ->
+    Ident.Table.set used_datatypes id ();
     `Assoc ["data_type", `Assoc ["type_id", `String (Ident.to_string id);
                             "type_params", `List (List.map params ~f:to_json_type)]]
   | Sgn(TupleB(bs)) ->
@@ -465,6 +468,7 @@ let rec to_json_type (a : Basetype.t) : Yojson.Basic.json =
     `Assoc ["box_type", to_json_type b]
 
 let rec to_json_constructor ((i, (id, params)) : constructor) : Yojson.Basic.json =
+  Ident.Table.set used_datatypes id ();
   `Assoc ["number", `Int i;
           "type_id", `String (Ident.to_string id);
           "type_params", `List (List.map params ~f:to_json_type) ]
@@ -535,11 +539,28 @@ let to_json_block (b: block) : Yojson.Basic.json =
           "lets", to_json_letbndgs b.body;
           "jump", jump]
 
+let to_json_data id : Yojson.Basic.json =
+  let cnames = Basetype.Data.constructor_names id in
+  let nparams = Basetype.Data.param_count id in
+  let params = List.init nparams ~f:(fun _ -> Basetype.newvar()) in
+  let ctypes = Basetype.Data.constructor_types id params in
+  let cs = List.zip_exn cnames ctypes in
+  `Assoc ["type", `String (Ident.to_string id);
+          "type_params", `List (List.map params ~f:to_json_type);
+          "is_union", `Bool (not (Basetype.Data.is_discriminated id));
+          "constructors", `List (List.map ~f:(fun (cn, ct) ->
+              `Assoc ["name", `String (Ident.to_string cn);
+                      "arg_type", to_json_type ct]) cs)]
+
 let to_json (func: t) : Yojson.Basic.json =
+  Ident.Table.clear used_datatypes;
   let xs = List.map func.entry_label.arg_types ~f:(fun _ -> Ident.fresh "x") in
-  `Assoc ["name", `String func.func_name;
-          "args", param_json xs func.entry_label.arg_types;
-          "return_type", to_json_type func.return_type;
-          "entry_block", `String (Ident.to_string func.entry_label.name);
-          "blocks", `List (List.map ~f:(fun (_, b) -> to_json_block b)
-                             (Ident.Table.to_alist func.blocks))]
+  let f = `Assoc ["name", `String func.func_name;
+                  "args", param_json xs func.entry_label.arg_types;
+                  "return_type", to_json_type func.return_type;
+                  "entry_block", `String (Ident.to_string func.entry_label.name);
+                  "blocks", `List (List.map ~f:(fun (_, b) -> to_json_block b)
+                                     (Ident.Table.to_alist func.blocks))] in
+  let ds = `List (List.map ~f:to_json_data (Ident.Table.keys used_datatypes)) in
+  `Assoc ["func", f;
+          "types", ds]
