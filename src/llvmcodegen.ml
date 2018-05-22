@@ -1,4 +1,4 @@
-open Core_kernel.Std
+open Core_kernel
 
 let context = Llvm.global_context ()
 let builder = Llvm.builder context
@@ -138,7 +138,7 @@ end
                   else
                     let i = Lltype.Integer (log n) in
                     let ni = Lltype.Map.find mx i |> Option.value ~default:0 in
-                    Lltype.Map.add mx ~key:i ~data:(ni + 1)
+                    Lltype.Map.set mx ~key:i ~data:(ni + 1)
                 end
             end in
         Int.Table.add_exn mem ~key:(Basetype.repr_id a) ~data:p;
@@ -325,7 +325,7 @@ struct
         ~f:(fun ~key:k ~data:n (bits, pos)->
           let bitsn = List.init n ~f:(fun i ->
             Llvm.build_extractvalue v (pos + i) "unpack" builder) in
-          Lltype.Map.add bits ~key:k ~data:bitsn,
+          Lltype.Map.set bits ~key:k ~data:bitsn,
           pos + n)
         ~init:(Lltype.Map.empty, 1) (* first item is the tag *) in
     bits
@@ -761,7 +761,7 @@ let build_ssa_blocks
       (* add (encoded_value, source) to phi node *)
       List.iter2_exn encoded_value phi
         ~f:(fun e p -> Mixedvector.add_incoming (e, src_block) p)
-    with Not_found ->
+    with Caml.Not_found | Not_found_s _ ->
       begin
         (* Insert phi node if block has more than one predecessor. *)
         if Ident.Table.find predecessors dst = Some 1 then

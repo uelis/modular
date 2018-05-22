@@ -1,7 +1,7 @@
 %{
 (** Parser *)
 
-open Core_kernel.Std
+open Core_kernel
 open Lexing
 open Parsing
 open Ast

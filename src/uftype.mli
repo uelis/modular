@@ -1,5 +1,5 @@
 (** Union-find representation of types for any given signature. *)
-open Core_kernel.Std
+open Core_kernel
 
 (** Exception raised in unification if the root constructors of the
     unified types do not match. *)

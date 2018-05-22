@@ -1,5 +1,5 @@
 (** Type inference *)
-open Core_kernel.Std
+open Core_kernel
 
 type 'a context = (Ident.t * 'a) list
 

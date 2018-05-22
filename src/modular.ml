@@ -1,5 +1,5 @@
 (** Simple main program. *)
-open Core_kernel.Std
+open Core_kernel
 open Lexing
 
 let parse_error_loc lexbuf =

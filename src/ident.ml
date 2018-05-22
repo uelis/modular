@@ -1,6 +1,6 @@
 (** Variable names *)
 
-open Core_kernel.Std
+open Core_kernel
 
 module T = struct
   type t = {

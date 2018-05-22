@@ -11,7 +11,7 @@
     must appear under a box.
 *)
 
-open Core_kernel.Std
+open Core_kernel
 
 type 'a sgn =
   | IntB

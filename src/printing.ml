@@ -1,4 +1,4 @@
-open Core_kernel.Std
+open Core_kernel
 (** Conversion to strings for printing on an ansi terminal *)
 
 let ansi_cyan = "\027[36m"

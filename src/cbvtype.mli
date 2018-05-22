@@ -1,5 +1,5 @@
 (** Representation of interactive types *)
-open Core_kernel.Std
+open Core_kernel
 
 type 'a sgn =
   | Bool of Basetype.t

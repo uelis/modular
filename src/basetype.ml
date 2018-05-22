@@ -1,4 +1,4 @@
-open Core_kernel.Std
+open Core_kernel
 
 type 'a sgn =
   | IntB
@@ -177,7 +177,7 @@ struct
           |> Array.iteri ~f:(fun i (cname, _) ->
             if cname = name then raise (Found (id, i)))
         );
-        raise Not_found
+        raise (Not_found_s [%message "constructor not found" ])
     with Found (id, i) -> id, i
 
   let make name ~param_count:nparams ~discriminated:discriminated =
@@ -200,7 +200,7 @@ struct
       try
         ignore (find_constructor name);
         failwith "Duplicate constructor definition"
-      with Not_found -> ()
+      with Not_found_s _ | Caml.Not_found -> ()
     end;
     let d = Hashtbl.find_exn datatypes id in
 

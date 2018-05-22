@@ -1,6 +1,6 @@
 (** Type inference *)
 (* TODO: write down typing invariants *)
-open Core_kernel.Std
+open Core_kernel
 
 type 'a context = (Ident.t * 'a) list
 
@@ -31,7 +31,7 @@ let solve_constraints (ineqs: lhd_constraint list) : unit =
   let joined_lower_bounds =
     ineqs
     |> List.filter ~f:(fun c -> cmp c.lower c.upper <> 0)
-    |> List.sort ~cmp:(fun c1 c2 -> cmp c1.upper c2.upper)
+    |> List.sort ~compare:(fun c1 c2 -> cmp c1.upper c2.upper)
     |> List.group ~break:(fun c1 c2 -> cmp c1.upper c2.upper <> 0)
     |> List.map
       ~f:(function
@@ -56,7 +56,7 @@ let solve_constraints (ineqs: lhd_constraint list) : unit =
       let fv_unique =
         List.map xs ~f:Basetype.free_vars
         |> List.concat
-        |> List.dedup ~compare:cmp in
+        |> List.dedup_and_sort ~compare:cmp in
       let constraint_recursive =
         List.exists fv_unique ~f:(Basetype.equals alpha) in
       let sol =

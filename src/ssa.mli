@@ -1,5 +1,5 @@
 (** Progams in functional SSA form *)
-open Core_kernel.Std
+open Core_kernel
 
 type constructor = int * (Basetype.Data.id * Basetype.t list)
 
