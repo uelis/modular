@@ -524,6 +524,7 @@ let to_json_block (b: block) : Yojson.Basic.json =
     `Assoc ["direct", `String (Ident.to_string goal.name);
             "args", `List (List.map ~f:to_json_value body)]
   | Branch(cond, (id, params), cases) ->
+    Ident.Table.set used_datatypes id ();
     `Assoc ["match", to_json_value cond;
             "type_id", `String (Ident.to_string id);
             "type_params", `List (List.map params ~f:to_json_type);
